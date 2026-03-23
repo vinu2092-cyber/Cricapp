@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -17,8 +17,10 @@ import AdModal from '../src/components/AdModal';
 import LoadingScreen from '../src/components/LoadingScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
 import { usePro } from '../src/context/ProContext';
-import { fetchAllMatches } from '../src/services/api';
+import { fetchAllMatches, simulateLiveScoreUpdate } from '../src/services/api';
 import { Match, MatchStatus } from '../src/types/match';
+
+const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds for live matches
 
 export default function Index() {
   const router = useRouter();
@@ -30,6 +32,7 @@ export default function Index() {
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showAdModal, setShowAdModal] = useState(false);
+  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadMatches = async () => {
     try {
@@ -48,6 +51,35 @@ export default function Index() {
   useEffect(() => {
     loadMatches();
   }, []);
+
+  // Auto-refresh for live matches
+  useEffect(() => {
+    if (activeTab === 'live') {
+      // Start auto-refresh
+      autoRefreshRef.current = setInterval(() => {
+        setMatches((prevMatches) => {
+          return prevMatches.map((match) => {
+            if (match.status === 'live') {
+              return simulateLiveScoreUpdate(match);
+            }
+            return match;
+          });
+        });
+      }, AUTO_REFRESH_INTERVAL);
+    } else {
+      // Clear auto-refresh when not on live tab
+      if (autoRefreshRef.current) {
+        clearInterval(autoRefreshRef.current);
+        autoRefreshRef.current = null;
+      }
+    }
+
+    return () => {
+      if (autoRefreshRef.current) {
+        clearInterval(autoRefreshRef.current);
+      }
+    };
+  }, [activeTab]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -97,6 +129,15 @@ export default function Index() {
       <View style={styles.content}>
         <Header onUnlockPro={handleUnlockPro} />
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        
+        {/* Auto-refresh indicator for live tab */}
+        {activeTab === 'live' && filteredMatches.length > 0 && (
+          <View style={styles.autoRefreshBanner}>
+            <Text style={styles.autoRefreshText}>
+              Auto-refreshing every 10 seconds
+            </Text>
+          </View>
+        )}
         
         <ImageBackground
           source={require('../assets/images/wallpaper.png')}
@@ -163,5 +204,16 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
     textTransform: 'capitalize',
+  },
+  autoRefreshBanner: {
+    backgroundColor: '#FF4444',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  autoRefreshText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

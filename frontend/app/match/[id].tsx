@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchMatchById } from '../../src/services/api';
+import { fetchMatchById, simulateLiveScoreUpdate } from '../../src/services/api';
 import { Match } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
+import CommentarySection from '../../src/components/CommentarySection';
+import LiveIndicator from '../../src/components/LiveIndicator';
+
+const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds for live matches
 
 export default function MatchDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,10 +25,41 @@ export default function MatchDetail() {
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadMatch();
+    return () => {
+      if (autoRefreshRef.current) {
+        clearInterval(autoRefreshRef.current);
+      }
+    };
   }, [id]);
+
+  // Auto-refresh for live matches
+  useEffect(() => {
+    if (match?.status === 'live') {
+      autoRefreshRef.current = setInterval(() => {
+        setMatch((prevMatch) => {
+          if (prevMatch && prevMatch.status === 'live') {
+            return simulateLiveScoreUpdate(prevMatch);
+          }
+          return prevMatch;
+        });
+      }, AUTO_REFRESH_INTERVAL);
+    } else {
+      if (autoRefreshRef.current) {
+        clearInterval(autoRefreshRef.current);
+        autoRefreshRef.current = null;
+      }
+    }
+
+    return () => {
+      if (autoRefreshRef.current) {
+        clearInterval(autoRefreshRef.current);
+      }
+    };
+  }, [match?.status]);
 
   const loadMatch = async () => {
     if (!id) return;
@@ -122,11 +157,24 @@ export default function MatchDetail() {
         >
           {/* Status Badge */}
           <View style={styles.statusContainer}>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
-              {match.status === 'live' && <View style={styles.liveDot} />}
-              <Text style={styles.statusText}>{getStatusText()}</Text>
-            </View>
+            {match.status === 'live' ? (
+              <LiveIndicator />
+            ) : (
+              <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
+                <Text style={styles.statusText}>{getStatusText()}</Text>
+              </View>
+            )}
           </View>
+
+          {/* Auto-refresh indicator for live matches */}
+          {match.status === 'live' && (
+            <View style={styles.autoRefreshBanner}>
+              <Ionicons name="sync" size={14} color="#FFF" />
+              <Text style={styles.autoRefreshText}>
+                Auto-refreshing every 10 seconds
+              </Text>
+            </View>
+          )}
 
           {/* Match Info Card */}
           <View style={styles.card}>
@@ -178,10 +226,24 @@ export default function MatchDetail() {
           {/* Result Card */}
           {match.result && (
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Result</Text>
-              <View style={styles.resultContainer}>
-                <Ionicons name="trophy" size={24} color="#FFD700" />
-                <Text style={styles.resultText}>{match.result}</Text>
+              <Text style={styles.sectionTitle}>
+                {match.status === 'live' ? 'Current Status' : 'Result'}
+              </Text>
+              <View style={[
+                styles.resultContainer,
+                match.status === 'live' && styles.liveResultContainer
+              ]}>
+                <Ionicons 
+                  name={match.status === 'live' ? 'pulse' : 'trophy'} 
+                  size={24} 
+                  color={match.status === 'live' ? '#FF4444' : '#FFD700'} 
+                />
+                <Text style={[
+                  styles.resultText,
+                  match.status === 'live' && styles.liveResultText
+                ]}>
+                  {match.result}
+                </Text>
               </View>
             </View>
           )}
@@ -195,6 +257,11 @@ export default function MatchDetail() {
                 <Text style={styles.timeText}>{match.startTime}</Text>
               </View>
             </View>
+          )}
+
+          {/* Commentary Section - Only for live and recent matches */}
+          {match.commentary && match.commentary.length > 0 && (
+            <CommentarySection commentary={match.commentary} />
           )}
 
           {/* Additional Info */}
@@ -283,16 +350,27 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     gap: 6,
   },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-  },
   statusText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  autoRefreshBanner: {
+    backgroundColor: '#FF4444',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  autoRefreshText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -404,11 +482,17 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
   },
+  liveResultContainer: {
+    backgroundColor: '#fff0f0',
+  },
   resultText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#4CAF50',
     flex: 1,
+  },
+  liveResultText: {
+    color: '#FF4444',
   },
   timeContainer: {
     flexDirection: 'row',

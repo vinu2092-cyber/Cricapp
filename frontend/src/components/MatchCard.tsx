@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Match } from '../types/match';
+import LiveIndicator from './LiveIndicator';
 
 interface MatchCardProps {
   match: Match;
@@ -12,12 +13,7 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
   const getStatusBadge = () => {
     switch (match.status) {
       case 'live':
-        return (
-          <View style={[styles.statusBadge, styles.liveBadge]}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
-          </View>
-        );
+        return <LiveIndicator />;
       case 'recent':
         return (
           <View style={[styles.statusBadge, styles.resultBadge]}>
