@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Test that the CrickApp backend is running. The backend is a FastAPI server at https://video-ui-mobile.preview.emergentagent.com/api. Test: 1. GET /api/ - should return {\"message\": \"Hello World\"}"
+user_problem_statement: "Test that the CrickApp backend is running. The backend is a FastAPI server at https://cricket-realtime-hub.preview.emergentagent.com/api. Test: 1. GET /api/ - should return {\"message\": \"Hello World\"}"
 
 backend:
   - task: "Root API endpoint"
@@ -115,7 +115,7 @@ backend:
     status_history:
         - working: true
           agent: "testing"
-          comment: "✅ GET /api/ endpoint tested successfully. Returns correct response {'message': 'Hello World'} with status 200. Backend is running properly at https://video-ui-mobile.preview.emergentagent.com/api"
+          comment: "✅ GET /api/ endpoint tested successfully. Returns correct response {'message': 'Hello World'} with status 200. Backend is running properly at https://cricket-realtime-hub.preview.emergentagent.com/api"
   
   - task: "Status endpoints functionality"
     implemented: true
