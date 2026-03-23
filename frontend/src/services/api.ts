@@ -1,15 +1,70 @@
 import axios from 'axios';
-import { Match, Commentary } from '../types/match';
+import { Match, Commentary, Team } from '../types/match';
 
-// Primary API - Production endpoint (no authentication required)
-const API_BASE_URL = 'https://cric-app-old-archive-api-server.vercel.app';
+// ============================================
+// API CONFIGURATION
+// ============================================
 
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+// Vercel Archive API - for recent matches backup
+const VERCEL_API_BASE = 'https://cric-app-old-archive-api-server.vercel.app';
+
+// CricAPI - for live and upcoming real-time data
+const CRICAPI_BASE = 'https://api.cricapi.com/v1';
+
+// API Keys with rotation support
+const API_KEYS = [
+  'defd8cc1-ad7a-4338-81b2-bae94296c227',
+  '503e33a9-2ce8-48c6-b6dc-855411f9bbda',
+  '89e346a3-6ab1-4e55-a12e-fc70326fe8a9',
+];
+
+let currentKeyIndex = 0;
+let keyFailureCounts: { [key: string]: number } = {};
+
+// ============================================
+// API KEY ROTATION LOGIC
+// ============================================
+
+const getNextApiKey = (): string => {
+  const key = API_KEYS[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+  return key;
+};
+
+const getCurrentApiKey = (): string => {
+  return API_KEYS[currentKeyIndex];
+};
+
+const markKeyFailed = (key: string): void => {
+  keyFailureCounts[key] = (keyFailureCounts[key] || 0) + 1;
+  console.warn(`API Key ${key.substring(0, 8)}... failed. Count: ${keyFailureCounts[key]}`);
+  
+  // Rotate to next key
+  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+};
+
+const resetKeyFailures = (): void => {
+  keyFailureCounts = {};
+};
+
+// ============================================
+// API CLIENTS
+// ============================================
+
+const vercelClient = axios.create({
+  baseURL: VERCEL_API_BASE,
   timeout: 15000,
 });
 
-// Generate commentary for matches
+const cricApiClient = axios.create({
+  baseURL: CRICAPI_BASE,
+  timeout: 15000,
+});
+
+// ============================================
+// COMMENTARY GENERATOR
+// ============================================
+
 const generateCommentary = (matchId: string, isLive: boolean): Commentary[] => {
   const commentaryData: Commentary[] = [
     {
@@ -97,54 +152,321 @@ const generateCommentary = (matchId: string, isLive: boolean): Commentary[] => {
   return commentaryData;
 };
 
-export const fetchAllMatches = async (): Promise<Match[]> => {
+// ============================================
+// DATA TRANSFORMERS
+// ============================================
+
+interface CricAPIMatch {
+  id: string;
+  name: string;
+  matchType: string;
+  status: string;
+  venue: string;
+  date: string;
+  dateTimeGMT: string;
+  teams: string[];
+  teamInfo?: {
+    name: string;
+    shortname: string;
+    img?: string;
+  }[];
+  score?: {
+    r: number;
+    w: number;
+    o: number;
+    inning: string;
+  }[];
+  matchStarted: boolean;
+  matchEnded: boolean;
+}
+
+const determineMatchStatus = (apiMatch: CricAPIMatch): 'live' | 'recent' | 'upcoming' => {
+  if (!apiMatch.matchStarted && !apiMatch.matchEnded) {
+    return 'upcoming';
+  }
+  if (apiMatch.matchStarted && !apiMatch.matchEnded) {
+    return 'live';
+  }
+  return 'recent';
+};
+
+const transformCricAPIMatch = (apiMatch: CricAPIMatch): Match => {
+  const status = determineMatchStatus(apiMatch);
+  
+  // Build teams array
+  const teams: Team[] = [];
+  
+  if (apiMatch.teamInfo && apiMatch.teamInfo.length >= 2) {
+    // Use teamInfo for better data
+    apiMatch.teamInfo.forEach((teamData, index) => {
+      const scoreData = apiMatch.score?.find(s => 
+        s.inning.toLowerCase().includes(teamData.name.toLowerCase().split(' ')[0])
+      );
+      
+      teams.push({
+        name: teamData.name,
+        shortName: teamData.shortname,
+        runs: scoreData?.r,
+        wickets: scoreData?.w,
+        overs: scoreData?.o?.toString(),
+      });
+    });
+  } else if (apiMatch.teams) {
+    // Fallback to teams array
+    apiMatch.teams.forEach((teamName, index) => {
+      const scoreData = apiMatch.score?.[index];
+      teams.push({
+        name: teamName,
+        shortName: teamName.substring(0, 3).toUpperCase(),
+        runs: scoreData?.r,
+        wickets: scoreData?.w,
+        overs: scoreData?.o?.toString(),
+      });
+    });
+  }
+
+  // Extract result from status for completed matches
+  let result: string | undefined;
+  if (status === 'recent' && apiMatch.status) {
+    result = apiMatch.status;
+  }
+
+  // Extract start time for upcoming matches
+  let startTime: string | undefined;
+  if (status === 'upcoming' && apiMatch.dateTimeGMT) {
+    const date = new Date(apiMatch.dateTimeGMT);
+    startTime = date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    });
+  }
+
+  return {
+    matchId: apiMatch.id,
+    status,
+    series: apiMatch.name,
+    matchType: apiMatch.matchType?.toUpperCase() || 'T20',
+    venue: apiMatch.venue,
+    teams,
+    result,
+    startTime,
+    commentary: generateCommentary(apiMatch.id, status === 'live'),
+  };
+};
+
+// ============================================
+// API FUNCTIONS WITH RETRY
+// ============================================
+
+const fetchWithRetry = async <T>(
+  fetchFn: (apiKey: string) => Promise<T>,
+  maxRetries: number = 3
+): Promise<T> => {
+  let lastError: any;
+  
+  for (let i = 0; i < maxRetries; i++) {
+    const apiKey = getCurrentApiKey();
+    try {
+      const result = await fetchFn(apiKey);
+      return result;
+    } catch (error: any) {
+      lastError = error;
+      console.error(`Attempt ${i + 1} failed with key ${apiKey.substring(0, 8)}...`, error.message);
+      
+      // Check if it's a rate limit or auth error
+      if (error.response?.status === 429 || error.response?.status === 401) {
+        markKeyFailed(apiKey);
+      } else {
+        // For other errors, still try next key
+        markKeyFailed(apiKey);
+      }
+    }
+  }
+  
+  throw lastError;
+};
+
+// ============================================
+// FETCH LIVE MATCHES FROM CRICAPI
+// ============================================
+
+export const fetchLiveMatches = async (): Promise<Match[]> => {
   try {
-    const response = await apiClient.get('/api/matches');
+    const response = await fetchWithRetry(async (apiKey) => {
+      return await cricApiClient.get(`/currentMatches?apikey=${apiKey}&offset=0`);
+    });
+
+    if (response.data && response.data.data) {
+      const matches = response.data.data
+        .map((m: CricAPIMatch) => transformCricAPIMatch(m))
+        .filter((m: Match) => m.status === 'live');
+      
+      console.log(`Fetched ${matches.length} live matches from CricAPI`);
+      return matches;
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching live matches:', error);
+    return [];
+  }
+};
+
+// ============================================
+// FETCH UPCOMING MATCHES FROM CRICAPI
+// ============================================
+
+export const fetchUpcomingMatches = async (): Promise<Match[]> => {
+  try {
+    const response = await fetchWithRetry(async (apiKey) => {
+      return await cricApiClient.get(`/matches?apikey=${apiKey}&offset=0`);
+    });
+
+    if (response.data && response.data.data) {
+      const matches = response.data.data
+        .map((m: CricAPIMatch) => transformCricAPIMatch(m))
+        .filter((m: Match) => m.status === 'upcoming');
+      
+      console.log(`Fetched ${matches.length} upcoming matches from CricAPI`);
+      return matches;
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching upcoming matches:', error);
+    return [];
+  }
+};
+
+// ============================================
+// FETCH RECENT MATCHES FROM VERCEL ARCHIVE
+// ============================================
+
+export const fetchRecentMatches = async (): Promise<Match[]> => {
+  try {
+    const response = await vercelClient.get('/api/matches');
+    
     if (response.data.ok) {
-      const apiMatches = response.data.data.map((m: Match) => ({
+      const matches = response.data.data.map((m: Match) => ({
         ...m,
-        commentary: generateCommentary(m.matchId, m.status === 'live'),
+        commentary: generateCommentary(m.matchId, false),
       }));
       
-      return apiMatches;
+      console.log(`Fetched ${matches.length} recent matches from Vercel`);
+      return matches;
     }
-    throw new Error('Failed to fetch matches');
+    return [];
   } catch (error) {
-    console.error('Error fetching matches:', error);
+    console.error('Error fetching recent matches from Vercel:', error);
+    
+    // Fallback: try to get recent matches from CricAPI
+    try {
+      const response = await fetchWithRetry(async (apiKey) => {
+        return await cricApiClient.get(`/currentMatches?apikey=${apiKey}&offset=0`);
+      });
+
+      if (response.data && response.data.data) {
+        const matches = response.data.data
+          .map((m: CricAPIMatch) => transformCricAPIMatch(m))
+          .filter((m: Match) => m.status === 'recent');
+        
+        console.log(`Fetched ${matches.length} recent matches from CricAPI (fallback)`);
+        return matches;
+      }
+    } catch (fallbackError) {
+      console.error('Fallback also failed:', fallbackError);
+    }
+    
+    return [];
+  }
+};
+
+// ============================================
+// FETCH ALL MATCHES
+// ============================================
+
+export const fetchAllMatches = async (): Promise<Match[]> => {
+  try {
+    // Fetch all three categories in parallel
+    const [liveMatches, upcomingMatches, recentMatches] = await Promise.all([
+      fetchLiveMatches(),
+      fetchUpcomingMatches(),
+      fetchRecentMatches(),
+    ]);
+
+    // Combine all matches
+    const allMatches = [...liveMatches, ...recentMatches, ...upcomingMatches];
+    
+    console.log(`Total matches: ${allMatches.length} (Live: ${liveMatches.length}, Recent: ${recentMatches.length}, Upcoming: ${upcomingMatches.length})`);
+    
+    return allMatches;
+  } catch (error) {
+    console.error('Error fetching all matches:', error);
     throw error;
   }
 };
+
+// ============================================
+// FETCH SINGLE MATCH BY ID
+// ============================================
 
 export const fetchMatchById = async (matchId: string): Promise<Match | null> => {
   try {
-    const response = await apiClient.get('/api/matches');
-    if (response.data.ok) {
-      const match = response.data.data.find((m: Match) => m.matchId === matchId);
-      if (match) {
-        return {
-          ...match,
-          commentary: generateCommentary(matchId, match.status === 'live'),
-        };
-      }
+    // First try to find in all matches
+    const allMatches = await fetchAllMatches();
+    const match = allMatches.find((m: Match) => m.matchId === matchId);
+    
+    if (match) {
+      return match;
     }
+
+    // If not found, try direct API call
+    try {
+      const response = await fetchWithRetry(async (apiKey) => {
+        return await cricApiClient.get(`/match_info?apikey=${apiKey}&id=${matchId}`);
+      });
+
+      if (response.data && response.data.data) {
+        return transformCricAPIMatch(response.data.data);
+      }
+    } catch (directError) {
+      console.error('Direct match fetch failed:', directError);
+    }
+
     return null;
   } catch (error) {
-    console.error('Error fetching match:', error);
+    console.error('Error fetching match by ID:', error);
     return null;
   }
 };
 
+// ============================================
+// FETCH MATCHES BY STATUS
+// ============================================
+
 export const fetchMatchesByStatus = async (status: string): Promise<Match[]> => {
   try {
-    const allMatches = await fetchAllMatches();
-    return allMatches.filter((m) => m.status === status);
+    switch (status) {
+      case 'live':
+        return await fetchLiveMatches();
+      case 'upcoming':
+        return await fetchUpcomingMatches();
+      case 'recent':
+        return await fetchRecentMatches();
+      default:
+        return await fetchAllMatches();
+    }
   } catch (error) {
-    console.error('Error fetching matches:', error);
+    console.error('Error fetching matches by status:', error);
     throw error;
   }
 };
 
-// Simulate live score updates for live matches
+// ============================================
+// LIVE SCORE SIMULATION (for demo when no live matches)
+// ============================================
+
 export const simulateLiveScoreUpdate = (match: Match): Match => {
   if (match.status !== 'live' || !match.teams[0].runs) return match;
 
