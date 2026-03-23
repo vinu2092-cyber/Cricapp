@@ -149,17 +149,22 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({ commentary }) => 
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
+    // WhatsApp-style semi-transparent container
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
     borderRadius: 16,
     marginHorizontal: 16,
     marginVertical: 8,
     padding: 16,
+    // Subtle shadow
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
     maxHeight: 400,
+    // Glass effect border
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   header: {
     flexDirection: 'row',
@@ -168,7 +173,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
   },
   titleContainer: {
     flexDirection: 'row',
@@ -182,7 +187,7 @@ const styles = StyleSheet.create({
   },
   languageToggle: {
     flexDirection: 'row',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
     borderRadius: 20,
     padding: 3,
   },
@@ -210,13 +215,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f5f5f5',
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
   },
   overBall: {
     width: 45,
     height: 45,
     borderRadius: 22.5,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,

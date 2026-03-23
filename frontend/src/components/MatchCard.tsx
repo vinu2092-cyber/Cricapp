@@ -82,7 +82,7 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
       )}
 
       <View style={styles.cardFooter}>
-        <Ionicons name="chevron-forward" size={20} color="#999" />
+        <Ionicons name="chevron-forward" size={20} color="#666" />
       </View>
     </TouchableOpacity>
   );
@@ -90,16 +90,21 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
+    // WhatsApp-style semi-transparent card
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderRadius: 12,
     marginHorizontal: 16,
     marginVertical: 6,
     padding: 16,
+    // Subtle shadow for depth
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+    // Blur effect border
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -110,7 +115,7 @@ const styles = StyleSheet.create({
   matchTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: '#444',
     flex: 1,
     marginRight: 8,
   },

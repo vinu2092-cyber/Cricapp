@@ -16,6 +16,7 @@ import { Match } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
 import CommentarySection from '../../src/components/CommentarySection';
 import LiveIndicator from '../../src/components/LiveIndicator';
+import CricketField from '../../src/components/CricketField';
 
 const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds for live matches
 
@@ -107,6 +108,23 @@ export default function MatchDetail() {
     }
   };
 
+  // Check if commentary should be shown (only for live and recent matches)
+  const shouldShowCommentary = () => {
+    if (!match) return false;
+    // DO NOT show commentary for upcoming matches
+    if (match.status === 'upcoming') return false;
+    // Show commentary for live and recent matches if available
+    return match.commentary && match.commentary.length > 0;
+  };
+
+  // Check if cricket field should be shown (only for live and recent with scores)
+  const shouldShowCricketField = () => {
+    if (!match) return false;
+    // Only show for live or recent matches with scores
+    if (match.status === 'upcoming') return false;
+    return match.teams[0]?.runs !== undefined || match.teams[1]?.runs !== undefined;
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -176,7 +194,7 @@ export default function MatchDetail() {
             </View>
           )}
 
-          {/* Match Info Card */}
+          {/* Match Info Card - Semi-transparent */}
           <View style={styles.card}>
             <Text style={styles.seriesTitle}>{match.series}</Text>
             <Text style={styles.matchType}>{match.matchType}</Text>
@@ -188,7 +206,7 @@ export default function MatchDetail() {
             </View>
           </View>
 
-          {/* Score Card */}
+          {/* Score Card - Semi-transparent */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Scorecard</Text>
             
@@ -222,6 +240,15 @@ export default function MatchDetail() {
               </View>
             ))}
           </View>
+
+          {/* Cricket Field Visualization - Only for live/recent matches */}
+          {shouldShowCricketField() && (
+            <CricketField
+              lastCommentary={match.commentary?.[0]}
+              battingTeam={match.teams[0]?.shortName}
+              bowlingTeam={match.teams[1]?.shortName}
+            />
+          )}
 
           {/* Result Card */}
           {match.result && (
@@ -259,12 +286,12 @@ export default function MatchDetail() {
             </View>
           )}
 
-          {/* Commentary Section - Only for live and recent matches */}
-          {match.commentary && match.commentary.length > 0 && (
-            <CommentarySection commentary={match.commentary} />
+          {/* Commentary Section - ONLY for live and recent matches, NOT upcoming */}
+          {shouldShowCommentary() && (
+            <CommentarySection commentary={match.commentary!} />
           )}
 
-          {/* Additional Info */}
+          {/* Additional Info - Semi-transparent */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Match Info</Text>
             <View style={styles.infoRow}>
@@ -373,16 +400,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    // WhatsApp-style semi-transparent card
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
     borderRadius: 16,
     marginHorizontal: 16,
     marginVertical: 8,
     padding: 20,
+    // Subtle shadow
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+    // Glass effect border
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   seriesTitle: {
     fontSize: 18,
@@ -397,7 +429,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#eee',
+    backgroundColor: 'rgba(0, 0, 0, 0.08)',
     marginVertical: 12,
   },
   venueContainer: {
@@ -422,7 +454,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
   },
   teamInfo: {
     flexDirection: 'row',
@@ -478,12 +510,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: 'rgba(0, 0, 0, 0.04)',
     padding: 16,
     borderRadius: 12,
   },
   liveResultContainer: {
-    backgroundColor: '#fff0f0',
+    backgroundColor: 'rgba(255, 68, 68, 0.1)',
   },
   resultText: {
     fontSize: 16,
@@ -498,7 +530,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#f0f8ff',
+    backgroundColor: 'rgba(33, 150, 243, 0.1)',
     padding: 16,
     borderRadius: 12,
   },
@@ -513,7 +545,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
   },
   infoLabel: {
     fontSize: 14,

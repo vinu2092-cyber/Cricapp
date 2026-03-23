@@ -253,7 +253,8 @@ const transformCricAPIMatch = (apiMatch: CricAPIMatch): Match => {
     teams,
     result,
     startTime,
-    commentary: generateCommentary(apiMatch.id, status === 'live'),
+    // Only add commentary for live and recent matches, NOT upcoming
+    commentary: status !== 'upcoming' ? generateCommentary(apiMatch.id, status === 'live') : undefined,
   };
 };
 
@@ -271,6 +272,15 @@ const fetchWithRetry = async <T>(
     const apiKey = getCurrentApiKey();
     try {
       const result = await fetchFn(apiKey);
+      
+      // Check if CricAPI returned a failure status in the response body
+      const response = result as any;
+      if (response?.data?.status === 'failure') {
+        console.warn(`CricAPI returned failure for key ${apiKey.substring(0, 8)}...: ${response.data.reason || 'Unknown reason'}`);
+        markKeyFailed(apiKey);
+        continue; // Try next key
+      }
+      
       return result;
     } catch (error: any) {
       lastError = error;
@@ -286,7 +296,7 @@ const fetchWithRetry = async <T>(
     }
   }
   
-  throw lastError;
+  throw lastError || new Error('All API keys exhausted');
 };
 
 // ============================================
@@ -320,21 +330,26 @@ export const fetchLiveMatches = async (): Promise<Match[]> => {
 
 export const fetchUpcomingMatches = async (): Promise<Match[]> => {
   try {
+    console.log('Fetching upcoming matches from CricAPI...');
     const response = await fetchWithRetry(async (apiKey) => {
+      console.log(`Trying CricAPI with key ${apiKey.substring(0, 8)}...`);
       return await cricApiClient.get(`/matches?apikey=${apiKey}&offset=0`);
     });
 
+    console.log('CricAPI response received:', response?.data?.status);
+    
     if (response.data && response.data.data) {
-      const matches = response.data.data
-        .map((m: CricAPIMatch) => transformCricAPIMatch(m))
-        .filter((m: Match) => m.status === 'upcoming');
+      const allMatches = response.data.data.map((m: CricAPIMatch) => transformCricAPIMatch(m));
+      const upcomingMatches = allMatches.filter((m: Match) => m.status === 'upcoming');
       
-      console.log(`Fetched ${matches.length} upcoming matches from CricAPI`);
-      return matches;
+      console.log(`Fetched ${upcomingMatches.length} upcoming matches from CricAPI (out of ${allMatches.length} total)`);
+      return upcomingMatches;
     }
+    console.log('No data in CricAPI response');
     return [];
-  } catch (error) {
-    console.error('Error fetching upcoming matches:', error);
+  } catch (error: any) {
+    console.error('Error fetching upcoming matches:', error?.message || error);
+    console.error('Full error:', JSON.stringify(error, null, 2));
     return [];
   }
 };
@@ -411,27 +426,71 @@ export const fetchAllMatches = async (): Promise<Match[]> => {
 // FETCH SINGLE MATCH BY ID
 // ============================================
 
+// Simple in-memory cache for matches
+let matchCache: Match[] = [];
+let cacheTimestamp: number = 0;
+const CACHE_DURATION = 60000; // 1 minute cache
+
 export const fetchMatchById = async (matchId: string): Promise<Match | null> => {
   try {
-    // First try to find in all matches
-    const allMatches = await fetchAllMatches();
-    const match = allMatches.find((m: Match) => m.matchId === matchId);
+    const now = Date.now();
     
-    if (match) {
-      return match;
+    // Try to find in cache first if cache is still valid
+    if (matchCache.length > 0 && (now - cacheTimestamp) < CACHE_DURATION) {
+      const cachedMatch = matchCache.find((m: Match) => m.matchId === matchId);
+      if (cachedMatch) {
+        console.log('Returning match from cache');
+        return cachedMatch;
+      }
     }
 
-    // If not found, try direct API call
+    // Try Vercel API first for recent matches
+    try {
+      const vercelResponse = await vercelClient.get('/api/matches');
+      if (vercelResponse.data.ok) {
+        const vercelMatch = vercelResponse.data.data.find((m: any) => m.matchId === matchId);
+        if (vercelMatch) {
+          const match = {
+            ...vercelMatch,
+            commentary: vercelMatch.status !== 'upcoming' 
+              ? generateCommentary(vercelMatch.matchId, vercelMatch.status === 'live')
+              : undefined,
+          };
+          return match;
+        }
+      }
+    } catch (vercelError) {
+      console.log('Vercel API failed, trying CricAPI...');
+    }
+
+    // Try CricAPI for upcoming/live matches
     try {
       const response = await fetchWithRetry(async (apiKey) => {
-        return await cricApiClient.get(`/match_info?apikey=${apiKey}&id=${matchId}`);
+        return await cricApiClient.get(`/matches?apikey=${apiKey}&offset=0`);
       });
 
       if (response.data && response.data.data) {
-        return transformCricAPIMatch(response.data.data);
+        const apiMatch = response.data.data.find((m: CricAPIMatch) => m.id === matchId);
+        if (apiMatch) {
+          return transformCricAPIMatch(apiMatch);
+        }
       }
-    } catch (directError) {
-      console.error('Direct match fetch failed:', directError);
+    } catch (cricApiError) {
+      console.error('CricAPI failed:', cricApiError);
+    }
+
+    // Last resort: fetch all and cache
+    try {
+      const allMatches = await fetchAllMatches();
+      matchCache = allMatches;
+      cacheTimestamp = now;
+      
+      const match = allMatches.find((m: Match) => m.matchId === matchId);
+      if (match) {
+        return match;
+      }
+    } catch (allError) {
+      console.error('Fetch all failed:', allError);
     }
 
     return null;

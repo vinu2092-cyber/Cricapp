@@ -6,9 +6,11 @@ import {
   FlatList,
   RefreshControl,
   Text,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import Header from '../src/components/Header';
 import Footer from '../src/components/Footer';
 import TabBar from '../src/components/TabBar';
@@ -16,6 +18,7 @@ import MatchCard from '../src/components/MatchCard';
 import AdModal from '../src/components/AdModal';
 import LoadingScreen from '../src/components/LoadingScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
+import FloatingScoreboard from '../src/components/FloatingScoreboard';
 import { usePro } from '../src/context/ProContext';
 import { fetchAllMatches, simulateLiveScoreUpdate } from '../src/services/api';
 import { Match, MatchStatus } from '../src/types/match';
@@ -24,7 +27,7 @@ const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds for live matches
 
 export default function Index() {
   const router = useRouter();
-  const { startAdChallenge, isWatchingAds } = usePro();
+  const { isPro, startAdChallenge, isWatchingAds } = usePro();
   
   const [activeTab, setActiveTab] = useState<MatchStatus>('live');
   const [matches, setMatches] = useState<Match[]>([]);
@@ -32,6 +35,8 @@ export default function Index() {
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showAdModal, setShowAdModal] = useState(false);
+  const [showFloatingScoreboard, setShowFloatingScoreboard] = useState(false);
+  const [selectedLiveMatch, setSelectedLiveMatch] = useState<Match | null>(null);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadMatches = async () => {
@@ -65,6 +70,16 @@ export default function Index() {
             return match;
           });
         });
+        
+        // Also update selected live match for floating scoreboard
+        if (selectedLiveMatch) {
+          setSelectedLiveMatch((prev) => {
+            if (prev && prev.status === 'live') {
+              return simulateLiveScoreUpdate(prev);
+            }
+            return prev;
+          });
+        }
       }, AUTO_REFRESH_INTERVAL);
     } else {
       // Clear auto-refresh when not on live tab
@@ -79,7 +94,7 @@ export default function Index() {
         clearInterval(autoRefreshRef.current);
       }
     };
-  }, [activeTab]);
+  }, [activeTab, selectedLiveMatch]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -87,8 +102,10 @@ export default function Index() {
   }, []);
 
   const handleUnlockPro = () => {
-    startAdChallenge();
-    setShowAdModal(true);
+    if (!isPro) {
+      startAdChallenge();
+      setShowAdModal(true);
+    }
   };
 
   const handleMatchPress = (match: Match) => {
@@ -96,6 +113,17 @@ export default function Index() {
       pathname: '/match/[id]',
       params: { id: match.matchId },
     });
+  };
+
+  const handlePopupPress = (match: Match) => {
+    if (isPro) {
+      setSelectedLiveMatch(match);
+      setShowFloatingScoreboard(true);
+    } else {
+      // Prompt to unlock Pro
+      startAdChallenge();
+      setShowAdModal(true);
+    }
   };
 
   const filteredMatches = matches.filter((match) => match.status === activeTab);
@@ -124,6 +152,37 @@ export default function Index() {
     </View>
   );
 
+  const renderMatchItem = ({ item }: { item: Match }) => (
+    <View>
+      <MatchCard
+        match={item}
+        onPress={() => handleMatchPress(item)}
+      />
+      {/* Pop-up button for live matches */}
+      {activeTab === 'live' && item.status === 'live' && (
+        <TouchableOpacity
+          style={[
+            styles.popupButton,
+            isPro ? styles.popupButtonActive : styles.popupButtonInactive,
+          ]}
+          onPress={() => handlePopupPress(item)}
+        >
+          <Ionicons
+            name="tv-outline"
+            size={14}
+            color={isPro ? '#FFF' : '#666'}
+          />
+          <Text style={[
+            styles.popupButtonText,
+            isPro ? styles.popupButtonTextActive : styles.popupButtonTextInactive,
+          ]}>
+            Pop-up
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.content}>
@@ -147,12 +206,7 @@ export default function Index() {
           <FlatList
             data={filteredMatches}
             keyExtractor={(item) => item.matchId}
-            renderItem={({ item }) => (
-              <MatchCard
-                match={item}
-                onPress={() => handleMatchPress(item)}
-              />
-            )}
+            renderItem={renderMatchItem}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             refreshControl={
@@ -174,6 +228,19 @@ export default function Index() {
         visible={showAdModal || isWatchingAds}
         onClose={() => setShowAdModal(false)}
       />
+      
+      {/* Floating Scoreboard */}
+      {selectedLiveMatch && (
+        <FloatingScoreboard
+          match={selectedLiveMatch}
+          visible={showFloatingScoreboard}
+          onClose={() => {
+            setShowFloatingScoreboard(false);
+            setSelectedLiveMatch(null);
+          }}
+          isPro={isPro}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -215,5 +282,32 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '500',
+  },
+  popupButton: {
+    position: 'absolute',
+    right: 24,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  popupButtonActive: {
+    backgroundColor: '#4CAF50',
+  },
+  popupButtonInactive: {
+    backgroundColor: '#E0E0E0',
+  },
+  popupButtonText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  popupButtonTextActive: {
+    color: '#FFF',
+  },
+  popupButtonTextInactive: {
+    color: '#666',
   },
 });

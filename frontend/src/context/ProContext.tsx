@@ -3,21 +3,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface ProContextType {
   isPro: boolean;
+  proExpiresAt: number | null;
   adsWatched: number;
   isWatchingAds: boolean;
   startAdChallenge: () => void;
   watchAd: () => void;
   cancelAdChallenge: () => void;
   resetProStatus: () => void;
+  getProTimeRemaining: () => number;
 }
 
 const ProContext = createContext<ProContextType | undefined>(undefined);
 
 const PRO_STORAGE_KEY = 'crickapp_pro_status';
+const PRO_EXPIRY_KEY = 'crickapp_pro_expiry';
 const ADS_REQUIRED = 3;
+const PRO_DURATION_MS = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 export const ProProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isPro, setIsPro] = useState(false);
+  const [proExpiresAt, setProExpiresAt] = useState<number | null>(null);
   const [adsWatched, setAdsWatched] = useState(0);
   const [isWatchingAds, setIsWatchingAds] = useState(false);
 
@@ -25,20 +30,53 @@ export const ProProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     loadProStatus();
   }, []);
 
+  // Check Pro expiry periodically
+  useEffect(() => {
+    if (isPro && proExpiresAt) {
+      const checkExpiry = setInterval(() => {
+        const now = Date.now();
+        if (now >= proExpiresAt) {
+          // Pro has expired
+          setIsPro(false);
+          setProExpiresAt(null);
+          AsyncStorage.removeItem(PRO_STORAGE_KEY);
+          AsyncStorage.removeItem(PRO_EXPIRY_KEY);
+        }
+      }, 1000);
+
+      return () => clearInterval(checkExpiry);
+    }
+  }, [isPro, proExpiresAt]);
+
   const loadProStatus = async () => {
     try {
       const status = await AsyncStorage.getItem(PRO_STORAGE_KEY);
-      if (status === 'true') {
-        setIsPro(true);
+      const expiry = await AsyncStorage.getItem(PRO_EXPIRY_KEY);
+      
+      if (status === 'true' && expiry) {
+        const expiryTime = parseInt(expiry, 10);
+        const now = Date.now();
+        
+        if (now < expiryTime) {
+          setIsPro(true);
+          setProExpiresAt(expiryTime);
+        } else {
+          // Pro has expired
+          await AsyncStorage.removeItem(PRO_STORAGE_KEY);
+          await AsyncStorage.removeItem(PRO_EXPIRY_KEY);
+        }
       }
     } catch (error) {
       console.error('Error loading pro status:', error);
     }
   };
 
-  const saveProStatus = async (status: boolean) => {
+  const saveProStatus = async (status: boolean, expiryTime: number | null) => {
     try {
       await AsyncStorage.setItem(PRO_STORAGE_KEY, status.toString());
+      if (expiryTime) {
+        await AsyncStorage.setItem(PRO_EXPIRY_KEY, expiryTime.toString());
+      }
     } catch (error) {
       console.error('Error saving pro status:', error);
     }
@@ -56,9 +94,11 @@ export const ProProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAdsWatched(newCount);
     
     if (newCount >= ADS_REQUIRED) {
+      const expiryTime = Date.now() + PRO_DURATION_MS;
       setIsPro(true);
+      setProExpiresAt(expiryTime);
       setIsWatchingAds(false);
-      saveProStatus(true);
+      saveProStatus(true, expiryTime);
     }
   };
 
@@ -69,20 +109,30 @@ export const ProProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetProStatus = async () => {
     setIsPro(false);
+    setProExpiresAt(null);
     setAdsWatched(0);
     await AsyncStorage.removeItem(PRO_STORAGE_KEY);
+    await AsyncStorage.removeItem(PRO_EXPIRY_KEY);
+  };
+
+  const getProTimeRemaining = (): number => {
+    if (!proExpiresAt) return 0;
+    const remaining = proExpiresAt - Date.now();
+    return Math.max(0, remaining);
   };
 
   return (
     <ProContext.Provider
       value={{
         isPro,
+        proExpiresAt,
         adsWatched,
         isWatchingAds,
         startAdChallenge,
         watchAd,
         cancelAdChallenge,
         resetProStatus,
+        getProTimeRemaining,
       }}
     >
       {children}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,27 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
-  const { isPro } = usePro();
+  const { isPro, getProTimeRemaining } = usePro();
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+
+  useEffect(() => {
+    if (isPro) {
+      const updateTimer = () => {
+        const remaining = getProTimeRemaining();
+        if (remaining > 0) {
+          const minutes = Math.floor(remaining / 60000);
+          const seconds = Math.floor((remaining % 60000) / 1000);
+          setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+        } else {
+          setTimeRemaining('');
+        }
+      };
+      
+      updateTimer();
+      const interval = setInterval(updateTimer, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [isPro, getProTimeRemaining]);
 
   return (
     <ImageBackground
@@ -39,11 +59,16 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
           <Ionicons
             name={isPro ? 'checkmark-circle' : 'lock-closed'}
             size={16}
-            color="#1a1a1a"
+            color={isPro ? '#FFF' : '#1a1a1a'}
           />
-          <Text style={styles.proButtonText}>
-            {isPro ? 'PRO' : 'UNLOCK PRO'}
-          </Text>
+          <View style={styles.proButtonContent}>
+            <Text style={[styles.proButtonText, isPro && styles.proButtonTextActive]}>
+              {isPro ? 'PRO' : 'UNLOCK PRO'}
+            </Text>
+            {isPro && timeRemaining && (
+              <Text style={styles.proTimerText}>{timeRemaining}</Text>
+            )}
+          </View>
         </TouchableOpacity>
       </View>
     </ImageBackground>
@@ -83,10 +108,22 @@ const styles = StyleSheet.create({
   proButtonActive: {
     backgroundColor: '#4CAF50',
   },
+  proButtonContent: {
+    alignItems: 'center',
+  },
   proButtonText: {
     color: '#1a1a1a',
     fontWeight: 'bold',
     fontSize: 12,
+  },
+  proButtonTextActive: {
+    color: '#FFF',
+  },
+  proTimerText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '600',
+    opacity: 0.9,
   },
 });
 
