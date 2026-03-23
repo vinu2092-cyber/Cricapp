@@ -1,14 +1,15 @@
 import axios from 'axios';
 import { Match, Commentary } from '../types/match';
 
+// Primary API - Production endpoint (no authentication required)
 const API_BASE_URL = 'https://cric-app-old-archive-api-server.vercel.app';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 15000,
 });
 
-// Generate mock commentary for matches
+// Generate commentary for matches
 const generateCommentary = (matchId: string, isLive: boolean): Commentary[] => {
   const commentaryData: Commentary[] = [
     {
@@ -96,140 +97,26 @@ const generateCommentary = (matchId: string, isLive: boolean): Commentary[] => {
   return commentaryData;
 };
 
-// Mock live matches for demonstration
-const generateMockLiveMatches = (): Match[] => [
-  {
-    matchId: 'live-001',
-    status: 'live',
-    series: 'India vs England, 2nd T20I, England tour of India, 2026',
-    matchType: 'T20',
-    venue: 'Wankhede Stadium, Mumbai',
-    teams: [
-      { name: 'India', shortName: 'IND', runs: 156, wickets: 4, overs: '18.2' },
-      { name: 'England', shortName: 'ENG', runs: 142, wickets: 6, overs: '17.0' },
-    ],
-    result: 'India needs 14 runs from 10 balls',
-    commentary: generateCommentary('live-001', true),
-  },
-  {
-    matchId: 'live-002',
-    status: 'live',
-    series: 'Australia vs Pakistan, 1st ODI, Pakistan tour of Australia, 2026',
-    matchType: 'ODI',
-    venue: 'MCG, Melbourne',
-    teams: [
-      { name: 'Australia', shortName: 'AUS', runs: 245, wickets: 5, overs: '42.3' },
-      { name: 'Pakistan', shortName: 'PAK', runs: 0, wickets: 0, overs: '0.0' },
-    ],
-    result: 'Australia batting',
-    commentary: generateCommentary('live-002', true),
-  },
-  {
-    matchId: 'live-003',
-    status: 'live',
-    series: 'South Africa vs New Zealand, 3rd Test Day 2, NZ tour of SA, 2026',
-    matchType: 'Test',
-    venue: 'Newlands, Cape Town',
-    teams: [
-      { name: 'South Africa', shortName: 'RSA', runs: 312, wickets: 7, overs: '87.4' },
-      { name: 'New Zealand', shortName: 'NZ', runs: 278, wickets: 10, overs: '82.0' },
-    ],
-    result: 'South Africa lead by 34 runs',
-    commentary: generateCommentary('live-003', true),
-  },
-];
-
-// Mock upcoming matches for demonstration
-const generateMockUpcomingMatches = (): Match[] => [
-  {
-    matchId: 'upcoming-001',
-    status: 'upcoming',
-    series: 'India vs Australia, 1st T20I, Australia tour of India, 2026',
-    matchType: 'T20',
-    venue: 'Narendra Modi Stadium, Ahmedabad',
-    teams: [
-      { name: 'India', shortName: 'IND' },
-      { name: 'Australia', shortName: 'AUS' },
-    ],
-    startTime: 'Mar 25, 07:00 PM',
-  },
-  {
-    matchId: 'upcoming-002',
-    status: 'upcoming',
-    series: 'England vs West Indies, 2nd ODI, WI tour of England, 2026',
-    matchType: 'ODI',
-    venue: 'Lords, London',
-    teams: [
-      { name: 'England', shortName: 'ENG' },
-      { name: 'West Indies', shortName: 'WI' },
-    ],
-    startTime: 'Mar 26, 02:30 PM',
-  },
-  {
-    matchId: 'upcoming-003',
-    status: 'upcoming',
-    series: 'Pakistan vs Sri Lanka, 1st Test, SL tour of Pakistan, 2026',
-    matchType: 'Test',
-    venue: 'Gaddafi Stadium, Lahore',
-    teams: [
-      { name: 'Pakistan', shortName: 'PAK' },
-      { name: 'Sri Lanka', shortName: 'SL' },
-    ],
-    startTime: 'Mar 28, 10:00 AM',
-  },
-  {
-    matchId: 'upcoming-004',
-    status: 'upcoming',
-    series: 'New Zealand vs Bangladesh, 3rd T20I, BAN tour of NZ, 2026',
-    matchType: 'T20',
-    venue: 'Eden Park, Auckland',
-    teams: [
-      { name: 'New Zealand', shortName: 'NZ' },
-      { name: 'Bangladesh', shortName: 'BAN' },
-    ],
-    startTime: 'Mar 29, 11:00 AM',
-  },
-];
-
 export const fetchAllMatches = async (): Promise<Match[]> => {
   try {
     const response = await apiClient.get('/api/matches');
     if (response.data.ok) {
       const apiMatches = response.data.data.map((m: Match) => ({
         ...m,
-        commentary: generateCommentary(m.matchId, false),
+        commentary: generateCommentary(m.matchId, m.status === 'live'),
       }));
       
-      // Combine with mock live and upcoming matches
-      const liveMatches = generateMockLiveMatches();
-      const upcomingMatches = generateMockUpcomingMatches();
-      
-      return [...liveMatches, ...apiMatches, ...upcomingMatches];
+      return apiMatches;
     }
     throw new Error('Failed to fetch matches');
   } catch (error) {
     console.error('Error fetching matches:', error);
-    // Return mock data even if API fails
-    return [
-      ...generateMockLiveMatches(),
-      ...generateMockUpcomingMatches(),
-    ];
+    throw error;
   }
 };
 
 export const fetchMatchById = async (matchId: string): Promise<Match | null> => {
   try {
-    // Check mock live matches first
-    const liveMatches = generateMockLiveMatches();
-    const liveMatch = liveMatches.find((m) => m.matchId === matchId);
-    if (liveMatch) return liveMatch;
-
-    // Check mock upcoming matches
-    const upcomingMatches = generateMockUpcomingMatches();
-    const upcomingMatch = upcomingMatches.find((m) => m.matchId === matchId);
-    if (upcomingMatch) return upcomingMatch;
-
-    // Fetch from API
     const response = await apiClient.get('/api/matches');
     if (response.data.ok) {
       const match = response.data.data.find((m: Match) => m.matchId === matchId);
@@ -257,15 +144,14 @@ export const fetchMatchesByStatus = async (status: string): Promise<Match[]> => 
   }
 };
 
-// Simulate live score updates
+// Simulate live score updates for live matches
 export const simulateLiveScoreUpdate = (match: Match): Match => {
   if (match.status !== 'live' || !match.teams[0].runs) return match;
 
   const team = match.teams[0];
-  const randomRuns = Math.floor(Math.random() * 3); // 0, 1, or 2 runs
-  const isWicket = Math.random() < 0.05; // 5% chance of wicket
+  const randomRuns = Math.floor(Math.random() * 3);
+  const isWicket = Math.random() < 0.05;
 
-  // Parse overs
   const [oversInt, ballsStr] = (team.overs || '0.0').split('.');
   let overs = parseInt(oversInt);
   let balls = parseInt(ballsStr || '0');
