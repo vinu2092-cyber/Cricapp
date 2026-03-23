@@ -7,10 +7,11 @@ interface ProContextType {
   adsWatched: number;
   isWatchingAds: boolean;
   startAdChallenge: () => void;
-  watchAd: () => void;
+  watchAd: () => Promise<boolean>;
   cancelAdChallenge: () => void;
   resetProStatus: () => void;
   getProTimeRemaining: () => number;
+  setProFromAdMob: (value: boolean) => void;
 }
 
 const ProContext = createContext<ProContextType | undefined>(undefined);
@@ -89,7 +90,8 @@ export const ProProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const watchAd = () => {
+  const watchAd = async (): Promise<boolean> => {
+    // This will be called after AdMob rewarded ad completion
     const newCount = adsWatched + 1;
     setAdsWatched(newCount);
     
@@ -99,7 +101,9 @@ export const ProProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setProExpiresAt(expiryTime);
       setIsWatchingAds(false);
       saveProStatus(true, expiryTime);
+      return true; // Pro unlocked
     }
+    return false; // More ads needed
   };
 
   const cancelAdChallenge = () => {
@@ -121,6 +125,19 @@ export const ProProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return Math.max(0, remaining);
   };
 
+  const setProFromAdMob = (value: boolean) => {
+    if (value) {
+      const expiryTime = Date.now() + PRO_DURATION_MS;
+      setIsPro(true);
+      setProExpiresAt(expiryTime);
+      setIsWatchingAds(false);
+      setAdsWatched(ADS_REQUIRED);
+      saveProStatus(true, expiryTime);
+    } else {
+      resetProStatus();
+    }
+  };
+
   return (
     <ProContext.Provider
       value={{
@@ -133,6 +150,7 @@ export const ProProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         cancelAdChallenge,
         resetProStatus,
         getProTimeRemaining,
+        setProFromAdMob,
       }}
     >
       {children}

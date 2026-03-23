@@ -1,42 +1,66 @@
 {
   "expo": {
-    "name": "CrickApp",
-    "slug": "crickapp",
+    "name": "CricApp",
+    "slug": "cricapp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo.png",
-    "scheme": "crickapp",
+    "icon": "./assets/icon.png",
+    "scheme": "cricapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "owner": "Vinu2092",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f5f5dc"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.Vinu2092.cricapp",
+      "infoPlist": {
+        "GADApplicationIdentifier": "ca-app-pub-9675798593675825~2399929714",
+        "SKAdNetworkItems": [
+          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" }
+        ],
+        "NSUserTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#f5f5dc"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.Vinu2092.cricapp",
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "com.google.android.gms.permission.AD_ID"
+      ],
+      "config": {
+        "googleMobileAdsAppId": "ca-app-pub-9675798593675825~2399929714"
+      }
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "output": "server",
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/logo.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#1a1a1a"
-        }
-      ]
+      "expo-router"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
+      "admob": {
+        "appId": "ca-app-pub-9675798593675825~2399929714",
+        "appOpenAdId": "ca-app-pub-9675798593675825/4826782503",
+        "interstitialAdId": "ca-app-pub-9675798593675825/8438724452",
+        "bannerAdId": "ca-app-pub-9675798593675825/8616886104",
+        "rewardedAdId": "ca-app-pub-9675798593675825/6702740458",
+        "testDeviceId": "553c7721-4821-461b-9f62-8584b1e60745"
+      }
     }
   }
 }

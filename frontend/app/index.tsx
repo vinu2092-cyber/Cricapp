@@ -20,6 +20,7 @@ import LoadingScreen from '../src/components/LoadingScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
 import FloatingScoreboard from '../src/components/FloatingScoreboard';
 import { usePro } from '../src/context/ProContext';
+import { useAdMob } from '../src/context/AdMobContext';
 import { fetchAllMatches, simulateLiveScoreUpdate } from '../src/services/api';
 import { Match, MatchStatus } from '../src/types/match';
 
@@ -28,6 +29,7 @@ const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds for live matches
 export default function Index() {
   const router = useRouter();
   const { isPro, startAdChallenge, isWatchingAds } = usePro();
+  const { trackClick } = useAdMob();
   
   const [activeTab, setActiveTab] = useState<MatchStatus>('live');
   const [matches, setMatches] = useState<Match[]>([]);
@@ -102,6 +104,7 @@ export default function Index() {
   }, []);
 
   const handleUnlockPro = () => {
+    trackClick(); // Track click for smart interstitial
     if (!isPro) {
       startAdChallenge();
       setShowAdModal(true);
@@ -109,6 +112,7 @@ export default function Index() {
   };
 
   const handleMatchPress = (match: Match) => {
+    trackClick(); // Track click for smart interstitial
     router.push({
       pathname: '/match/[id]',
       params: { id: match.matchId },
@@ -116,6 +120,7 @@ export default function Index() {
   };
 
   const handlePopupPress = (match: Match) => {
+    trackClick(); // Track click for smart interstitial
     if (isPro) {
       setSelectedLiveMatch(match);
       setShowFloatingScoreboard(true);
@@ -124,6 +129,11 @@ export default function Index() {
       startAdChallenge();
       setShowAdModal(true);
     }
+  };
+
+  const handleTabChange = (tab: MatchStatus) => {
+    trackClick(); // Track click for smart interstitial
+    setActiveTab(tab);
   };
 
   const filteredMatches = matches.filter((match) => match.status === activeTab);
@@ -187,7 +197,7 @@ export default function Index() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.content}>
         <Header onUnlockPro={handleUnlockPro} />
-        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
         
         {/* Auto-refresh indicator for live tab */}
         {activeTab === 'live' && filteredMatches.length > 0 && (

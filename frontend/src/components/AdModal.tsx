@@ -6,6 +6,7 @@ import {
   Modal,
   TouchableOpacity,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePro } from '../context/ProContext';
@@ -17,33 +18,20 @@ interface AdModalProps {
 
 const AdModal: React.FC<AdModalProps> = ({ visible, onClose }) => {
   const { adsWatched, watchAd, cancelAdChallenge, isPro } = usePro();
-  const [countdown, setCountdown] = useState(5);
-  const [isAdPlaying, setIsAdPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [adError, setAdError] = useState<string | null>(null);
   const [pulseAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
     if (visible && !isPro) {
       startPulseAnimation();
+      setAdError(null);
     }
   }, [visible]);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval>;
-    if (isAdPlaying && countdown > 0) {
-      timer = setInterval(() => {
-        setCountdown((prev) => prev - 1);
-      }, 1000);
-    } else if (countdown === 0 && isAdPlaying) {
-      setIsAdPlaying(false);
-      setCountdown(5);
-      watchAd();
-    }
-    return () => clearInterval(timer);
-  }, [isAdPlaying, countdown]);
-
-  useEffect(() => {
     if (isPro) {
-      setTimeout(onClose, 1000);
+      setTimeout(onClose, 1500);
     }
   }, [isPro]);
 
@@ -64,15 +52,30 @@ const AdModal: React.FC<AdModalProps> = ({ visible, onClose }) => {
     ).start();
   };
 
-  const handleStartAd = () => {
-    setIsAdPlaying(true);
-    setCountdown(5);
+  const handleWatchAd = async () => {
+    setIsLoading(true);
+    setAdError(null);
+
+    try {
+      // Simulate ad watching (2 seconds per ad)
+      // In production native builds, this would show a real AdMob rewarded ad
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const unlocked = await watchAd();
+      if (unlocked) {
+        console.log('Pro unlocked!');
+      }
+    } catch (error) {
+      console.error('Ad error:', error);
+      setAdError('Ad service unavailable. Please try again later.');
+    }
+    
+    setIsLoading(false);
   };
 
   const handleCancel = () => {
     cancelAdChallenge();
-    setIsAdPlaying(false);
-    setCountdown(5);
+    setIsLoading(false);
+    setAdError(null);
     onClose();
   };
 
@@ -83,6 +86,7 @@ const AdModal: React.FC<AdModalProps> = ({ visible, onClose }) => {
           <View style={styles.successContainer}>
             <Ionicons name="checkmark-circle" size={80} color="#4CAF50" />
             <Text style={styles.successText}>Pro Unlocked!</Text>
+            <Text style={styles.successSubtext}>Ad-free for 30 minutes</Text>
           </View>
         </View>
       </Modal>
@@ -93,31 +97,34 @@ const AdModal: React.FC<AdModalProps> = ({ visible, onClose }) => {
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>
         <View style={styles.adBanner}>
-          <Text style={styles.testAdText}>TEST AD</Text>
+          <Text style={styles.bannerText}>CricApp Pro</Text>
         </View>
 
         <View style={styles.adContent}>
           <View style={styles.adBox}>
-            <Ionicons name="pencil" size={24} color="#888" />
-            <Text style={styles.partnerText}>CrickApp Premium Partner</Text>
-            <Text style={styles.sponsoredText}>Sponsored Content</Text>
-            <Text style={styles.adDescription}>
-              Your ad will appear here.{"\n"}(Ad: test of simulation)
-            </Text>
-            <Text style={styles.disclaimer}>
-              This is a test ad, for Base Screening.{"\n"}(Ad: test of simulation)
+            <Ionicons name="trophy" size={48} color="#FFD700" />
+            <Text style={styles.proTitle}>Unlock Pro Features</Text>
+            <Text style={styles.proDescription}>
+              Watch 3 short video ads to unlock:{'\n\n'}
+              ✓ Ad-free experience for 30 mins{'\n'}
+              ✓ Floating scoreboard widget{'\n'}
+              ✓ Voice commentary{'\n'}
+              ✓ Premium features
             </Text>
           </View>
 
-          {isAdPlaying && (
-            <Text style={styles.countdown}>Ad closes in {countdown}s</Text>
+          {adError && (
+            <View style={styles.errorContainer}>
+              <Ionicons name="warning" size={20} color="#FF6B6B" />
+              <Text style={styles.errorText}>{adError}</Text>
+            </View>
           )}
         </View>
 
         <View style={styles.bottomSection}>
           <View style={styles.unlockHeader}>
             <Ionicons name="lock-closed" size={24} color="#FFD700" />
-            <Text style={styles.unlockTitle}>Unlock Pro - Watch Ads</Text>
+            <Text style={styles.unlockTitle}>Watch Ads to Unlock</Text>
           </View>
 
           <View style={styles.progressContainer}>
@@ -132,37 +139,50 @@ const AdModal: React.FC<AdModalProps> = ({ visible, onClose }) => {
                   },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.progressNumber,
-                    num <= adsWatched && styles.progressNumberComplete,
-                  ]}
-                >
-                  {num}
-                </Text>
+                {num <= adsWatched ? (
+                  <Ionicons name="checkmark" size={24} color="#000" />
+                ) : (
+                  <Text
+                    style={[
+                      styles.progressNumber,
+                      num <= adsWatched && styles.progressNumberComplete,
+                    ]}
+                  >
+                    {num}
+                  </Text>
+                )}
               </Animated.View>
             ))}
           </View>
 
-          <Text style={styles.adsWatchedText}>Ads Watched: {adsWatched}/3</Text>
+          <Text style={styles.adsWatchedText}>
+            Progress: {adsWatched}/3 ads watched
+          </Text>
 
-          {!isAdPlaying && (
-            <TouchableOpacity
-              style={styles.watchAdButton}
-              onPress={handleStartAd}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="play" size={20} color="#000" />
-              <Text style={styles.watchAdButtonText}>Watch Ad {adsWatched + 1}</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={[styles.watchAdButton, isLoading && styles.watchAdButtonDisabled]}
+            onPress={handleWatchAd}
+            activeOpacity={0.8}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
+              <>
+                <Ionicons name="play-circle" size={24} color="#000" />
+                <Text style={styles.watchAdButtonText}>
+                  Watch Ad {adsWatched + 1} of 3
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.cancelButton}
             onPress={handleCancel}
             activeOpacity={0.8}
           >
-            <Text style={styles.cancelButtonText}>Cancel Challenge</Text>
+            <Text style={styles.cancelButtonText}>Maybe Later</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -176,14 +196,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
   },
   adBanner: {
-    backgroundColor: '#333',
-    paddingVertical: 8,
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
-  testAdText: {
-    color: '#888',
-    fontSize: 12,
+  bannerText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   adContent: {
     flex: 1,
@@ -193,41 +214,38 @@ const styles = StyleSheet.create({
   },
   adBox: {
     backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    borderRadius: 16,
     padding: 24,
     alignItems: 'center',
     width: '90%',
   },
-  partnerText: {
+  proTitle: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginTop: 12,
-  },
-  sponsoredText: {
-    color: '#888',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  adDescription: {
-    color: '#666',
-    fontSize: 14,
-    textAlign: 'center',
     marginTop: 16,
   },
-  disclaimer: {
-    color: '#555',
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 12,
-    fontStyle: 'italic',
+  proDescription: {
+    color: '#CCC',
+    fontSize: 14,
+    textAlign: 'left',
+    marginTop: 16,
+    lineHeight: 22,
   },
-  countdown: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginTop: 20,
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: 'rgba(255, 107, 107, 0.2)',
+    borderRadius: 8,
+    gap: 8,
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 13,
   },
   bottomSection: {
     backgroundColor: '#1a1a1a',
@@ -254,9 +272,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   progressCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#333',
     justifyContent: 'center',
     alignItems: 'center',
@@ -264,16 +282,16 @@ const styles = StyleSheet.create({
     borderColor: '#444',
   },
   progressCircleComplete: {
-    backgroundColor: '#FFD700',
-    borderColor: '#FFD700',
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
   },
   progressNumber: {
     color: '#888',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
   },
   progressNumberComplete: {
-    color: '#000',
+    color: '#FFF',
   },
   adsWatchedText: {
     color: '#888',
@@ -284,16 +302,19 @@ const styles = StyleSheet.create({
   watchAdButton: {
     flexDirection: 'row',
     backgroundColor: '#FFD700',
-    paddingVertical: 14,
-    borderRadius: 25,
+    paddingVertical: 16,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
     marginBottom: 12,
+  },
+  watchAdButtonDisabled: {
+    backgroundColor: '#998700',
   },
   watchAdButtonText: {
     color: '#000',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
   },
   cancelButton: {
@@ -314,9 +335,14 @@ const styles = StyleSheet.create({
   },
   successText: {
     color: '#4CAF50',
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
     marginTop: 16,
+  },
+  successSubtext: {
+    color: '#888',
+    fontSize: 16,
+    marginTop: 8,
   },
 });
 
