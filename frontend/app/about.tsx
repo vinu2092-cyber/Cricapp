@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Linking,
-  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -40,11 +39,9 @@ export default function AboutScreen() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.logoContainer}>
-          <Image
-            source={require('../assets/icon.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+          <View style={styles.logoIconContainer}>
+            <Ionicons name="baseball" size={50} color="#4CAF50" />
+          </View>
           <Text style={styles.appName}>CricApp</Text>
           <Text style={styles.version}>Version 1.0.0</Text>
         </View>
@@ -161,10 +158,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     marginBottom: 8,
   },
-  logo: {
-    width: 100,
-    height: 100,
-    borderRadius: 20,
+  logoIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E8F5E9',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   appName: {
     fontSize: 28,

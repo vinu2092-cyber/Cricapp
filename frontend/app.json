@@ -11,7 +11,7 @@
     "owner": "Vinu2092",
     "splash": {
       "image": "./assets/splash.png",
-      "resizeMode": "contain",
+      "resizeMode": "cover",
       "backgroundColor": "#f5f5dc"
     },
     "ios": {

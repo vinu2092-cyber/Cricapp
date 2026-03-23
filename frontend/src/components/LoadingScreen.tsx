@@ -1,41 +1,33 @@
 import React from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  ActivityIndicator,
-  ImageBackground,
+  Image,
+  Dimensions,
 } from 'react-native';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const LoadingScreen: React.FC = () => {
   return (
-    <ImageBackground
-      source={require('../../assets/images/wallpaper.png')}
-      style={styles.background}
-      resizeMode="repeat"
-    >
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={styles.loadingText}>Loading matches...</Text>
-      </View>
-    </ImageBackground>
+    <View style={styles.container}>
+      <Image
+        source={require('../../assets/splash.png')}
+        style={styles.splashImage}
+        resizeMode="cover"
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-  },
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#f5f5dc',
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
+  splashImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
   },
 });
 
