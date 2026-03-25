@@ -9,6 +9,12 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "owner": "Vinu2092",
+    "extra": {
+      "backendUrl": "https://cricket-live-feed-1.preview.emergentagent.com",
+      "eas": {
+        "projectId": "cricket-live-feed-1"
+      }
+    },
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "cover",

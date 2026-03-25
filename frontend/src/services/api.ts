@@ -1,16 +1,36 @@
 import axios from 'axios';
 import { Match, Commentary, Team } from '../types/match';
+import Constants from 'expo-constants';
 
 // ============================================
 // API CONFIGURATION - BACKEND PROXY
 // ============================================
 
-// Get backend URL from environment variable
-// In Expo, EXPO_PUBLIC_ variables are accessible via process.env
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://cricket-live-feed-1.preview.emergentagent.com';
+// Get backend URL from multiple sources with fallback
+const getBackendUrl = () => {
+  // Try expo-constants extra config first (for native builds)
+  if (Constants.expoConfig?.extra?.backendUrl) {
+    return Constants.expoConfig.extra.backendUrl;
+  }
+  
+  // Try process.env (for web)
+  if (process.env.EXPO_PUBLIC_BACKEND_URL) {
+    return process.env.EXPO_PUBLIC_BACKEND_URL;
+  }
+  
+  // Fallback to hardcoded URL
+  return 'https://cricket-live-feed-1.preview.emergentagent.com';
+};
+
+const BACKEND_URL = getBackendUrl();
 const API_BASE = `${BACKEND_URL}/api`;
 
-console.log('API Configuration:', { BACKEND_URL, API_BASE });
+console.log('API Configuration:', { 
+  BACKEND_URL, 
+  API_BASE,
+  hasExpoConfig: !!Constants.expoConfig?.extra?.backendUrl,
+  hasProcessEnv: !!process.env.EXPO_PUBLIC_BACKEND_URL
+});
 
 // Create axios client for backend API
 const apiClient = axios.create({
