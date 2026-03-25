@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Header from '../src/components/Header';
 import Footer from '../src/components/Footer';
 import TabBar from '../src/components/TabBar';
+import CategoryFilter from '../src/components/CategoryFilter';
 import MatchCard from '../src/components/MatchCard';
 import AdModal from '../src/components/AdModal';
 import LoadingScreen from '../src/components/LoadingScreen';
@@ -22,7 +23,7 @@ import FloatingScoreboard from '../src/components/FloatingScoreboard';
 import { usePro } from '../src/context/ProContext';
 import { useAdMob } from '../src/context/AdMobContext';
 import { fetchAllMatches, simulateLiveScoreUpdate } from '../src/services/api';
-import { Match, MatchStatus } from '../src/types/match';
+import { Match, MatchStatus, MatchCategory } from '../src/types/match';
 
 const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds for live matches
 
@@ -32,6 +33,7 @@ export default function Index() {
   const { trackClick } = useAdMob();
   
   const [activeTab, setActiveTab] = useState<MatchStatus>('live');
+  const [activeCategory, setActiveCategory] = useState<MatchCategory>('All');
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -136,7 +138,24 @@ export default function Index() {
     setActiveTab(tab);
   };
 
-  const filteredMatches = matches.filter((match) => match.status === activeTab);
+  const handleCategoryChange = (category: MatchCategory) => {
+    trackClick(); // Track click for smart interstitial
+    setActiveCategory(category);
+  };
+
+  // Filter matches by status and category
+  const filteredMatches = matches
+    .filter((match) => match.status === activeTab)
+    .filter((match) => {
+      if (activeCategory === 'All') return true;
+      return match.category === activeCategory;
+    })
+    .sort((a, b) => {
+      // Sort by timestamp (chronological - earliest first)
+      const timeA = a.timestamp || 0;
+      const timeB = b.timestamp || 0;
+      return timeA - timeB;
+    });
 
   if (loading) {
     return <LoadingScreen />;
@@ -198,6 +217,7 @@ export default function Index() {
       <View style={styles.content}>
         <Header onUnlockPro={handleUnlockPro} />
         <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
+        <CategoryFilter activeCategory={activeCategory} onCategoryChange={handleCategoryChange} />
         
         {/* Auto-refresh indicator for live tab */}
         {activeTab === 'live' && filteredMatches.length > 0 && (

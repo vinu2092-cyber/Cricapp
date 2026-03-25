@@ -25,7 +25,10 @@ export interface Match {
   result?: string;
   startTime?: string;
   commentary?: Commentary[];
+  category?: string; // International, League, Domestic, Women
+  timestamp?: number; // For sorting
 }
 
 export type MatchStatus = 'live' | 'recent' | 'upcoming';
 export type Language = 'english' | 'hindi';
+export type MatchCategory = 'All' | 'International' | 'League' | 'Domestic' | 'Women';

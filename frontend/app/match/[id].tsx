@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchMatchById, simulateLiveScoreUpdate } from '../../src/services/api';
+import { fetchMatchById, fetchMatchCommentary } from '../../src/services/api';
 import { Match } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
 import CommentarySection from '../../src/components/CommentarySection';
@@ -40,13 +40,18 @@ export default function MatchDetail() {
   // Auto-refresh for live matches
   useEffect(() => {
     if (match?.status === 'live') {
-      autoRefreshRef.current = setInterval(() => {
-        setMatch((prevMatch) => {
-          if (prevMatch && prevMatch.status === 'live') {
-            return simulateLiveScoreUpdate(prevMatch);
+      autoRefreshRef.current = setInterval(async () => {
+        // Reload match data for live matches
+        if (id) {
+          try {
+            const freshMatch = await fetchMatchById(id);
+            if (freshMatch) {
+              setMatch(freshMatch);
+            }
+          } catch (err) {
+            console.error('Error refreshing live match:', err);
           }
-          return prevMatch;
-        });
+        }
       }, AUTO_REFRESH_INTERVAL);
     } else {
       if (autoRefreshRef.current) {
@@ -60,7 +65,7 @@ export default function MatchDetail() {
         clearInterval(autoRefreshRef.current);
       }
     };
-  }, [match?.status]);
+  }, [match?.status, id]);
 
   const loadMatch = async () => {
     if (!id) return;
