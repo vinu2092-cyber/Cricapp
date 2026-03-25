@@ -19,7 +19,7 @@ const getBackendUrl = () => {
   }
   
   // Fallback to hardcoded URL
-  return 'https://cricket-live-feed-1.preview.emergentagent.com';
+  return 'https://master-command.preview.emergentagent.com';
 };
 
 const BACKEND_URL = getBackendUrl();
