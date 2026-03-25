@@ -26,7 +26,7 @@ import { useAdMob } from '../src/context/AdMobContext';
 import { fetchAllMatches, simulateLiveScoreUpdate } from '../src/services/api';
 import { Match, MatchStatus, MatchCategory } from '../src/types/match';
 
-const AUTO_REFRESH_INTERVAL = 60000; // 60 seconds (1 minute) for live matches
+const AUTO_REFRESH_INTERVAL = 50000; // 50 seconds - Smart Fetching interval
 
 export default function Index() {
   const router = useRouter();
@@ -50,7 +50,7 @@ export default function Index() {
     data: Match[];
     timestamp: number;
   } | null>(null);
-  const CACHE_DURATION = 60000; // 1 minute cache
+  const CACHE_DURATION = 50000; // 50 seconds cache - matches API refresh interval
 
   const loadMatches = async () => {
     try {
@@ -253,7 +253,7 @@ export default function Index() {
         {activeTab === 'live' && filteredMatches.length > 0 && (
           <View style={styles.autoRefreshBanner}>
             <Text style={styles.autoRefreshText}>
-              Auto-refreshing every minute
+              Auto-refreshing every 50 seconds
             </Text>
           </View>
         )}

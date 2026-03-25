@@ -22,11 +22,11 @@
       "router": {},
       "backendUrl": "https://master-command.preview.emergentagent.com",
       "eas": {
-        "projectId": "86a5fa55-ec55-480d-bb69-ba98b8ddf24c"
+        "projectId": "a374fe2d-3151-4cca-ba5a-e1f3bdf58a48"
       }
     },
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/splash_doodle.png",
       "resizeMode": "cover",
       "backgroundColor": "#f5f5dc"
     },

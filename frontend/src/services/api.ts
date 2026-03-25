@@ -1,4 +1,5 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Match, Commentary, Team } from '../types/match';
 import Constants from 'expo-constants';
 
@@ -37,6 +38,65 @@ const apiClient = axios.create({
   baseURL: API_BASE,
   timeout: 15000,
 });
+
+// ============================================
+// ASYNC STORAGE CACHE CONFIGURATION
+// ============================================
+
+const CACHE_KEYS = {
+  LIVE_MATCHES: 'cricapp_live_matches',
+  RECENT_MATCHES: 'cricapp_recent_matches',
+  UPCOMING_MATCHES: 'cricapp_upcoming_matches',
+  ALL_MATCHES: 'cricapp_all_matches',
+  MATCH_DETAIL: 'cricapp_match_', // + matchId
+};
+
+const CACHE_DURATION = 50000; // 50 seconds - Smart Fetching as per requirements
+const REFRESH_INTERVAL = 50000; // 50 seconds refresh interval
+
+// ============================================
+// ASYNC STORAGE CACHE HELPERS
+// ============================================
+
+interface CacheData<T> {
+  data: T;
+  timestamp: number;
+}
+
+async function getFromCache<T>(key: string): Promise<T | null> {
+  try {
+    const cached = await AsyncStorage.getItem(key);
+    if (!cached) return null;
+    
+    const parsed: CacheData<T> = JSON.parse(cached);
+    const now = Date.now();
+    
+    // Check if cache is still valid (within 50 seconds)
+    if ((now - parsed.timestamp) < CACHE_DURATION) {
+      console.log(`Cache HIT for ${key} (${Math.round((now - parsed.timestamp) / 1000)}s old)`);
+      return parsed.data;
+    }
+    
+    console.log(`Cache EXPIRED for ${key}`);
+    return null;
+  } catch (error) {
+    console.error('Cache read error:', error);
+    return null;
+  }
+}
+
+async function saveToCache<T>(key: string, data: T): Promise<void> {
+  try {
+    const cacheData: CacheData<T> = {
+      data,
+      timestamp: Date.now(),
+    };
+    await AsyncStorage.setItem(key, JSON.stringify(cacheData));
+    console.log(`Cache SAVED for ${key}`);
+  } catch (error) {
+    console.error('Cache write error:', error);
+  }
+}
 
 // ============================================
 // TYPE DEFINITIONS (API Response Structure)
@@ -268,11 +328,17 @@ const transformCricbuzzMatch = (
 };
 
 // ============================================
-// API FUNCTIONS
+// API FUNCTIONS WITH ASYNC STORAGE CACHING
 // ============================================
 
-export const fetchLiveMatches = async (): Promise<Match[]> => {
+export const fetchLiveMatches = async (forceRefresh: boolean = false): Promise<Match[]> => {
   try {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await getFromCache<Match[]>(CACHE_KEYS.LIVE_MATCHES);
+      if (cached) return cached;
+    }
+    
     console.log('Fetching live matches from backend proxy...');
     const response = await apiClient.get<CricbuzzMatchesResponse>('/cricket/matches/live');
     
@@ -295,15 +361,33 @@ export const fetchLiveMatches = async (): Promise<Match[]> => {
     }
     
     console.log(`Fetched ${matches.length} live matches from Cricbuzz`);
+    
+    // Save to cache
+    await saveToCache(CACHE_KEYS.LIVE_MATCHES, matches);
+    
     return matches;
   } catch (error: any) {
     console.error('Error fetching live matches:', error?.message || error);
+    
+    // Try to return cached data on error
+    const cached = await getFromCache<Match[]>(CACHE_KEYS.LIVE_MATCHES);
+    if (cached) {
+      console.log('Returning stale cache on error');
+      return cached;
+    }
+    
     return [];
   }
 };
 
-export const fetchRecentMatches = async (): Promise<Match[]> => {
+export const fetchRecentMatches = async (forceRefresh: boolean = false): Promise<Match[]> => {
   try {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await getFromCache<Match[]>(CACHE_KEYS.RECENT_MATCHES);
+      if (cached) return cached;
+    }
+    
     console.log('Fetching recent matches from backend proxy...');
     const response = await apiClient.get<CricbuzzMatchesResponse>('/cricket/matches/recent');
     
@@ -326,15 +410,33 @@ export const fetchRecentMatches = async (): Promise<Match[]> => {
     }
     
     console.log(`Fetched ${matches.length} recent matches from Cricbuzz`);
+    
+    // Save to cache
+    await saveToCache(CACHE_KEYS.RECENT_MATCHES, matches);
+    
     return matches;
   } catch (error: any) {
     console.error('Error fetching recent matches:', error?.message || error);
+    
+    // Try to return cached data on error
+    const cached = await getFromCache<Match[]>(CACHE_KEYS.RECENT_MATCHES);
+    if (cached) {
+      console.log('Returning stale cache on error');
+      return cached;
+    }
+    
     return [];
   }
 };
 
-export const fetchUpcomingMatches = async (): Promise<Match[]> => {
+export const fetchUpcomingMatches = async (forceRefresh: boolean = false): Promise<Match[]> => {
   try {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await getFromCache<Match[]>(CACHE_KEYS.UPCOMING_MATCHES);
+      if (cached) return cached;
+    }
+    
     console.log('Fetching upcoming matches from backend proxy...');
     const response = await apiClient.get<CricbuzzMatchesResponse>('/cricket/matches/upcoming');
     
@@ -357,20 +459,38 @@ export const fetchUpcomingMatches = async (): Promise<Match[]> => {
     }
     
     console.log(`Fetched ${matches.length} upcoming matches from Cricbuzz`);
+    
+    // Save to cache
+    await saveToCache(CACHE_KEYS.UPCOMING_MATCHES, matches);
+    
     return matches;
   } catch (error: any) {
     console.error('Error fetching upcoming matches:', error?.message || error);
+    
+    // Try to return cached data on error
+    const cached = await getFromCache<Match[]>(CACHE_KEYS.UPCOMING_MATCHES);
+    if (cached) {
+      console.log('Returning stale cache on error');
+      return cached;
+    }
+    
     return [];
   }
 };
 
-export const fetchAllMatches = async (): Promise<Match[]> => {
+export const fetchAllMatches = async (forceRefresh: boolean = false): Promise<Match[]> => {
   try {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await getFromCache<Match[]>(CACHE_KEYS.ALL_MATCHES);
+      if (cached) return cached;
+    }
+    
     // Fetch all three categories in parallel
     const [liveMatches, upcomingMatches, recentMatches] = await Promise.all([
-      fetchLiveMatches(),
-      fetchUpcomingMatches(),
-      fetchRecentMatches(),
+      fetchLiveMatches(forceRefresh),
+      fetchUpcomingMatches(forceRefresh),
+      fetchRecentMatches(forceRefresh),
     ]);
 
     // Combine all matches
@@ -385,64 +505,73 @@ export const fetchAllMatches = async (): Promise<Match[]> => {
     
     console.log(`Total matches: ${allMatches.length} (Live: ${liveMatches.length}, Recent: ${recentMatches.length}, Upcoming: ${upcomingMatches.length})`);
     
+    // Save to cache
+    await saveToCache(CACHE_KEYS.ALL_MATCHES, allMatches);
+    
     return allMatches;
   } catch (error) {
     console.error('Error fetching all matches:', error);
+    
+    // Try to return cached data on error
+    const cached = await getFromCache<Match[]>(CACHE_KEYS.ALL_MATCHES);
+    if (cached) return cached;
+    
     throw error;
   }
 };
 
-// Simple in-memory cache for matches
-let matchCache: Match[] = [];
-let cacheTimestamp: number = 0;
-const CACHE_DURATION = 60000; // 1 minute cache
-
-export const fetchMatchById = async (matchId: string): Promise<Match | null> => {
+export const fetchMatchById = async (matchId: string, forceRefresh: boolean = false): Promise<Match | null> => {
   try {
-    const now = Date.now();
+    const cacheKey = `${CACHE_KEYS.MATCH_DETAIL}${matchId}`;
     
-    // Try to find in cache first if cache is still valid
-    if (matchCache.length > 0 && (now - cacheTimestamp) < CACHE_DURATION) {
-      const cachedMatch = matchCache.find((m: Match) => m.matchId === matchId);
-      if (cachedMatch) {
-        console.log('Returning match from cache');
-        
-        // If live match, fetch fresh commentary
-        if (cachedMatch.status === 'live') {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await getFromCache<Match>(cacheKey);
+      if (cached) {
+        // If live match, still fetch fresh commentary
+        if (cached.status === 'live') {
           try {
             const commentary = await fetchMatchCommentary(matchId);
-            return { ...cachedMatch, commentary };
+            return { ...cached, commentary };
           } catch (e) {
-            return cachedMatch;
+            return cached;
           }
         }
-        
-        return cachedMatch;
+        return cached;
       }
     }
 
-    // Fetch all matches and update cache
-    const allMatches = await fetchAllMatches();
-    matchCache = allMatches;
-    cacheTimestamp = now;
-    
+    // Fetch all matches and find the one we need
+    const allMatches = await fetchAllMatches(forceRefresh);
     const match = allMatches.find((m: Match) => m.matchId === matchId);
+    
     if (match) {
       // Fetch commentary for live and recent matches
       if (match.status === 'live' || match.status === 'recent') {
         try {
           const commentary = await fetchMatchCommentary(matchId);
-          return { ...match, commentary };
+          const matchWithCommentary = { ...match, commentary };
+          await saveToCache(cacheKey, matchWithCommentary);
+          return matchWithCommentary;
         } catch (e) {
+          await saveToCache(cacheKey, match);
           return match;
         }
       }
+      
+      await saveToCache(cacheKey, match);
       return match;
     }
 
     return null;
   } catch (error) {
     console.error('Error fetching match by ID:', error);
+    
+    // Try to return cached data on error
+    const cacheKey = `${CACHE_KEYS.MATCH_DETAIL}${matchId}`;
+    const cached = await getFromCache<Match>(cacheKey);
+    if (cached) return cached;
+    
     return null;
   }
 };
@@ -505,17 +634,17 @@ export const fetchMatchCommentary = async (matchId: string): Promise<Commentary[
   }
 };
 
-export const fetchMatchesByStatus = async (status: string): Promise<Match[]> => {
+export const fetchMatchesByStatus = async (status: string, forceRefresh: boolean = false): Promise<Match[]> => {
   try {
     switch (status) {
       case 'live':
-        return await fetchLiveMatches();
+        return await fetchLiveMatches(forceRefresh);
       case 'upcoming':
-        return await fetchUpcomingMatches();
+        return await fetchUpcomingMatches(forceRefresh);
       case 'recent':
-        return await fetchRecentMatches();
+        return await fetchRecentMatches(forceRefresh);
       default:
-        return await fetchAllMatches();
+        return await fetchAllMatches(forceRefresh);
     }
   } catch (error) {
     console.error('Error fetching matches by status:', error);
@@ -553,4 +682,21 @@ export const simulateLiveScoreUpdate = (match: Match): Match => {
       match.teams[1],
     ],
   };
+};
+
+// Export cache duration for use in components
+export const CACHE_CONFIG = {
+  DURATION: CACHE_DURATION,
+  REFRESH_INTERVAL: REFRESH_INTERVAL,
+};
+
+// Clear all match caches
+export const clearMatchCache = async (): Promise<void> => {
+  try {
+    const keys = Object.values(CACHE_KEYS);
+    await AsyncStorage.multiRemove(keys);
+    console.log('Match cache cleared');
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+  }
 };
