@@ -109,21 +109,27 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
       
       setCurrentCommentaryIndex(index);
       
-      await Speech.speak(text, {
-        language: 'en-US',
-        pitch: 0.9,
-        rate: 0.95,
-        onDone: () => {
-          setTimeout(() => {
-            if (isSpeaking) {
-              speakNext(index + 1);
-            }
-          }, 500);
-        },
-        onError: () => {
-          setIsSpeaking(false);
-        },
-      });
+      try {
+        await Speech.speak(text, {
+          language: 'en-US',
+          pitch: 0.9,
+          rate: 0.95,
+          onDone: () => {
+            setTimeout(() => {
+              if (isSpeaking) {
+                speakNext(index + 1);
+              }
+            }, 500);
+          },
+          onError: (error) => {
+            console.error('Speech error:', error);
+            setIsSpeaking(false);
+          },
+        });
+      } catch (error) {
+        console.error('Speech error:', error);
+        setIsSpeaking(false);
+      }
     };
     
     speakNext(0);
@@ -131,7 +137,11 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
 
   const stopSpeaking = async () => {
     setIsSpeaking(false);
-    await Speech.stop();
+    try {
+      await Speech.stop();
+    } catch (error) {
+      console.error('Error stopping speech:', error);
+    }
   };
 
   const toggleSpeaking = () => {

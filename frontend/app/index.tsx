@@ -46,8 +46,24 @@ export default function Index() {
   const loadMatches = async () => {
     try {
       setError(false);
+      
+      // Check cache first
+      const now = Date.now();
+      if (matchesCache.current && (now - matchesCache.current.timestamp) < CACHE_DURATION) {
+        console.log('Using cached matches data');
+        setMatches(matchesCache.current.data);
+        return;
+      }
+      
+      console.log('Fetching fresh matches data');
       const data = await fetchAllMatches();
       setMatches(data);
+      
+      // Update cache
+      matchesCache.current = {
+        data,
+        timestamp: now,
+      };
     } catch (err) {
       console.error('Error loading matches:', err);
       setError(true);
@@ -223,7 +239,7 @@ export default function Index() {
         {activeTab === 'live' && filteredMatches.length > 0 && (
           <View style={styles.autoRefreshBanner}>
             <Text style={styles.autoRefreshText}>
-              Auto-refreshing every 10 seconds
+              Auto-refreshing every minute
             </Text>
           </View>
         )}
