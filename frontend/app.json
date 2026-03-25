@@ -20,7 +20,10 @@
         "testDeviceId": "553c7721-4821-461b-9f62-8584b1e60745"
       },
       "router": {},
-      "backendUrl": "https://cricket-live-feed-1.preview.emergentagent.com"
+      "backendUrl": "https://cricket-live-feed-1.preview.emergentagent.com",
+      "eas": {
+        "projectId": "86a5fa55-ec55-480d-bb69-ba98b8ddf24c"
+      }
     },
     "splash": {
       "image": "./assets/splash.png",
