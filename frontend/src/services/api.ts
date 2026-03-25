@@ -1,14 +1,16 @@
 import axios from 'axios';
 import { Match, Commentary, Team } from '../types/match';
-import Constants from 'expo-constants';
 
 // ============================================
 // API CONFIGURATION - BACKEND PROXY
 // ============================================
 
-// Get backend URL from environment
-const BACKEND_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+// Get backend URL from environment variable
+// In Expo, EXPO_PUBLIC_ variables are accessible via process.env
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://cricket-live-feed-1.preview.emergentagent.com';
 const API_BASE = `${BACKEND_URL}/api`;
+
+console.log('API Configuration:', { BACKEND_URL, API_BASE });
 
 // Create axios client for backend API
 const apiClient = axios.create({
