@@ -20,18 +20,20 @@ import AdModal from '../src/components/AdModal';
 import LoadingScreen from '../src/components/LoadingScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
 import FloatingScoreboard from '../src/components/FloatingScoreboard';
+import SplashScreen from '../src/components/SplashScreen';
 import { usePro } from '../src/context/ProContext';
 import { useAdMob } from '../src/context/AdMobContext';
 import { fetchAllMatches, simulateLiveScoreUpdate } from '../src/services/api';
 import { Match, MatchStatus, MatchCategory } from '../src/types/match';
 
-const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds for live matches
+const AUTO_REFRESH_INTERVAL = 60000; // 60 seconds (1 minute) for live matches
 
 export default function Index() {
   const router = useRouter();
   const { isPro, startAdChallenge, isWatchingAds } = usePro();
   const { trackClick } = useAdMob();
   
+  const [showSplash, setShowSplash] = useState(true);
   const [activeTab, setActiveTab] = useState<MatchStatus>('live');
   const [activeCategory, setActiveCategory] = useState<MatchCategory>('All');
   const [matches, setMatches] = useState<Match[]>([]);
@@ -42,6 +44,13 @@ export default function Index() {
   const [showFloatingScoreboard, setShowFloatingScoreboard] = useState(false);
   const [selectedLiveMatch, setSelectedLiveMatch] = useState<Match | null>(null);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Smart caching for matches
+  const matchesCache = useRef<{
+    data: Match[];
+    timestamp: number;
+  } | null>(null);
+  const CACHE_DURATION = 60000; // 1 minute cache
 
   const loadMatches = async () => {
     try {
