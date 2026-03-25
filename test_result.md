@@ -149,3 +149,81 @@ test_plan:
 agent_communication:
     - agent: "testing"
       message: "Backend testing completed successfully. All required endpoints are working. The main requirement (GET /api/ returning {'message': 'Hello World'}) is fully functional. Additional status endpoints also verified to ensure backend health."
+
+
+#====================================================================================================
+# MASTER COMMAND IMPLEMENTATION - PRO FEATURES & AD MONETIZATION
+#====================================================================================================
+
+## Implementation Date: March 25, 2026
+
+### 🎯 Core Features Implemented:
+
+#### 1. Dynamic Layout (60/20/20 Rule) ✅
+- **20% Scoreboard Section**: Compact header with match info, scores, and Pro button
+  - Match series and venue info
+  - Team scores with runs/wickets/overs
+  - Status badges (LIVE/COMPLETED/UPCOMING)
+  - Floating Scoreboard button (Pro-only)
+- **20% Cricket Field**: Ludo-style field position that fades/scrolls away
+  - Animated opacity based on scroll position
+  - Shows field positions for live matches
+- **60% Live Commentary**: Dominates the screen with full commentary
+  - Ball-by-ball updates
+  - Over-based banner ads (non-Pro users)
+  - Event badges (Wicket, Four, Six)
+
+#### 2. Pro User & Ad System ✅
+- **"Unlock Pro" Button**: Yellow button in header (turns GREEN when Pro)
+  - Shows countdown timer when Pro (30 minutes)
+  - Integrated with AdMob system
+- **3-Ad Watch System**: Users must watch 3 ads to unlock Pro
+  - Progress indicator with 3 circles
+  - "Watch Ad 1 of 3" button
+  - Success animation on completion
+  - Pro features unlocked for 30 minutes
+- **Smart Interstitial Ads**: Random ads every 10-15 minutes OR after 10-15 clicks
+  - Time-based: 10-15 minutes between ads
+  - Click-based: 12-16 random clicks trigger ad
+- **AdMob IDs**:
+  - App: ca-app-pub-9675798593675825~2399929714
+  - Rewarded: ca-app-pub-9675798593675825/6702740458
+  - Banner: ca-app-pub-9675798593675825/8616886104
+
+#### 3. Pro-Only Feature: Draggable Floating Scoreboard ✅
+- **Trigger**: "Floating Score" button in match detail (🔒 for non-Pro)
+- **Features**: 
+  - Fully draggable widget (stays on top, z-index: 9999)
+  - Shows live scores in real-time
+  - Minimize/Maximize controls
+  - Close button
+  - Voice commentary (Pro feature)
+
+#### 4. Performance & API Optimization ✅
+- **Auto-Refresh**: Every 1 minute for live matches
+- **Smart Caching**: 60-second cache duration
+  - If user reopens match < 1 minute → Uses cache
+  - If user reopens match > 1 minute → Fetches fresh
+  - Saves API limits significantly
+
+#### 5. Over-Based Banner Ads ✅
+- **Trigger**: After each over ends (ball 6)
+- **Placement**: Integrated in commentary as list items
+- **Display**: Shows between over end and next over start
+- **Pro Users**: NO ads shown
+
+### 📊 Files Modified:
+1. `/app/frontend/app/match/[id].tsx` - Complete 60/20/20 layout rewrite
+2. `/app/frontend/src/services/api.ts` - Smart caching system
+3. All existing Pro/AdMob contexts already configured
+
+### 🎮 Current Status:
+- ✅ 60/20/20 layout implemented
+- ✅ Smart caching working
+- ✅ Over-based ads injecting correctly
+- ✅ Pro unlock modal functional (3-ad system)
+- ✅ Floating scoreboard draggable
+- ✅ 1 live match showing with auto-refresh
+- ✅ 40 recent matches + 8 upcoming matches
+- ✅ Category filters working (All, International, League, Domestic)
+
