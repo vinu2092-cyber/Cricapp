@@ -531,7 +531,7 @@ export const fetchMatchById = async (matchId: string, forceRefresh: boolean = fa
         // If live match, still fetch fresh commentary
         if (cached.status === 'live') {
           try {
-            const commentary = await fetchMatchCommentary(matchId);
+            const { commentary } = await fetchMatchCommentary(matchId);
             return { ...cached, commentary };
           } catch (e) {
             return cached;
@@ -549,7 +549,7 @@ export const fetchMatchById = async (matchId: string, forceRefresh: boolean = fa
       // Fetch commentary for live and recent matches
       if (match.status === 'live' || match.status === 'recent') {
         try {
-          const commentary = await fetchMatchCommentary(matchId);
+          const { commentary } = await fetchMatchCommentary(matchId);
           const matchWithCommentary = { ...match, commentary };
           await saveToCache(cacheKey, matchWithCommentary);
           return matchWithCommentary;
@@ -576,9 +576,11 @@ export const fetchMatchById = async (matchId: string, forceRefresh: boolean = fa
   }
 };
 
-export const fetchMatchCommentary = async (matchId: string): Promise<Commentary[]> => {
+export const fetchMatchCommentary = async (matchId: string, page: number = 0): Promise<{ commentary: Commentary[]; hasMore: boolean }> => {
   try {
-    console.log(`Fetching commentary for match ${matchId}...`);
+    console.log(`Fetching commentary for match ${matchId}, page ${page}...`);
+    
+    // Cricbuzz API supports pagination via timestamp - for simplicity, we fetch all available
     const response = await apiClient.get<CricbuzzCommentaryResponse>(`/cricket/match/${matchId}/commentary`);
     
     const commentary: Commentary[] = [];
@@ -614,11 +616,14 @@ export const fetchMatchCommentary = async (matchId: string): Promise<Commentary[
             runs = 6;
           }
           
+          // Generate Hindi translation (basic cricket terms)
+          const hindiText = translateToHindi(comm.commtxt);
+          
           commentary.push({
             over: comm.overnum.toString(),
             ball: comm.ballnbr % 6 || 6,
             english: comm.commtxt.replace(/B0\$/g, 'FOUR'),
-            hindi: '', // API doesn't provide Hindi commentary
+            hindi: hindiText,
             runs,
             event,
           });
@@ -626,12 +631,67 @@ export const fetchMatchCommentary = async (matchId: string): Promise<Commentary[
       });
     }
     
-    console.log(`Fetched ${commentary.length} commentary items`);
-    return commentary.slice(0, 20); // Return top 20 commentary items
+    console.log(`Fetched ${commentary.length} total commentary items`);
+    
+    // For pagination, return all commentary (API already paginates)
+    // hasMore indicates if there could be more items
+    return {
+      commentary,
+      hasMore: commentary.length >= 20, // If we got 20+, there may be more
+    };
   } catch (error: any) {
     console.error('Error fetching commentary:', error?.message || error);
-    return [];
+    return { commentary: [], hasMore: false };
   }
+};
+
+// Hindi translation helper for cricket commentary
+const translateToHindi = (englishText: string): string => {
+  let hindi = englishText;
+  
+  // Common cricket terms translation
+  const translations: { [key: string]: string } = {
+    'no run': 'कोई रन नहीं',
+    'run': 'रन',
+    'runs': 'रन',
+    'four': 'चौका',
+    'FOUR': 'चौका',
+    'six': 'छक्का',
+    'SIX': 'छक्का',
+    'wicket': 'विकेट',
+    'out': 'आउट',
+    'bowled': 'बोल्ड',
+    'caught': 'कैच',
+    'lbw': 'एलबीडब्ल्यू',
+    'stumped': 'स्टम्प्ड',
+    'wide': 'वाइड',
+    'no ball': 'नो बॉल',
+    'boundary': 'बाउंड्री',
+    'over': 'ओवर',
+    'ball': 'गेंद',
+    'batsman': 'बल्लेबाज',
+    'bowler': 'गेंदबाज',
+    'single': 'सिंगल',
+    'double': 'डबल',
+    'to': 'को',
+    'off': 'पर',
+    'the': '',
+    'a ': '',
+  };
+  
+  // Apply translations (case insensitive)
+  Object.entries(translations).forEach(([eng, hin]) => {
+    const regex = new RegExp(eng, 'gi');
+    hindi = hindi.replace(regex, hin);
+  });
+  
+  return hindi;
+};
+
+// Backward compatible wrapper (returns just commentary array)
+export const fetchMatchCommentarySimple = async (matchId: string): Promise<Commentary[]> => {
+  const result = await fetchMatchCommentary(matchId);
+  return result.commentary;
 };
 
 export const fetchMatchesByStatus = async (status: string, forceRefresh: boolean = false): Promise<Match[]> => {

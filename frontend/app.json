@@ -22,7 +22,7 @@
       "router": {},
       "backendUrl": "https://master-command.preview.emergentagent.com",
       "eas": {
-        "projectId": "a374fe2d-3151-4cca-ba5a-e1f3bdf58a48"
+        "projectId": "86a5fa55-ec55-480d-bb69-ba98b8ddf24c"
       }
     },
     "splash": {
@@ -64,7 +64,14 @@
       "favicon": "./assets/icon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-9675798593675825~2399929714",
+          "iosAppId": "ca-app-pub-9675798593675825~2399929714"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

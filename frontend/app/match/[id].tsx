@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,15 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Platform,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchMatchById } from '../../src/services/api';
-import { Match } from '../../src/types/match';
+import * as Speech from 'expo-speech';
+import { fetchMatchById, fetchMatchCommentary } from '../../src/services/api';
+import { Match, Commentary } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
 import LiveIndicator from '../../src/components/LiveIndicator';
 import CricketField from '../../src/components/CricketField';
@@ -45,6 +48,16 @@ export default function MatchDetail() {
   const [showFloatingScoreboard, setShowFloatingScoreboard] = useState(false);
   const [showFieldPosition, setShowFieldPosition] = useState(true);
   
+  // Commentary & Language Features
+  const [isHindi, setIsHindi] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [lastSpokenIndex, setLastSpokenIndex] = useState(-1);
+  
+  // Scroll position preservation
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollPositionRef = useRef(0);
+  
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
   const fieldOpacity = scrollY.interpolate({
@@ -59,18 +72,40 @@ export default function MatchDetail() {
       if (autoRefreshRef.current) {
         clearInterval(autoRefreshRef.current);
       }
+      // Stop any ongoing speech
+      Speech.stop();
     };
   }, [id]);
 
-  // Auto-refresh for live matches (1 minute)
+  // Auto-refresh for live matches with scroll position preservation
   useEffect(() => {
     if (match?.status === 'live') {
       autoRefreshRef.current = setInterval(async () => {
         if (id) {
           try {
-            const freshMatch = await fetchMatchFromCache(id);
+            // Preserve scroll position before refresh
+            const currentScrollPosition = scrollPositionRef.current;
+            
+            const freshMatch = await fetchMatchFromCache(id, true); // Force refresh
             if (freshMatch) {
               setMatch(freshMatch);
+              
+              // Restore scroll position after state update
+              setTimeout(() => {
+                scrollViewRef.current?.scrollTo({
+                  y: currentScrollPosition,
+                  animated: false,
+                });
+              }, 100);
+              
+              // Auto-speak new commentary if voice is enabled
+              if (voiceEnabled && freshMatch.commentary && freshMatch.commentary.length > 0) {
+                const newCommentary = freshMatch.commentary[0];
+                if (lastSpokenIndex !== 0) {
+                  speakCommentary(newCommentary);
+                  setLastSpokenIndex(0);
+                }
+              }
             }
           } catch (err) {
             console.error('Error refreshing live match:', err);
@@ -89,21 +124,21 @@ export default function MatchDetail() {
         clearInterval(autoRefreshRef.current);
       }
     };
-  }, [match?.status, id]);
+  }, [match?.status, id, voiceEnabled, lastSpokenIndex]);
 
-  const fetchMatchFromCache = async (matchId: string): Promise<Match | null> => {
+  const fetchMatchFromCache = async (matchId: string, forceRefresh: boolean = false): Promise<Match | null> => {
     const now = Date.now();
     const cached = matchCache.get(matchId);
     
-    // Check if cached data is still valid (within 1 minute)
-    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+    // Check if cached data is still valid (within cache duration)
+    if (!forceRefresh && cached && (now - cached.timestamp) < CACHE_DURATION) {
       console.log('Using cached match data');
       return cached.match;
     }
     
     // Fetch fresh data
     console.log('Fetching fresh match data');
-    const freshMatch = await fetchMatchById(matchId);
+    const freshMatch = await fetchMatchById(matchId, forceRefresh);
     if (freshMatch) {
       matchCache.set(matchId, {
         match: freshMatch,
@@ -131,59 +166,86 @@ export default function MatchDetail() {
     }
   };
 
+  // Text-to-Speech function
+  const speakCommentary = useCallback((commentary: Commentary) => {
+    const textToSpeak = isHindi && commentary.hindi ? commentary.hindi : commentary.english;
+    const language = isHindi ? 'hi-IN' : 'en-IN';
+    
+    setIsSpeaking(true);
+    
+    Speech.speak(textToSpeak, {
+      language,
+      pitch: 1.0,
+      rate: 0.9,
+      voice: Platform.OS === 'android' ? 'hi-in-x-hia-local' : undefined, // Male voice on Android
+      onDone: () => setIsSpeaking(false),
+      onError: () => setIsSpeaking(false),
+    });
+  }, [isHindi]);
+
+  const toggleVoice = () => {
+    if (voiceEnabled) {
+      Speech.stop();
+      setIsSpeaking(false);
+    }
+    setVoiceEnabled(!voiceEnabled);
+  };
+
+  const speakSingleCommentary = (commentary: Commentary) => {
+    if (isSpeaking) {
+      Speech.stop();
+      setIsSpeaking(false);
+    } else {
+      speakCommentary(commentary);
+    }
+  };
+
   const handleFloatingScoreboardToggle = () => {
     trackClick();
     if (isPro) {
       setShowFloatingScoreboard(!showFloatingScoreboard);
     } else {
-      // Show upgrade prompt
       alert('Unlock Pro to use Floating Scoreboard feature');
     }
+  };
+
+  const handleScroll = (event: any) => {
+    scrollPositionRef.current = event.nativeEvent.contentOffset.y;
   };
 
   const getStatusColor = () => {
     if (!match) return '#666';
     switch (match.status) {
-      case 'live':
-        return '#FF4444';
-      case 'recent':
-        return '#4CAF50';
-      case 'upcoming':
-        return '#2196F3';
-      default:
-        return '#666';
+      case 'live': return '#FF4444';
+      case 'recent': return '#4CAF50';
+      case 'upcoming': return '#2196F3';
+      default: return '#666';
     }
   };
 
   const getStatusText = () => {
     if (!match) return '';
     switch (match.status) {
-      case 'live':
-        return 'LIVE';
-      case 'recent':
-        return 'COMPLETED';
-      case 'upcoming':
-        return 'UPCOMING';
-      default:
-        return match.status.toUpperCase();
+      case 'live': return 'LIVE';
+      case 'recent': return 'COMPLETED';
+      case 'upcoming': return 'UPCOMING';
+      default: return match.status.toUpperCase();
     }
   };
 
-  // Check if commentary should be shown
   const shouldShowCommentary = () => {
     if (!match) return false;
     if (match.status === 'upcoming') return false;
     return match.commentary && match.commentary.length > 0;
   };
 
-  // Check if cricket field should be shown
   const shouldShowCricketField = () => {
     if (!match) return false;
     if (match.status === 'upcoming') return false;
     return match.teams[0]?.runs !== undefined || match.teams[1]?.runs !== undefined;
   };
 
-  // Render commentary with over-based banner ads
+  // Render commentary with over-based banner ads and Hindi support
   const renderCommentaryWithAds = () => {
     if (!match?.commentary) return null;
 
@@ -197,12 +259,10 @@ export default function MatchDetail() {
         key: `comm-${index}`,
       });
 
-      // Check if this is the end of an over (ball 6 or over-break event)
       const isOverEnd = comm.ball === 6 || comm.event === 'over-break' || comm.over.includes('.6');
       
       if (isOverEnd && !isPro) {
         overEndCount++;
-        // Insert banner ad after each over end
         items.push({
           type: 'ad',
           data: { overNumber: comm.over, adIndex: overEndCount },
@@ -215,7 +275,7 @@ export default function MatchDetail() {
       if (item.type === 'ad') {
         return (
           <View key={item.key} style={styles.bannerAdContainer}>
-            <Text style={styles.bannerAdLabel}>Advertisement</Text>
+            <Text style={styles.bannerAdLabel}>ADVERTISEMENT</Text>
             <View style={styles.bannerAdPlaceholder}>
               <Text style={styles.bannerAdText}>Banner Ad - Over {item.data.overNumber}</Text>
               <Text style={styles.bannerAdSubtext}>AdMob ID: {ADMOB_CONFIG.bannerAdId}</Text>
@@ -224,15 +284,14 @@ export default function MatchDetail() {
         );
       }
 
-      const comm = item.data;
+      const comm = item.data as Commentary;
       const eventColor =
-        comm.event === 'wicket'
-          ? '#FF4444'
-          : comm.event === 'four'
-          ? '#4CAF50'
-          : comm.event === 'six'
-          ? '#9C27B0'
-          : '#666';
+        comm.event === 'wicket' ? '#FF4444' :
+        comm.event === 'four' ? '#4CAF50' :
+        comm.event === 'six' ? '#9C27B0' : '#666';
+
+      // Get appropriate text based on language
+      const displayText = isHindi && comm.hindi ? comm.hindi : comm.english;
 
       return (
         <View key={item.key} style={styles.commentaryItem}>
@@ -241,21 +300,30 @@ export default function MatchDetail() {
             {comm.event !== 'normal' && comm.event !== 'dot' && (
               <View style={[styles.eventBadge, { backgroundColor: eventColor }]}>
                 <Text style={styles.eventBadgeText}>
-                  {comm.event === 'wicket'
-                    ? 'W'
-                    : comm.event === 'four'
-                    ? '4'
-                    : comm.event === 'six'
-                    ? '6'
-                    : ''}
+                  {comm.event === 'wicket' ? 'W' :
+                   comm.event === 'four' ? '4' :
+                   comm.event === 'six' ? '6' : ''}
                 </Text>
               </View>
             )}
             {comm.runs !== undefined && comm.runs > 0 && (
-              <Text style={styles.commentaryRuns}>{comm.runs} run{comm.runs > 1 ? 's' : ''}</Text>
+              <Text style={styles.commentaryRuns}>
+                {isHindi ? `${comm.runs} रन` : `${comm.runs} run${comm.runs > 1 ? 's' : ''}`}
+              </Text>
             )}
+            {/* Voice button for each commentary */}
+            <TouchableOpacity
+              style={styles.voiceButton}
+              onPress={() => speakSingleCommentary(comm)}
+            >
+              <Ionicons
+                name={isSpeaking ? "volume-high" : "volume-medium-outline"}
+                size={18}
+                color="#4CAF50"
+              />
+            </TouchableOpacity>
           </View>
-          <Text style={styles.commentaryText}>{comm.english}</Text>
+          <Text style={styles.commentaryText}>{displayText}</Text>
         </View>
       );
     });
@@ -287,20 +355,15 @@ export default function MatchDetail() {
         resizeMode="cover"
       >
         <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            Match Details
-          </Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>Match Details</Text>
           <View style={styles.placeholder} />
         </View>
       </ImageBackground>
 
-      {/* 20% Scoreboard & Info Section */}
+      {/* Scoreboard Section */}
       <View style={styles.scoreboardSection}>
         <View style={styles.statusContainer}>
           {match.status === 'live' ? (
@@ -324,12 +387,8 @@ export default function MatchDetail() {
               <View style={styles.scoreInfo}>
                 {team.runs !== undefined ? (
                   <>
-                    <Text style={styles.scoreMain}>
-                      {team.runs}/{team.wickets || 0}
-                    </Text>
-                    {team.overs && (
-                      <Text style={styles.oversText}>({team.overs})</Text>
-                    )}
+                    <Text style={styles.scoreMain}>{team.runs}/{team.wickets || 0}</Text>
+                    {team.overs && <Text style={styles.oversText}>({team.overs})</Text>}
                   </>
                 ) : (
                   <Text style={styles.yetToBat}>Yet to bat</Text>
@@ -339,26 +398,13 @@ export default function MatchDetail() {
           ))}
         </View>
 
-        {/* Floating Scoreboard Button (Pro Feature) */}
         {match.status === 'live' && (
           <TouchableOpacity
-            style={[
-              styles.floatingScoreboardButton,
-              !isPro && styles.floatingScoreboardButtonLocked,
-            ]}
+            style={[styles.floatingScoreboardButton, !isPro && styles.floatingScoreboardButtonLocked]}
             onPress={handleFloatingScoreboardToggle}
           >
-            <Ionicons
-              name={showFloatingScoreboard ? "tv" : "tv-outline"}
-              size={16}
-              color={isPro ? '#FFF' : '#999'}
-            />
-            <Text
-              style={[
-                styles.floatingScoreboardButtonText,
-                !isPro && styles.floatingScoreboardButtonTextLocked,
-              ]}
-            >
+            <Ionicons name={showFloatingScoreboard ? "tv" : "tv-outline"} size={16} color={isPro ? '#FFF' : '#999'} />
+            <Text style={[styles.floatingScoreboardButtonText, !isPro && styles.floatingScoreboardButtonTextLocked]}>
               {isPro ? 'Floating Score' : '🔒 Pro Only'}
             </Text>
           </TouchableOpacity>
@@ -366,14 +412,8 @@ export default function MatchDetail() {
 
         {match.result && (
           <View style={[styles.resultContainer, match.status === 'live' && styles.liveResultContainer]}>
-            <Ionicons
-              name={match.status === 'live' ? 'pulse' : 'trophy'}
-              size={18}
-              color={match.status === 'live' ? '#FF4444' : '#FFD700'}
-            />
-            <Text style={[styles.resultText, match.status === 'live' && styles.liveResultText]}>
-              {match.result}
-            </Text>
+            <Ionicons name={match.status === 'live' ? 'pulse' : 'trophy'} size={18} color={match.status === 'live' ? '#FF4444' : '#FFD700'} />
+            <Text style={[styles.resultText, match.status === 'live' && styles.liveResultText]}>{match.result}</Text>
           </View>
         )}
       </View>
@@ -383,16 +423,14 @@ export default function MatchDetail() {
         style={styles.contentBackground}
         resizeMode="repeat"
       >
-        <Animated.ScrollView
+        <ScrollView
+          ref={scrollViewRef}
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
+          onScroll={handleScroll}
           scrollEventThrottle={16}
         >
-          {/* 20% Cricket Field (Scrollable) */}
+          {/* Cricket Field */}
           {shouldShowCricketField() && (
             <Animated.View style={{ opacity: fieldOpacity }}>
               <CricketField
@@ -403,22 +441,72 @@ export default function MatchDetail() {
             </Animated.View>
           )}
 
-          {/* 60% Live Commentary Section */}
+          {/* Commentary Section with Controls */}
           {shouldShowCommentary() && (
             <View style={styles.commentarySection}>
-              <Text style={styles.sectionTitle}>Live Commentary</Text>
+              {/* Commentary Header with Controls */}
+              <View style={styles.commentaryControls}>
+                <Text style={styles.sectionTitle}>
+                  {isHindi ? 'लाइव कमेंट्री' : 'Live Commentary'}
+                </Text>
+                
+                <View style={styles.controlsRow}>
+                  {/* Language Toggle */}
+                  <View style={styles.languageToggle}>
+                    <Text style={[styles.langText, !isHindi && styles.langTextActive]}>EN</Text>
+                    <Switch
+                      value={isHindi}
+                      onValueChange={setIsHindi}
+                      trackColor={{ false: '#4CAF50', true: '#FF9800' }}
+                      thumbColor={isHindi ? '#FF9800' : '#4CAF50'}
+                      style={styles.switch}
+                    />
+                    <Text style={[styles.langText, isHindi && styles.langTextActiveHindi]}>हिं</Text>
+                  </View>
+
+                  {/* Voice Toggle */}
+                  <TouchableOpacity
+                    style={[styles.voiceToggle, voiceEnabled && styles.voiceToggleActive]}
+                    onPress={toggleVoice}
+                  >
+                    <Ionicons
+                      name={voiceEnabled ? "volume-high" : "volume-mute-outline"}
+                      size={20}
+                      color={voiceEnabled ? '#FFF' : '#666'}
+                    />
+                    <Text style={[styles.voiceToggleText, voiceEnabled && styles.voiceToggleTextActive]}>
+                      {isHindi ? 'आवाज़' : 'Voice'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Auto-refresh banner */}
               {match.status === 'live' && (
                 <View style={styles.autoRefreshBanner}>
                   <Ionicons name="sync" size={14} color="#FFF" />
-                  <Text style={styles.autoRefreshText}>Auto-refreshing every 50 seconds</Text>
+                  <Text style={styles.autoRefreshText}>
+                    {isHindi ? 'हर 50 सेकंड में ऑटो-रिफ्रेश' : 'Auto-refreshing every 50 seconds'}
+                  </Text>
                 </View>
               )}
+
+              {/* Commentary Items */}
               {renderCommentaryWithAds()}
+              
+              {/* Commentary count */}
+              <View style={styles.commentaryFooter}>
+                <Text style={styles.commentaryCount}>
+                  {isHindi 
+                    ? `${match.commentary?.length || 0} कमेंट्री आइटम` 
+                    : `${match.commentary?.length || 0} commentary items`}
+                </Text>
+              </View>
             </View>
           )}
 
           <View style={styles.bottomPadding} />
-        </Animated.ScrollView>
+        </ScrollView>
       </ImageBackground>
 
       {/* Floating Scoreboard */}
@@ -480,7 +568,6 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 40,
   },
-  // 20% Scoreboard Section
   scoreboardSection: {
     backgroundColor: 'rgba(26, 26, 26, 0.95)',
     paddingVertical: 12,
@@ -591,27 +678,76 @@ const styles = StyleSheet.create({
   liveResultText: {
     color: '#FF4444',
   },
-  // Content Section
   contentBackground: {
     flex: 1,
   },
   scrollView: {
     flex: 1,
   },
-  // 60% Commentary Section
   commentarySection: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 16,
     padding: 16,
-    minHeight: SCREEN_HEIGHT * 0.6,
+    minHeight: SCREEN_HEIGHT * 0.5,
+  },
+  commentaryControls: {
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1a1a1a',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  languageToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F0F0',
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  langText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#999',
+    paddingHorizontal: 6,
+  },
+  langTextActive: {
+    color: '#4CAF50',
+  },
+  langTextActiveHindi: {
+    color: '#FF9800',
+  },
+  switch: {
+    transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }],
+  },
+  voiceToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F0F0',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  voiceToggleActive: {
+    backgroundColor: '#4CAF50',
+  },
+  voiceToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  voiceToggleTextActive: {
+    color: '#FFF',
   },
   autoRefreshBanner: {
     flexDirection: 'row',
@@ -658,13 +794,27 @@ const styles = StyleSheet.create({
   commentaryRuns: {
     fontSize: 11,
     color: '#666',
+    flex: 1,
+  },
+  voiceButton: {
+    padding: 4,
   },
   commentaryText: {
     fontSize: 13,
     color: '#333',
     lineHeight: 18,
   },
-  // Banner Ad Styles
+  commentaryFooter: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    alignItems: 'center',
+  },
+  commentaryCount: {
+    fontSize: 11,
+    color: '#999',
+  },
   bannerAdContainer: {
     backgroundColor: '#F0F0F0',
     borderRadius: 8,
@@ -678,7 +828,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: '#999',
     marginBottom: 6,
-    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   bannerAdPlaceholder: {
     backgroundColor: '#E0E0E0',

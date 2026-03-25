@@ -11,11 +11,10 @@ export const ADMOB_CONFIG = {
   testDeviceId: '553c7721-4821-461b-9f62-8584b1e60745',
 };
 
-// Interstitial timing configuration
+// Interstitial timing configuration - RANDOM 10-15 CLICKS as per requirement
 const INTERSTITIAL_MIN_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-const INTERSTITIAL_MAX_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
-const INTERSTITIAL_MIN_CLICKS = 12;
-const INTERSTITIAL_MAX_CLICKS = 16;
+const INTERSTITIAL_MIN_CLICKS = 10; // Minimum clicks before showing
+const INTERSTITIAL_MAX_CLICKS = 15; // Maximum clicks before showing
 
 // Check platform - AdMob only works on native (EAS builds)
 const isWeb = Platform.OS === 'web';
