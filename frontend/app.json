@@ -10,10 +10,16 @@
     "newArchEnabled": true,
     "owner": "Vinu2092",
     "extra": {
-      "backendUrl": "https://cricket-live-feed-1.preview.emergentagent.com",
-      "eas": {
-        "projectId": "cricket-live-feed-1"
-      }
+      "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
+      "admob": {
+        "appId": "ca-app-pub-9675798593675825~2399929714",
+        "appOpenAdId": "ca-app-pub-9675798593675825/4826782503",
+        "interstitialAdId": "ca-app-pub-9675798593675825/8438724452",
+        "bannerAdId": "ca-app-pub-9675798593675825/8616886104",
+        "rewardedAdId": "ca-app-pub-9675798593675825/6702740458",
+        "testDeviceId": "553c7721-4821-461b-9f62-8584b1e60745"
+      },
+      "router": {}
     },
     "splash": {
       "image": "./assets/splash.png",
@@ -26,7 +32,9 @@
       "infoPlist": {
         "GADApplicationIdentifier": "ca-app-pub-9675798593675825~2399929714",
         "SKAdNetworkItems": [
-          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" }
+          {
+            "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
+          }
         ],
         "NSUserTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you."
       }
@@ -56,17 +64,6 @@
     ],
     "experiments": {
       "typedRoutes": true
-    },
-    "extra": {
-      "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
-      "admob": {
-        "appId": "ca-app-pub-9675798593675825~2399929714",
-        "appOpenAdId": "ca-app-pub-9675798593675825/4826782503",
-        "interstitialAdId": "ca-app-pub-9675798593675825/8438724452",
-        "bannerAdId": "ca-app-pub-9675798593675825/8616886104",
-        "rewardedAdId": "ca-app-pub-9675798593675825/6702740458",
-        "testDeviceId": "553c7721-4821-461b-9f62-8584b1e60745"
-      }
     }
   }
 }
