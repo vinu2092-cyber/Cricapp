@@ -173,6 +173,11 @@ export default function Index() {
       return timeA - timeB;
     });
 
+  // Show splash screen on first load
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
   if (loading) {
     return <LoadingScreen />;
   }
