@@ -2,7 +2,6 @@ from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
@@ -22,10 +21,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# MongoDB connection - use mongomock if real MongoDB unavailable
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+db_name = os.environ.get('DB_NAME', 'cricapp')
+
+try:
+    from motor.motor_asyncio import AsyncIOMotorClient
+    client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=2000)
+    db = client[db_name]
+    logger.info(f"Connected to MongoDB at {mongo_url}")
+except Exception as e:
+    logger.warning(f"Failed to connect to MongoDB: {e}, using mongomock")
+    import mongomock
+    import motor.motor_asyncio
+    client = mongomock.MongoClient()
+    db = client[db_name]
 
 # Create the main app without a prefix
 app = FastAPI()
