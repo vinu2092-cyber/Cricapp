@@ -1,9 +1,66 @@
+# .easignore - Files to exclude from EAS builds
+# This reduces build upload time and final APK/AAB size
+
+# Dependencies (managed by package.json)
 node_modules/
+
+# Build artifacts & caches
 .expo/
+.metro-cache/
 dist/
 build/
 android/
 ios/
-.metro-cache/
 *.log
+
+# Git
 .git/
+.gitignore
+.gitattributes
+
+# Documentation (not needed in build)
+*.md
+README.md
+BUILD_INSTRUCTIONS.txt
+BUILD_GUIDE.md
+CRICBUZZ_DATA_FIX_REPORT.md
+
+# Development scripts
+build_my_app.sh
+scripts/
+
+# Test files
+__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.test.js
+**/*.spec.ts
+**/*.spec.tsx
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.backup
+*.backup.*
+*.bak
+
+# Web-specific (not needed for Android)
+src/context/AdMobContext.web.backup.tsx
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Package locks (package.json is enough)
+package-lock.json
+yarn.lock
