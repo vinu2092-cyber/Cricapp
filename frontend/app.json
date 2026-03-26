@@ -8,7 +8,7 @@
     "scheme": "cricapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "owner": "vinu2092",
+    "owner": "mycricapp",
     "extra": {
       "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
       "admob": {
@@ -22,7 +22,7 @@
       "router": {},
       "backendUrl": "https://08f17b6d-17ef-459c-8dc0-2f9205990547-00-2pmnjb1s5jc0j.sisko.replit.dev",
       "eas": {
-        "projectId": "86a5fa55-ec55-480d-bb69-ba98b8ddf24c"
+        "projectId": "aec16f00-21b6-4832-9c09-85419642e9fe"
       }
     },
     "splash": {
@@ -30,25 +30,12 @@
       "resizeMode": "cover",
       "backgroundColor": "#f5f5dc"
     },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.gemmiapps.cricapp",
-      "infoPlist": {
-        "GADApplicationIdentifier": "ca-app-pub-9675798593675825~2399929714",
-        "SKAdNetworkItems": [
-          {
-            "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
-          }
-        ],
-        "NSUserTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you."
-      }
-    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#f5f5dc"
       },
-      "package": "com.gemmiapps.cricapp",
+      "package": "com.mycricapp.live",
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
@@ -58,18 +45,12 @@
         "googleMobileAdsAppId": "ca-app-pub-9675798593675825~2399929714"
       }
     },
-    "web": {
-      "bundler": "metro",
-      "output": "server",
-      "favicon": "./assets/icon.png"
-    },
     "plugins": [
       "expo-router",
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-9675798593675825~2399929714",
-          "iosAppId": "ca-app-pub-9675798593675825~2399929714"
+          "androidAppId": "ca-app-pub-9675798593675825~2399929714"
         }
       ],
       "./withBuildOptimizations.js"
