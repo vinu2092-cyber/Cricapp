@@ -48,8 +48,7 @@ export default function MatchDetail() {
   const [showFloatingScoreboard, setShowFloatingScoreboard] = useState(false);
   const [showFieldPosition, setShowFieldPosition] = useState(true);
   
-  // Commentary & Language Features
-  const [isHindi, setIsHindi] = useState(false);
+  // Commentary & Voice Features (English only)
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [lastSpokenIndex, setLastSpokenIndex] = useState(-1);
@@ -166,22 +165,20 @@ export default function MatchDetail() {
     }
   };
 
-  // Text-to-Speech function
+  // Text-to-Speech function (English only)
   const speakCommentary = useCallback((commentary: Commentary) => {
-    const textToSpeak = isHindi && commentary.hindi ? commentary.hindi : commentary.english;
-    const language = isHindi ? 'hi-IN' : 'en-IN';
+    const textToSpeak = commentary.english;
     
     setIsSpeaking(true);
     
     Speech.speak(textToSpeak, {
-      language,
+      language: 'en-IN',
       pitch: 1.0,
       rate: 0.9,
-      voice: Platform.OS === 'android' ? 'hi-in-x-hia-local' : undefined, // Male voice on Android
       onDone: () => setIsSpeaking(false),
       onError: () => setIsSpeaking(false),
     });
-  }, [isHindi]);
+  }, []);
 
   const toggleVoice = () => {
     // PAYWALL: Voice is Pro-only feature
@@ -302,8 +299,7 @@ export default function MatchDetail() {
         comm.event === 'four' ? '#4CAF50' :
         comm.event === 'six' ? '#9C27B0' : '#666';
 
-      // Get appropriate text based on language
-      const displayText = isHindi && comm.hindi ? comm.hindi : comm.english;
+      const displayText = comm.english;
 
       return (
         <View key={item.key} style={styles.commentaryItem}>
@@ -320,7 +316,7 @@ export default function MatchDetail() {
             )}
             {comm.runs !== undefined && comm.runs > 0 && (
               <Text style={styles.commentaryRuns}>
-                {isHindi ? `${comm.runs} रन` : `${comm.runs} run${comm.runs > 1 ? 's' : ''}`}
+                {`${comm.runs} run${comm.runs > 1 ? 's' : ''}`}
               </Text>
             )}
             {/* Voice button for each commentary - LOCKED for non-Pro */}
@@ -460,24 +456,9 @@ export default function MatchDetail() {
             <View style={styles.commentarySection}>
               {/* Commentary Header with Controls */}
               <View style={styles.commentaryControls}>
-                <Text style={styles.sectionTitle}>
-                  {isHindi ? 'लाइव कमेंट्री' : 'Live Commentary'}
-                </Text>
+                <Text style={styles.sectionTitle}>Live Commentary</Text>
                 
                 <View style={styles.controlsRow}>
-                  {/* Language Toggle */}
-                  <View style={styles.languageToggle}>
-                    <Text style={[styles.langText, !isHindi && styles.langTextActive]}>EN</Text>
-                    <Switch
-                      value={isHindi}
-                      onValueChange={setIsHindi}
-                      trackColor={{ false: '#4CAF50', true: '#FF9800' }}
-                      thumbColor={isHindi ? '#FF9800' : '#4CAF50'}
-                      style={styles.switch}
-                    />
-                    <Text style={[styles.langText, isHindi && styles.langTextActiveHindi]}>हिं</Text>
-                  </View>
-
                   {/* Voice Toggle - LOCKED for non-Pro */}
                   <TouchableOpacity
                     style={[
@@ -498,7 +479,7 @@ export default function MatchDetail() {
                       voiceEnabled && styles.voiceToggleTextActive,
                       !isPro && styles.voiceToggleTextLocked
                     ]}>
-                      {isPro ? (isHindi ? 'आवाज़' : 'Voice') : '🔒 Pro'}
+                      {isPro ? 'Voice' : '🔒 Pro'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -509,7 +490,7 @@ export default function MatchDetail() {
                 <View style={styles.autoRefreshBanner}>
                   <Ionicons name="sync" size={14} color="#FFF" />
                   <Text style={styles.autoRefreshText}>
-                    {isHindi ? 'हर 50 सेकंड में ऑटो-रिफ्रेश' : 'Auto-refreshing every 50 seconds'}
+                    Auto-refreshing every 50 seconds
                   </Text>
                 </View>
               )}
@@ -520,9 +501,7 @@ export default function MatchDetail() {
               {/* Commentary count */}
               <View style={styles.commentaryFooter}>
                 <Text style={styles.commentaryCount}>
-                  {isHindi 
-                    ? `${match.commentary?.length || 0} कमेंट्री आइटम` 
-                    : `${match.commentary?.length || 0} commentary items`}
+                  {`${match.commentary?.length || 0} commentary items`}
                 </Text>
               </View>
             </View>
@@ -727,30 +706,7 @@ const styles = StyleSheet.create({
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  languageToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0F0F0',
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  langText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#999',
-    paddingHorizontal: 6,
-  },
-  langTextActive: {
-    color: '#4CAF50',
-  },
-  langTextActiveHindi: {
-    color: '#FF9800',
-  },
-  switch: {
-    transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }],
+    justifyContent: 'flex-end',
   },
   voiceToggle: {
     flexDirection: 'row',
