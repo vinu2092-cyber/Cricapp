@@ -50,17 +50,21 @@ export default function MatchDetail() {
   const [showFieldPosition, setShowFieldPosition] = useState(true);
   
   // Pro system - 30 minute temporary access after watching 3 ads
-  const [isPro, setIsPro] = useState(false);
+  // Note: We manage our own tempPro state for 30-min rewarded access
+  const [tempProActive, setTempProActive] = useState(false);
   const [proExpiryTime, setProExpiryTime] = useState<number | null>(null);
   const [adsWatched, setAdsWatched] = useState(0);
   const [showProModal, setShowProModal] = useState(false);
   
+  // Effective Pro status: either permanent Pro OR temporary Pro from ads
+  const effectiveIsPro = isPro || tempProActive;
+  
   // Check if Pro status has expired
   useEffect(() => {
-    if (isPro && proExpiryTime) {
+    if (tempProActive && proExpiryTime) {
       const interval = setInterval(() => {
         if (Date.now() >= proExpiryTime) {
-          setIsPro(false);
+          setTempProActive(false);
           setProExpiryTime(null);
           alert('Pro status expired. Watch 3 more ads to continue.');
         }
@@ -68,7 +72,7 @@ export default function MatchDetail() {
       
       return () => clearInterval(interval);
     }
-  }, [isPro, proExpiryTime]);
+  }, [tempProActive, proExpiryTime]);
   
   // Commentary & Voice Features (English only)
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -230,7 +234,7 @@ export default function MatchDetail() {
       
       // All 3 ads watched - activate Pro for 30 minutes
       const expiryTime = Date.now() + (30 * 60 * 1000); // 30 minutes from now
-      setIsPro(true);
+      setTempProActive(true);
       setProExpiryTime(expiryTime);
       setAdsWatched(0);
       setShowProModal(false);
@@ -246,7 +250,7 @@ export default function MatchDetail() {
   
   const toggleVoice = () => {
     // Voice requires Pro (watch 3 ads)
-    if (!isPro) {
+    if (!effectiveIsPro) {
       unlockPro();
       return;
     }
@@ -260,7 +264,7 @@ export default function MatchDetail() {
 
   const speakSingleCommentary = (commentary: Commentary) => {
     // Voice requires Pro (watch 3 ads)
-    if (!isPro) {
+    if (!effectiveIsPro) {
       unlockPro();
       return;
     }
@@ -385,16 +389,16 @@ export default function MatchDetail() {
             )}
             {/* Voice button for each commentary - LOCKED for non-Pro */}
             <TouchableOpacity
-              style={[styles.voiceButton, !isPro && styles.voiceButtonLocked]}
+              style={[styles.voiceButton, !effectiveIsPro && styles.voiceButtonLocked]}
               onPress={() => speakSingleCommentary(comm)}
-              disabled={!isPro}
+              disabled={!effectiveIsPro}
             >
               <Ionicons
                 name={isSpeaking ? "volume-high" : "volume-medium-outline"}
                 size={18}
-                color={isPro ? "#4CAF50" : "#CCC"}
+                color={effectiveIsPro ? "#4CAF50" : "#CCC"}
               />
-              {!isPro && <Text style={styles.lockIcon}>🔒</Text>}
+              {!effectiveIsPro && <Text style={styles.lockIcon}>🔒</Text>}
             </TouchableOpacity>
           </View>
           <Text style={styles.commentaryText}>{displayText}</Text>
@@ -528,22 +532,22 @@ export default function MatchDetail() {
                     style={[
                       styles.voiceToggle, 
                       voiceEnabled && styles.voiceToggleActive,
-                      !isPro && styles.voiceToggleLocked
+                      !effectiveIsPro && styles.voiceToggleLocked
                     ]}
                     onPress={toggleVoice}
-                    disabled={!isPro}
+                    disabled={!effectiveIsPro}
                   >
                     <Ionicons
                       name={voiceEnabled ? "volume-high" : "volume-mute-outline"}
                       size={20}
-                      color={!isPro ? '#CCC' : voiceEnabled ? '#FFF' : '#666'}
+                      color={!effectiveIsPro ? '#CCC' : voiceEnabled ? '#FFF' : '#666'}
                     />
                     <Text style={[
                       styles.voiceToggleText, 
                       voiceEnabled && styles.voiceToggleTextActive,
-                      !isPro && styles.voiceToggleTextLocked
+                      !effectiveIsPro && styles.voiceToggleTextLocked
                     ]}>
-                      {isPro ? 'Voice' : '🔒 Pro'}
+                      {effectiveIsPro ? 'Voice' : '🔒 Pro'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -623,12 +627,12 @@ export default function MatchDetail() {
       </Modal>
 
       {/* Floating Scoreboard */}
-      {match && isPro && showFloatingScoreboard && (
+      {match && effectiveIsPro && showFloatingScoreboard && (
         <FloatingScoreboard
           match={match}
           visible={showFloatingScoreboard}
           onClose={() => setShowFloatingScoreboard(false)}
-          isPro={isPro}
+          isPro={effectiveIsPro}
         />
       )}
     </SafeAreaView>
