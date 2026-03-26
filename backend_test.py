@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from the review request
-BACKEND_URL = "https://pre-build-review-2.preview.emergentagent.com/api"
+BACKEND_URL = "https://wicket-tracker-app-1.preview.emergentagent.com/api"
 
 def test_root_endpoint():
     """Test GET /api/ endpoint - should return {"message": "Hello World"}"""

@@ -20,7 +20,7 @@ const getBackendUrl = () => {
   }
   
   // Fallback to hardcoded URL
-  return 'https://pre-build-review-2.preview.emergentagent.com';
+  return 'https://wicket-tracker-app-1.preview.emergentagent.com';
 };
 
 const BACKEND_URL = getBackendUrl();
