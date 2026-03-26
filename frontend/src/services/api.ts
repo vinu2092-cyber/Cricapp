@@ -19,7 +19,7 @@ const getBackendUrl = () => {
     return process.env.EXPO_PUBLIC_BACKEND_URL;
   }
   
-  // Fallback to hardcoded URL
+  // Fallback to current backend URL
   return 'https://wicket-tracker-app-1.preview.emergentagent.com';
 };
 
