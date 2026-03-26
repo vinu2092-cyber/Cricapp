@@ -16,8 +16,6 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useRe
 import { Platform, AppState, AppStateStatus, View, StyleSheet } from 'react-native';
 
 // Import native AdMob SDK (only for EAS builds)
-// Uncomment these imports before EAS build:
-/*
 import mobileAds, {
   AppOpenAd,
   InterstitialAd,
@@ -27,7 +25,6 @@ import mobileAds, {
   AdEventType,
   RewardedAdEventType,
 } from 'react-native-google-mobile-ads';
-*/
 
 // AdMob Configuration - Production IDs
 export const ADMOB_CONFIG = {
@@ -39,9 +36,8 @@ export const ADMOB_CONFIG = {
   testDeviceId: '553c7721-4821-461b-9f62-8584b1e60745',
 };
 
-// Random interstitial click range (10-15 clicks as per requirements)
-const INTERSTITIAL_MIN_CLICKS = 10;
-const INTERSTITIAL_MAX_CLICKS = 15;
+// Interstitial trigger every 10 clicks
+const INTERSTITIAL_CLICKS = 10;
 const INTERSTITIAL_MIN_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 interface AdMobContextType {
@@ -66,10 +62,8 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [clickCount, setClickCount] = useState(0);
   const [lastInterstitialTime, setLastInterstitialTime] = useState(Date.now());
   
-  // Random click target between 10-15
-  const [nextInterstitialClickTarget, setNextInterstitialClickTarget] = useState(
-    Math.floor(Math.random() * (INTERSTITIAL_MAX_CLICKS - INTERSTITIAL_MIN_CLICKS + 1)) + INTERSTITIAL_MIN_CLICKS
-  );
+  // Random click target - fixed at 10 clicks
+  const [nextInterstitialClickTarget, setNextInterstitialClickTarget] = useState(INTERSTITIAL_CLICKS);
   
   const appOpenAdRef = useRef<any>(null);
   const interstitialAdRef = useRef<any>(null);
@@ -81,8 +75,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     const initializeAdMob = async () => {
       try {
-        // Uncomment for EAS build:
-        /*
         await mobileAds().initialize();
         
         await mobileAds().setRequestConfiguration({
@@ -100,9 +92,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         
         // Load Rewarded Ad
         loadRewardedAd();
-        */
         
-        setIsAdMobInitialized(true);
       } catch (error) {
         console.error('AdMob: Initialization failed', error);
         setIsAdMobInitialized(true);
@@ -133,8 +123,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Load App Open Ad
   const loadAppOpenAd = useCallback(() => {
-    // Uncomment for EAS build:
-    /*
     appOpenAdRef.current = AppOpenAd.createForAdRequest(ADMOB_CONFIG.appOpenAdId, {
       requestNonPersonalizedAdsOnly: true,
     });
@@ -153,13 +141,10 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
 
     appOpenAdRef.current.load();
-    */
   }, [isPro]);
 
   // Load Interstitial Ad
   const loadInterstitialAd = useCallback(() => {
-    // Uncomment for EAS build:
-    /*
     interstitialAdRef.current = InterstitialAd.createForAdRequest(ADMOB_CONFIG.interstitialAdId, {
       requestNonPersonalizedAdsOnly: true,
     });
@@ -173,13 +158,10 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
 
     interstitialAdRef.current.load();
-    */
   }, []);
 
   // Load Rewarded Ad
   const loadRewardedAd = useCallback(() => {
-    // Uncomment for EAS build:
-    /*
     rewardedAdRef.current = RewardedAd.createForAdRequest(ADMOB_CONFIG.rewardedAdId, {
       requestNonPersonalizedAdsOnly: true,
     });
@@ -193,7 +175,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
 
     rewardedAdRef.current.load();
-    */
   }, []);
 
   // Track clicks for random interstitial (10-15 clicks)
@@ -218,10 +199,8 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setLastInterstitialTime(Date.now());
       setClickCount(0);
       
-      // Set new random target (10-15)
-      setNextInterstitialClickTarget(
-        Math.floor(Math.random() * (INTERSTITIAL_MAX_CLICKS - INTERSTITIAL_MIN_CLICKS + 1)) + INTERSTITIAL_MIN_CLICKS
-      );
+      // Set new target to 10 clicks
+      setNextInterstitialClickTarget(INTERSTITIAL_CLICKS);
     }
   };
 
@@ -232,8 +211,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     
     try {
-      // Uncomment for EAS build:
-      // await appOpenAdRef.current?.show();
+      await appOpenAdRef.current?.show();
       console.log('AdMob: App Open Ad shown');
     } catch (error) {
       console.error('AdMob: Error showing App Open Ad', error);
@@ -247,8 +225,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     
     try {
-      // Uncomment for EAS build:
-      // await interstitialAdRef.current?.show();
+      await interstitialAdRef.current?.show();
       console.log('AdMob: Interstitial Ad shown');
       return true;
     } catch (error) {
@@ -259,8 +236,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const showRewardedAd = async (): Promise<boolean> => {
     return new Promise((resolve) => {
-      // Uncomment for EAS build:
-      /*
       if (!rewardedAdRef.current) {
         resolve(false);
         return;
@@ -280,11 +255,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         console.error('AdMob: Error showing Rewarded Ad', error);
         resolve(false);
       });
-      */
-      
-      // Placeholder for web/dev
-      console.log('AdMob: Rewarded Ad (simulated)');
-      resolve(true);
     });
   };
 
@@ -305,8 +275,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const BannerAdComponent: React.FC<{ style?: any; adPosition?: string }> = ({ style, adPosition }) => {
     if (isPro) return null;
     
-    // Uncomment for EAS build:
-    /*
     return (
       <View style={[styles.bannerContainer, style]}>
         <BannerAd
@@ -318,14 +286,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           onAdLoaded={() => console.log('Banner loaded')}
           onAdFailedToLoad={(error) => console.error('Banner failed:', error)}
         />
-      </View>
-    );
-    */
-    
-    // Placeholder for dev
-    return (
-      <View style={[styles.bannerPlaceholder, style]}>
-        {/* Placeholder */}
       </View>
     );
   };
