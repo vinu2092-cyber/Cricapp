@@ -646,14 +646,54 @@ export const fetchMatchCommentary = async (matchId: string, page: number = 0): P
 };
 
 // Hindi translation helper for cricket commentary
+// Uses natural, conversational Hindi like Indian commentators
 const translateToHindi = (englishText: string): string => {
+  // For natural conversational Hindi, we translate common cricket commentary patterns
   let hindi = englishText;
   
-  // Common cricket terms translation
-  const translations: { [key: string]: string } = {
-    'no run': 'कोई रन नहीं',
-    'run': 'रन',
-    'runs': 'रन',
+  // Translate natural phrases first (more conversational)
+  const phraseTranslations: Array<[RegExp, string]> = [
+    [/no run taken/gi, 'कोई रन नहीं लिया'],
+    [/goes for (?:a |the )?four/gi, 'चौका मारा'],
+    [/it's (?:a |)four/gi, 'यह चौका है'],
+    [/that's (?:a |)six/gi, 'वो छक्का है'],
+    [/massive six/gi, 'शानदार छक्का'],
+    [/huge six/gi, 'बड़ा छक्का'],
+    [/what a shot/gi, 'क्या शॉट है'],
+    [/great shot/gi, 'शानदार शॉट'],
+    [/bowled him/gi, 'बोल्ड कर दिया'],
+    [/clean bowled/gi, 'सीधे बोल्ड'],
+    [/caught behind/gi, 'विकेटकीपर ने पकड़ा'],
+    [/caught and bowled/gi, 'खुद ही पकड़ लिया'],
+    [/great catch/gi, 'शानदार कैच'],
+    [/run out/gi, 'रन आउट'],
+    [/out lbw/gi, 'एलबीडब्ल्यू आउट'],
+    [/beats the bat/gi, 'बल्ले से चूक गया'],
+    [/through the covers/gi, 'कवर से होकर'],
+    [/over mid.?wicket/gi, 'मिड विकेट के ऊपर से'],
+    [/pulls it/gi, 'पुल शॉट'],
+    [/drives it/gi, 'ड्राइव मारा'],
+    [/flicks it/gi, 'फ्लिक किया'],
+    [/cuts it/gi, 'कट शॉट'],
+    [/defends/gi, 'डिफेंड किया'],
+    [/leaves it/gi, 'छोड़ दिया'],
+    [/dot ball/gi, 'डॉट बॉल'],
+    [/no ball/gi, 'नो बॉल'],
+    [/wide ball/gi, 'वाइड बॉल'],
+    [/free hit/gi, 'फ्री हिट'],
+    [/good length/gi, 'अच्छी लेंथ'],
+    [/short ball/gi, 'छोटी गेंद'],
+    [/full toss/gi, 'फुल टॉस'],
+    [/yorker/gi, 'यॉर्कर'],
+    [/bouncer/gi, 'बाउंसर'],
+  ];
+  
+  phraseTranslations.forEach(([pattern, replacement]) => {
+    hindi = hindi.replace(pattern, replacement);
+  });
+  
+  // Common cricket terms (word-by-word for remaining text)
+  const wordTranslations: { [key: string]: string } = {
     'four': 'चौका',
     'FOUR': 'चौका',
     'six': 'छक्का',
@@ -665,23 +705,25 @@ const translateToHindi = (englishText: string): string => {
     'lbw': 'एलबीडब्ल्यू',
     'stumped': 'स्टम्प्ड',
     'wide': 'वाइड',
-    'no ball': 'नो बॉल',
     'boundary': 'बाउंड्री',
     'over': 'ओवर',
     'ball': 'गेंद',
     'batsman': 'बल्लेबाज',
     'bowler': 'गेंदबाज',
+    'fielder': 'फील्डर',
+    'run': 'रन',
+    'runs': 'रन',
     'single': 'सिंगल',
-    'double': 'डबल',
-    'to': 'को',
-    'off': 'पर',
-    'the': '',
-    'a ': '',
+    'double': 'दो रन',
+    'triple': 'तीन रन',
+    'shot': 'शॉट',
+    'delivery': 'गेंद',
+    'appeal': 'अपील',
+    'umpire': 'अंपायर',
   };
   
-  // Apply translations (case insensitive)
-  Object.entries(translations).forEach(([eng, hin]) => {
-    const regex = new RegExp(eng, 'gi');
+  Object.entries(wordTranslations).forEach(([eng, hin]) => {
+    const regex = new RegExp(`\\b${eng}\\b`, 'gi');
     hindi = hindi.replace(regex, hin);
   });
   

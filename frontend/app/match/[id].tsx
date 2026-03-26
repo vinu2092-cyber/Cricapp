@@ -184,6 +184,12 @@ export default function MatchDetail() {
   }, [isHindi]);
 
   const toggleVoice = () => {
+    // PAYWALL: Voice is Pro-only feature
+    if (!isPro) {
+      alert('🔒 Unlock Pro to use Voice Commentary feature');
+      return;
+    }
+    
     if (voiceEnabled) {
       Speech.stop();
       setIsSpeaking(false);
@@ -192,6 +198,12 @@ export default function MatchDetail() {
   };
 
   const speakSingleCommentary = (commentary: Commentary) => {
+    // PAYWALL: Voice is Pro-only feature
+    if (!isPro) {
+      alert('🔒 Unlock Pro to use Voice Commentary feature');
+      return;
+    }
+    
     if (isSpeaking) {
       Speech.stop();
       setIsSpeaking(false);
@@ -311,16 +323,18 @@ export default function MatchDetail() {
                 {isHindi ? `${comm.runs} रन` : `${comm.runs} run${comm.runs > 1 ? 's' : ''}`}
               </Text>
             )}
-            {/* Voice button for each commentary */}
+            {/* Voice button for each commentary - LOCKED for non-Pro */}
             <TouchableOpacity
-              style={styles.voiceButton}
+              style={[styles.voiceButton, !isPro && styles.voiceButtonLocked]}
               onPress={() => speakSingleCommentary(comm)}
+              disabled={!isPro}
             >
               <Ionicons
                 name={isSpeaking ? "volume-high" : "volume-medium-outline"}
                 size={18}
-                color="#4CAF50"
+                color={isPro ? "#4CAF50" : "#CCC"}
               />
+              {!isPro && <Text style={styles.lockIcon}>🔒</Text>}
             </TouchableOpacity>
           </View>
           <Text style={styles.commentaryText}>{displayText}</Text>
@@ -464,18 +478,27 @@ export default function MatchDetail() {
                     <Text style={[styles.langText, isHindi && styles.langTextActiveHindi]}>हिं</Text>
                   </View>
 
-                  {/* Voice Toggle */}
+                  {/* Voice Toggle - LOCKED for non-Pro */}
                   <TouchableOpacity
-                    style={[styles.voiceToggle, voiceEnabled && styles.voiceToggleActive]}
+                    style={[
+                      styles.voiceToggle, 
+                      voiceEnabled && styles.voiceToggleActive,
+                      !isPro && styles.voiceToggleLocked
+                    ]}
                     onPress={toggleVoice}
+                    disabled={!isPro}
                   >
                     <Ionicons
                       name={voiceEnabled ? "volume-high" : "volume-mute-outline"}
                       size={20}
-                      color={voiceEnabled ? '#FFF' : '#666'}
+                      color={!isPro ? '#CCC' : voiceEnabled ? '#FFF' : '#666'}
                     />
-                    <Text style={[styles.voiceToggleText, voiceEnabled && styles.voiceToggleTextActive]}>
-                      {isHindi ? 'आवाज़' : 'Voice'}
+                    <Text style={[
+                      styles.voiceToggleText, 
+                      voiceEnabled && styles.voiceToggleTextActive,
+                      !isPro && styles.voiceToggleTextLocked
+                    ]}>
+                      {isPro ? (isHindi ? 'आवाज़' : 'Voice') : '🔒 Pro'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -849,6 +872,25 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   bottomPadding: {
-    height: 30,
+    height: 100, // Increased to prevent banner ad overlap
+  },
+  voiceButton: {
+    padding: 4,
+  },
+  voiceButtonLocked: {
+    opacity: 0.4,
+  },
+  lockIcon: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    fontSize: 8,
+  },
+  voiceToggleLocked: {
+    backgroundColor: '#DDD',
+    opacity: 0.6,
+  },
+  voiceToggleTextLocked: {
+    color: '#999',
   },
 });
