@@ -648,92 +648,154 @@ export const fetchMatchCommentary = async (matchId: string, page: number = 0): P
 // Hindi translation helper for cricket commentary
 // Translate cricket commentary into natural Hindi style used by Star Sports/Hotstar commentators
 const translateToHindi = (englishText: string): string => {
-  // STEP 1: CLEAN THE TEXT - Remove all B0$, B1$, B2$, etc. tags
-  let cleanText = englishText.replace(/B\d+\$/g, 'FOUR'); // Replace B0$, B1$ etc with FOUR
-  cleanText = cleanText.replace(/B\d+/g, ''); // Remove any remaining B tags
+  // ========================================
+  // STEP 1: CLEAN ALL TAGS (B0$, B1$, etc.)
+  // ========================================
+  let cleanText = englishText
+    .replace(/B[0-9]\$/g, '') // Remove B0$, B1$, B2$, etc.
+    .replace(/B[0-9]/g, '')   // Remove any B0, B1 without $
+    .trim();
   
-  // STEP 2: CRICKET GLOSSARY MAPPING - Natural Hindi like Star Sports commentators
+  // ========================================
+  // STEP 2: FULL SENTENCE PATTERN MATCHING
+  // Natural Indian Commentary Style
+  // ========================================
+  const sentencePatterns: Array<[RegExp, string]> = [
+    // Match results
+    [/(.+?)\s+won\s+by\s+(\d+)\s+wkts?/gi, '$1 ने $2 विकेट से जीता'],
+    [/(.+?)\s+won\s+by\s+(\d+)\s+runs?/gi, '$1 ने $2 रन से जीता'],
+    [/(.+?)\s+beat\s+(.+?)\s+by\s+(\d+)\s+runs?/gi, '$1 ने $2 को $3 रन से हराया'],
+    [/(.+?)\s+beat\s+(.+?)\s+by\s+(\d+)\s+wkts?/gi, '$1 ने $2 को $3 विकेट से हराया'],
+    
+    // Commentary patterns
+    [/that's\s+a\s+four/gi, 'यह चौका है'],
+    [/that's\s+a\s+six/gi, 'यह छक्का है'],
+    [/what\s+a\s+shot/gi, 'क्या शॉट है'],
+    [/no\s+run\s+taken/gi, 'कोई रन नहीं लिया'],
+    [/goes\s+for\s+a\s+four/gi, 'चौका मारा'],
+    [/goes\s+for\s+a\s+six/gi, 'छक्का मारा'],
+    [/massive\s+six/gi, 'शानदार छक्का'],
+    [/huge\s+six/gi, 'बड़ा छक्का'],
+    [/great\s+shot/gi, 'शानदार शॉट'],
+    [/bowled\s+him/gi, 'बोल्ड कर दिया'],
+    [/clean\s+bowled/gi, 'साफ़ बोल्ड'],
+    [/caught\s+behind/gi, 'विकेटकीपर ने पकड़ा'],
+    [/caught\s+and\s+bowled/gi, 'खुद ने पकड़ लिया'],
+    [/great\s+catch/gi, 'शानदार कैच'],
+    [/run\s+out/gi, 'रन आउट'],
+    [/beats\s+the\s+bat/gi, 'बल्ले से चूक गया'],
+    [/dot\s+ball/gi, 'डॉट बॉल'],
+    [/wide\s+ball/gi, 'वाइड बॉल'],
+    [/no\s+ball/gi, 'नो बॉल'],
+    [/free\s+hit/gi, 'फ्री हिट'],
+    [/good\s+length/gi, 'अच्छी लेंथ'],
+    [/short\s+ball/gi, 'शॉर्ट बॉल'],
+    [/full\s+toss/gi, 'फुल टॉस'],
+    [/on\s+the\s+pads/gi, 'पैड पर'],
+    [/outside\s+off/gi, 'ऑफ़ स्टंप के बाहर'],
+    [/down\s+the\s+leg/gi, 'लेग साइड'],
+  ];
+  
+  // Apply sentence patterns first
+  let hindi = cleanText;
+  sentencePatterns.forEach(([pattern, replacement]) => {
+    hindi = hindi.replace(pattern, replacement);
+  });
+  
+  // ========================================
+  // STEP 3: CRICKET GLOSSARY (Word-level)
+  // For remaining untranslated words
+  // ========================================
   const cricketGlossary: { [key: string]: string } = {
-    // Runs & Scoring
-    'no run': 'कोई रन नहीं',
-    'no runs': 'कोई रन नहीं',
+    // Numbers
+    'one': 'एक',
+    'two': 'दो',
+    'three': 'तीन',
+    'four': 'चार',
+    'five': 'पांच',
+    'six': 'छह',
+    'seven': 'सात',
+    'eight': 'आठ',
+    'nine': 'नौ',
+    'ten': 'दस',
+    
+    // Scoring
+    'FOUR': 'चौका',
+    'SIX': 'छक्का',
+    'boundary': 'बाउंड्री',
     'single': 'एक रन',
     'double': 'दो रन',
-    'triple': 'तीन रन',
-    'FOUR': 'चौका',
-    'four': 'चौका',
-    'SIX': 'छक्का',
-    'six': 'छक्का',
-    'boundary': 'बाउंड्री',
     'runs': 'रन',
     'run': 'रन',
+    'no run': 'कोई रन नहीं',
     
     // Dismissals
     'wicket': 'विकेट',
     'wickets': 'विकेट',
+    'wkts': 'विकेट',
+    'wkt': 'विकेट',
     'out': 'आउट',
     'bowled': 'बोल्ड',
-    'caught': 'कैच आउट',
+    'caught': 'कैच',
     'lbw': 'एलबीडब्ल्यू',
     'stumped': 'स्टम्प्ड',
-    'run out': 'रन आउट',
     
-    // Extras
-    'wide': 'वाइड',
-    'no ball': 'नो बॉल',
-    'bye': 'बाई',
-    'leg bye': 'लेग बाई',
-    
-    // Players
+    // Players & Actions
     'batsman': 'बल्लेबाज',
     'bowler': 'गेंदबाज',
     'fielder': 'फील्डर',
     'keeper': 'विकेटकीपर',
-    'umpire': 'अंपायर',
+    'wicketkeeper': 'विकेटकीपर',
     
-    // Shots
+    // Extras & Deliveries
+    'wide': 'वाइड',
+    'bye': 'बाई',
+    'yorker': 'यॉर्कर',
+    'bouncer': 'बाउंसर',
+    
+    // Shots & Actions
     'shot': 'शॉट',
     'drive': 'ड्राइव',
     'pull': 'पुल',
     'cut': 'कट',
-    'hook': 'हुक',
-    'sweep': 'स्वीप',
     'flick': 'फ्लिक',
-    
-    // Deliveries
-    'ball': 'गेंद',
-    'delivery': 'गेंद',
-    'yorker': 'यॉर्कर',
-    'bouncer': 'बाउंसर',
-    'full toss': 'फुल टॉस',
-    'good length': 'गुड लेंथ',
-    
-    // Actions
-    'played': 'खेला',
-    'missed': 'चूक गया',
     'defended': 'डिफेंड किया',
+    'played': 'खेला',
     'hit': 'मारा',
-    'edged': 'एज हुआ',
-    'appeal': 'अपील',
+    'missed': 'चूक गया',
     
     // Common words
     'over': 'ओवर',
+    'ball': 'गेंद',
+    'delivery': 'गेंद',
+    'won': 'जीता',
+    'beat': 'हराया',
+    'by': 'से',
     'to': 'को',
-    'by': 'द्वारा',
     'and': 'और',
     'the': '',
-    'a ': '',
-    'an ': '',
+    'a': '',
+    'an': '',
   };
   
-  // STEP 3: Apply translations word by word
-  let hindi = cleanText;
+  // Apply word-level translations
   Object.entries(cricketGlossary).forEach(([english, hindiWord]) => {
-    const regex = new RegExp(`\\b${english}\\b`, 'gi');
-    hindi = hindi.replace(regex, hindiWord);
+    if (hindiWord === '') {
+      // Remove articles
+      const regex = new RegExp(`\\b${english}\\b\\s*`, 'gi');
+      hindi = hindi.replace(regex, '');
+    } else {
+      const regex = new RegExp(`\\b${english}\\b`, 'gi');
+      hindi = hindi.replace(regex, hindiWord);
+    }
   });
   
-  return hindi.trim();
+  // ========================================
+  // STEP 4: CLEAN UP EXTRA SPACES
+  // ========================================
+  hindi = hindi.replace(/\s+/g, ' ').trim();
+  
+  return hindi;
 };
 
 // Backward compatible wrapper (returns just commentary array)
