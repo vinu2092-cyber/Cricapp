@@ -11,6 +11,7 @@ import {
   Dimensions,
   Platform,
   Switch,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -47,6 +48,27 @@ export default function MatchDetail() {
   const [error, setError] = useState(false);
   const [showFloatingScoreboard, setShowFloatingScoreboard] = useState(false);
   const [showFieldPosition, setShowFieldPosition] = useState(true);
+  
+  // Pro system - 30 minute temporary access after watching 3 ads
+  const [isPro, setIsPro] = useState(false);
+  const [proExpiryTime, setProExpiryTime] = useState<number | null>(null);
+  const [adsWatched, setAdsWatched] = useState(0);
+  const [showProModal, setShowProModal] = useState(false);
+  
+  // Check if Pro status has expired
+  useEffect(() => {
+    if (isPro && proExpiryTime) {
+      const interval = setInterval(() => {
+        if (Date.now() >= proExpiryTime) {
+          setIsPro(false);
+          setProExpiryTime(null);
+          alert('Pro status expired. Watch 3 more ads to continue.');
+        }
+      }, 10000); // Check every 10 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [isPro, proExpiryTime]);
   
   // Commentary & Voice Features (English only)
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -180,10 +202,52 @@ export default function MatchDetail() {
     });
   }, []);
 
+  // Handle Pro unlock via ads
+  const { showRewardedAd } = useAdMob();
+  
+  const unlockPro = async () => {
+    setShowProModal(true);
+  };
+  
+  const watchAdsForPro = async () => {
+    try {
+      // Watch 3 rewarded ads
+      for (let i = 0; i < 3; i++) {
+        const adWatched = await showRewardedAd();
+        if (adWatched) {
+          setAdsWatched(i + 1);
+          if (i < 2) {
+            // Show progress
+            alert(`Ad ${i + 1}/3 completed. ${2 - i} more to go!`);
+          }
+        } else {
+          alert(`Failed to load ad ${i + 1}. Please try again.`);
+          setAdsWatched(0);
+          setShowProModal(false);
+          return;
+        }
+      }
+      
+      // All 3 ads watched - activate Pro for 30 minutes
+      const expiryTime = Date.now() + (30 * 60 * 1000); // 30 minutes from now
+      setIsPro(true);
+      setProExpiryTime(expiryTime);
+      setAdsWatched(0);
+      setShowProModal(false);
+      
+      alert('🎉 Pro activated for 30 minutes! Enjoy ad-free clicking.');
+    } catch (error) {
+      console.error('Error watching ads:', error);
+      alert('Failed to unlock Pro. Please try again.');
+      setAdsWatched(0);
+      setShowProModal(false);
+    }
+  };
+  
   const toggleVoice = () => {
-    // PAYWALL: Voice is Pro-only feature
+    // Voice requires Pro (watch 3 ads)
     if (!isPro) {
-      alert('🔒 Unlock Pro to use Voice Commentary feature');
+      unlockPro();
       return;
     }
     
@@ -195,9 +259,9 @@ export default function MatchDetail() {
   };
 
   const speakSingleCommentary = (commentary: Commentary) => {
-    // PAYWALL: Voice is Pro-only feature
+    // Voice requires Pro (watch 3 ads)
     if (!isPro) {
-      alert('🔒 Unlock Pro to use Voice Commentary feature');
+      unlockPro();
       return;
     }
     
@@ -510,6 +574,53 @@ export default function MatchDetail() {
           <View style={styles.bottomPadding} />
         </ScrollView>
       </ImageBackground>
+
+      {/* Pro Unlock Modal */}
+      <Modal
+        visible={showProModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowProModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.proModalContainer}>
+            <Text style={styles.proModalTitle}>🎉 Unlock Pro Features</Text>
+            
+            <View style={styles.proFeaturesList}>
+              <Text style={styles.proFeature}>✅ Voice Commentary</Text>
+              <Text style={styles.proFeature}>✅ Floating Scoreboard</Text>
+              <Text style={styles.proFeature}>✅ No Click Ads for 30 mins</Text>
+            </View>
+            
+            <Text style={styles.proModalSubtitle}>
+              Watch 3 short ads to unlock Pro for 30 minutes
+            </Text>
+            
+            {adsWatched > 0 && (
+              <Text style={styles.proModalProgress}>
+                Progress: {adsWatched}/3 ads watched
+              </Text>
+            )}
+            
+            <TouchableOpacity
+              style={styles.proModalButton}
+              onPress={watchAdsForPro}
+            >
+              <Text style={styles.proModalButtonText}>Watch 3 Ads</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.proModalCancelButton}
+              onPress={() => {
+                setShowProModal(false);
+                setAdsWatched(0);
+              }}
+            >
+              <Text style={styles.proModalCancelText}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Floating Scoreboard */}
       {match && isPro && showFloatingScoreboard && (
@@ -848,5 +959,73 @@ const styles = StyleSheet.create({
   },
   voiceToggleTextLocked: {
     color: '#999',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  proModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 30,
+    width: '85%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  proModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  proFeaturesList: {
+    marginBottom: 20,
+  },
+  proFeature: {
+    fontSize: 16,
+    color: '#555',
+    marginBottom: 10,
+  },
+  proModalSubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  proModalProgress: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4CAF50',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  proModalButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    marginBottom: 10,
+  },
+  proModalButtonText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  proModalCancelButton: {
+    backgroundColor: 'transparent',
+    paddingVertical: 10,
+  },
+  proModalCancelText: {
+    color: '#999',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
