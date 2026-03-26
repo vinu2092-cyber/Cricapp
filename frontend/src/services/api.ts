@@ -616,13 +616,19 @@ export const fetchMatchCommentary = async (matchId: string, page: number = 0): P
             runs = 6;
           }
           
-          // Generate Hindi translation (basic cricket terms)
-          const hindiText = translateToHindi(comm.commtxt);
+          // Clean English text first
+          const cleanEnglishText = comm.commtxt
+            .replace(/B[0-9]+[A-Z]*/g, '')  // Remove B0$, B1S, B2S, etc.
+            .replace(/\$/g, '')              // Remove any remaining $
+            .trim();
+          
+          // Generate Hindi translation
+          const hindiText = translateToHindi(cleanEnglishText);
           
           commentary.push({
             over: comm.overnum.toString(),
             ball: comm.ballnbr % 6 || 6,
-            english: comm.commtxt.replace(/B0\$/g, 'FOUR'),
+            english: cleanEnglishText,
             hindi: hindiText,
             runs,
             event,
@@ -649,41 +655,51 @@ export const fetchMatchCommentary = async (matchId: string, page: number = 0): P
 // Translate cricket commentary into natural Hindi style used by Star Sports/Hotstar commentators
 const translateToHindi = (englishText: string): string => {
   // ========================================
-  // STEP 1: CLEAN ALL TAGS (B0$, B1$, etc.)
+  // STEP 1: AGGRESSIVE TAG CLEANING
+  // Remove ALL variations: B0$, B1S, B2S, B3, etc.
   // ========================================
   let cleanText = englishText
-    .replace(/B[0-9]\$/g, '') // Remove B0$, B1$, B2$, etc.
-    .replace(/B[0-9]/g, '')   // Remove any B0, B1 without $
+    .replace(/B[0-9]+[A-Z$]*/gi, '')  // Remove B0$, B1S, B2S, B3A, etc.
+    .replace(/\$+/g, '')               // Remove any remaining $ symbols
+    .replace(/\s+/g, ' ')              // Normalize spaces
     .trim();
   
   // ========================================
-  // STEP 2: FULL SENTENCE PATTERN MATCHING
-  // Natural Indian Commentary Style
+  // STEP 2: FULL SENTENCE TRANSLATIONS
+  // Match complete cricket phrases
   // ========================================
-  const sentencePatterns: Array<[RegExp, string]> = [
-    // Match results
+  const fullSentencePatterns: Array<[RegExp, string]> = [
+    // Match results - capture team names and numbers
     [/(.+?)\s+won\s+by\s+(\d+)\s+wkts?/gi, '$1 ने $2 विकेट से जीता'],
     [/(.+?)\s+won\s+by\s+(\d+)\s+runs?/gi, '$1 ने $2 रन से जीता'],
-    [/(.+?)\s+beat\s+(.+?)\s+by\s+(\d+)\s+runs?/gi, '$1 ने $2 को $3 रन से हराया'],
-    [/(.+?)\s+beat\s+(.+?)\s+by\s+(\d+)\s+wkts?/gi, '$1 ने $2 को $3 विकेट से हराया'],
     
-    // Commentary patterns
-    [/that's\s+a\s+four/gi, 'यह चौका है'],
-    [/that's\s+a\s+six/gi, 'यह छक्का है'],
-    [/what\s+a\s+shot/gi, 'क्या शॉट है'],
-    [/no\s+run\s+taken/gi, 'कोई रन नहीं लिया'],
-    [/goes\s+for\s+a\s+four/gi, 'चौका मारा'],
-    [/goes\s+for\s+a\s+six/gi, 'छक्का मारा'],
-    [/massive\s+six/gi, 'शानदार छक्का'],
-    [/huge\s+six/gi, 'बड़ा छक्का'],
+    // Wicket announcements
+    [/(.+?)\s+has\s+been\s+given\s+(out|OUT)\s+(.+)/gi, '$1 को $3 आउट दिया गया'],
+    [/(.+?)\s+is\s+(out|OUT)/gi, '$1 आउट है'],
+    
+    // Shot descriptions
+    [/(that's|that is)\s+a\s+(four|FOUR)/gi, 'यह चौका है'],
+    [/(that's|that is)\s+a\s+(six|SIX)/gi, 'यह छक्का है'],
+    [/goes\s+for\s+(a\s+)?(four|FOUR)/gi, 'चौका मारा'],
+    [/goes\s+for\s+(a\s+)?(six|SIX)/gi, 'छक्का मारा'],
+    
+    // Common commentary phrases
+    [/what\s+a\s+shot/gi, 'क्या शॉट'],
     [/great\s+shot/gi, 'शानदार शॉट'],
+    [/massive\s+six/gi, 'जबरदस्त छक्का'],
+    [/huge\s+six/gi, 'बड़ा छक्का'],
+    [/no\s+run\s+taken/gi, 'कोई रन नहीं'],
+    [/no\s+run/gi, 'कोई रन नहीं'],
+    
+    // Bowling/Batting actions
     [/bowled\s+him/gi, 'बोल्ड कर दिया'],
-    [/clean\s+bowled/gi, 'साफ़ बोल्ड'],
-    [/caught\s+behind/gi, 'विकेटकीपर ने पकड़ा'],
-    [/caught\s+and\s+bowled/gi, 'खुद ने पकड़ लिया'],
-    [/great\s+catch/gi, 'शानदार कैच'],
+    [/clean\s+bowled/gi, 'साफ बोल्ड'],
+    [/caught\s+behind/gi, 'विकेटकीपर ने कैच किया'],
+    [/caught\s+and\s+bowled/gi, 'गेंदबाज ने खुद पकड़ा'],
     [/run\s+out/gi, 'रन आउट'],
-    [/beats\s+the\s+bat/gi, 'बल्ले से चूक गया'],
+    [/great\s+catch/gi, 'शानदार कैच'],
+    
+    // Ball descriptions
     [/dot\s+ball/gi, 'डॉट बॉल'],
     [/wide\s+ball/gi, 'वाइड बॉल'],
     [/no\s+ball/gi, 'नो बॉल'],
@@ -691,99 +707,115 @@ const translateToHindi = (englishText: string): string => {
     [/good\s+length/gi, 'अच्छी लेंथ'],
     [/short\s+ball/gi, 'शॉर्ट बॉल'],
     [/full\s+toss/gi, 'फुल टॉस'],
-    [/on\s+the\s+pads/gi, 'पैड पर'],
-    [/outside\s+off/gi, 'ऑफ़ स्टंप के बाहर'],
+    [/yorker/gi, 'यॉर्कर'],
+    [/bouncer/gi, 'बाउंसर'],
+    
+    // Field positions
+    [/on\s+the\s+crease/gi, 'क्रीज़ पर'],
     [/down\s+the\s+leg/gi, 'लेग साइड'],
+    [/outside\s+off/gi, 'ऑफ स्टंप के बाहर'],
+    [/on\s+the\s+pads/gi, 'पैड पर'],
   ];
   
-  // Apply sentence patterns first
   let hindi = cleanText;
-  sentencePatterns.forEach(([pattern, replacement]) => {
+  fullSentencePatterns.forEach(([pattern, replacement]) => {
     hindi = hindi.replace(pattern, replacement);
   });
   
   // ========================================
-  // STEP 3: CRICKET GLOSSARY (Word-level)
-  // For remaining untranslated words
+  // STEP 3: WORD-BY-WORD TRANSLATION
+  // For remaining English words
   // ========================================
-  const cricketGlossary: { [key: string]: string } = {
-    // Numbers
-    'one': 'एक',
-    'two': 'दो',
-    'three': 'तीन',
-    'four': 'चार',
-    'five': 'पांच',
-    'six': 'छह',
-    'seven': 'सात',
-    'eight': 'आठ',
-    'nine': 'नौ',
-    'ten': 'दस',
+  const wordTranslations: { [key: string]: string } = {
+    // Player names stay as-is, but translate common words
     
-    // Scoring
-    'FOUR': 'चौका',
-    'SIX': 'छक्का',
-    'boundary': 'बाउंड्री',
-    'single': 'एक रन',
-    'double': 'दो रन',
-    'runs': 'रन',
-    'run': 'रन',
-    'no run': 'कोई रन नहीं',
+    // Actions & Verbs
+    'given': 'दिया गया',
+    'been': '',
+    'has': '',
+    'have': '',
+    'had': '',
+    'is': 'है',
+    'was': 'था',
+    'were': 'थे',
+    'and': 'और',
+    'he': '',
+    'she': '',
+    'the': '',
+    'a': '',
+    'an': '',
+    'on': 'पर',
+    'in': 'में',
+    'at': 'पर',
+    'to': 'को',
+    'by': 'से',
+    'with': 'के साथ',
+    'it': '',
+    'too': 'बहुत',
+    'confirms': 'पुष्टि करता है',
+    'same': 'वही',
     
-    // Dismissals
+    // Cricket specific
     'wicket': 'विकेट',
     'wickets': 'विकेट',
     'wkts': 'विकेट',
     'wkt': 'विकेट',
     'out': 'आउट',
+    'OUT': 'आउट',
+    'runs': 'रन',
+    'run': 'रन',
+    'four': 'चौका',
+    'FOUR': 'चौका',
+    'six': 'छक्का',
+    'SIX': 'छक्का',
+    'boundary': 'बाउंड्री',
     'bowled': 'बोल्ड',
     'caught': 'कैच',
     'lbw': 'एलबीडब्ल्यू',
+    'LBW': 'एलबीडब्ल्यू',
     'stumped': 'स्टम्प्ड',
-    
-    // Players & Actions
     'batsman': 'बल्लेबाज',
     'bowler': 'गेंदबाज',
+    'umpire': 'अंपायर',
     'fielder': 'फील्डर',
     'keeper': 'विकेटकीपर',
     'wicketkeeper': 'विकेटकीपर',
     
-    // Extras & Deliveries
-    'wide': 'वाइड',
-    'bye': 'बाई',
-    'yorker': 'यॉर्कर',
-    'bouncer': 'बाउंसर',
-    
-    // Shots & Actions
+    // Shots
     'shot': 'शॉट',
     'drive': 'ड्राइव',
     'pull': 'पुल',
     'cut': 'कट',
     'flick': 'फ्लिक',
-    'defended': 'डिफेंड किया',
-    'played': 'खेला',
-    'hit': 'मारा',
-    'missed': 'चूक गया',
+    'sweep': 'स्वीप',
     
-    // Common words
+    // General
     'over': 'ओवर',
     'ball': 'गेंद',
     'delivery': 'गेंद',
-    'won': 'जीता',
-    'beat': 'हराया',
-    'by': 'से',
-    'to': 'को',
-    'and': 'और',
-    'the': '',
-    'a': '',
-    'an': '',
+    'edge': 'एज',
+    'appeal': 'अपील',
+    'bat': 'बल्ला',
+    'pad': 'पैड',
+    'pads': 'पैड',
+    'leg': 'लेग',
+    'stump': 'स्टंप',
+    'stumps': 'स्टंप',
+    'crease': 'क्रीज़',
+    
+    // Numbers
+    'one': '1',
+    'two': '2',
+    'three': '3',
+    'eight': '8',
   };
   
-  // Apply word-level translations
-  Object.entries(cricketGlossary).forEach(([english, hindiWord]) => {
+  // Apply word translations
+  Object.entries(wordTranslations).forEach(([english, hindiWord]) => {
     if (hindiWord === '') {
-      // Remove articles
+      // Remove helper words completely
       const regex = new RegExp(`\\b${english}\\b\\s*`, 'gi');
-      hindi = hindi.replace(regex, '');
+      hindi = hindi.replace(regex, ' ');
     } else {
       const regex = new RegExp(`\\b${english}\\b`, 'gi');
       hindi = hindi.replace(regex, hindiWord);
@@ -791,9 +823,13 @@ const translateToHindi = (englishText: string): string => {
   });
   
   // ========================================
-  // STEP 4: CLEAN UP EXTRA SPACES
+  // STEP 4: FINAL CLEANUP
   // ========================================
-  hindi = hindi.replace(/\s+/g, ' ').trim();
+  hindi = hindi
+    .replace(/\s+/g, ' ')    // Multiple spaces to single
+    .replace(/\s+\./g, '.')  // Space before period
+    .replace(/\s+,/g, ',')   // Space before comma
+    .trim();
   
   return hindi;
 };
