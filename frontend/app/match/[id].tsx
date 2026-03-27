@@ -41,7 +41,7 @@ export default function MatchDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { isPro } = usePro();
-  const { trackClick, shouldShowBannerAd } = useAdMob();
+  const { trackClick, showRewardedAd } = useAdMob();
   
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
@@ -207,8 +207,6 @@ export default function MatchDetail() {
   }, []);
 
   // Handle Pro unlock via ads
-  const { showRewardedAd } = useAdMob();
-  
   const unlockPro = async () => {
     setShowProModal(true);
   };
