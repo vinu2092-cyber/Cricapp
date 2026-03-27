@@ -133,7 +133,7 @@ Total time:         ~40-50 minutes (for both)
 - ✅ Category filters
 
 **Technical:**
-- ✅ Backend: https://wicket-tracker-app-1.preview.emergentagent.com
+- ✅ Backend: https://cric-overlay-native.preview.emergentagent.com
 - ✅ 8 RapidAPI keys with rotation
 - ✅ Real Cricbuzz data
 - ✅ AdMob IDs configured

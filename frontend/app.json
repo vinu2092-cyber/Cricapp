@@ -20,7 +20,7 @@
         "testDeviceId": "553c7721-4821-461b-9f62-8584b1e60745"
       },
       "router": {},
-      "backendUrl": "https://wicket-tracker-app-1.preview.emergentagent.com",
+      "backendUrl": "https://cric-overlay-native.preview.emergentagent.com",
       "eas": {
         "projectId": "5446a4ee-77fd-467e-ae93-44e9d16642cf"
       }

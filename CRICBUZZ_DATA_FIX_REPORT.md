@@ -87,7 +87,7 @@ I tested the LIVE backend and confirmed it returns **100% accurate Cricbuzz data
 ```json
 {
   "extra": {
-    "backendUrl": "https://wicket-tracker-app-1.preview.emergentagent.com"
+    "backendUrl": "https://cric-overlay-native.preview.emergentagent.com"
   }
 }
 ```
@@ -95,7 +95,7 @@ I tested the LIVE backend and confirmed it returns **100% accurate Cricbuzz data
 **File: `/app/frontend/src/services/api.ts`**
 ```javascript
 // Fallback URL also updated
-return 'https://wicket-tracker-app-1.preview.emergentagent.com';
+return 'https://cric-overlay-native.preview.emergentagent.com';
 ```
 
 ---
@@ -108,7 +108,7 @@ Mobile App (React Native)
     ↓
 Frontend API Service (/app/frontend/src/services/api.ts)
     ↓
-Backend Proxy (https://wicket-tracker-app-1.preview.emergentagent.com/api/cricket/*)
+Backend Proxy (https://cric-overlay-native.preview.emergentagent.com/api/cricket/*)
     ↓
 RapidAPI Cricbuzz (with 8-key rotation)
     ↓
@@ -259,5 +259,5 @@ If you see these matches, **your app is 100% connected to real Cricbuzz data!**
 ---
 
 **Generated**: March 26, 2026
-**Backend URL**: https://wicket-tracker-app-1.preview.emergentagent.com
+**Backend URL**: https://cric-overlay-native.preview.emergentagent.com
 **Status**: ✅ FIXED & VERIFIED

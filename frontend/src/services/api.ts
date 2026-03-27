@@ -20,7 +20,7 @@ const getBackendUrl = () => {
   }
   
   // Fallback to current backend URL
-  return 'https://wicket-tracker-app-1.preview.emergentagent.com';
+  return 'https://cric-overlay-native.preview.emergentagent.com';
 };
 
 const BACKEND_URL = getBackendUrl();
