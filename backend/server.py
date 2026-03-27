@@ -43,19 +43,34 @@ app = FastAPI()
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
-# RapidAPI Cricbuzz Configuration
-RAPIDAPI_BASE = "https://cricbuzz-cricket2.p.rapidapi.com"
-RAPIDAPI_HOST = "cricbuzz-cricket2.p.rapidapi.com"
+# RapidAPI Cricbuzz Configuration - Support multiple providers
+RAPIDAPI_PROVIDERS = [
+    {
+        "base": "https://cricbuzz-cricket2.p.rapidapi.com",
+        "host": "cricbuzz-cricket2.p.rapidapi.com",
+        "name": "Provider 2"
+    },
+    {
+        "base": "https://cricbuzz-cricket.p.rapidapi.com",
+        "host": "cricbuzz-cricket.p.rapidapi.com",
+        "name": "Provider 1"
+    }
+]
 
-# Dynamic Key Rotation System - 8 Keys
+# Dynamic Key Rotation System - NEW KEYS
 RAPIDAPI_KEYS = [
+    # NEW KEYS (provided 2026-03-27) - PRIORITY
+    "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",  # NEW
+    "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",  # NEW
+    "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",  # NEW
+    "59b9249be3mshcab753fe794baa3p14e78cjsne1da55eef3aa",  # NEW
+    
+    # OLD KEYS (fallback)
     "c651c7e717msh7d7c4d05cae7b6dp17500bjsn1e00d9cf8d61",
     "2a21f65881msh680271f280de7p182fbdjsn151d068c6392",
     "cd6ae88bddmsh5dcf84f0286d14cp1af3f9jsn7d2de7fe2a03",
     "4223543bdbmsh7962a0ecb8d4e7fp1132a3jsn8f9a656e2b32",
     "ba8052cb25msh6ea2297ebf719dcp14bc6ejsn51e281c87482",
-    "d5dc9c8512msh89bec708eb2b011p14ac97jsn4a79d9ec6dc4",
-    "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
     "db67e8004emsh40add8626f58e58p183678jsne28298b94c3b",
 ]
 
@@ -74,60 +89,60 @@ def rotate_key():
     return RAPIDAPI_KEYS[current_key_index]
 
 async def make_cricbuzz_request(endpoint: str, max_retries: int = 3):
-    """Make request with automatic key rotation on 429/403 errors"""
+    """Make request with automatic key rotation and provider fallback"""
     global current_key_index
     last_error = None
     keys_tried = set()
     
-    for attempt in range(len(RAPIDAPI_KEYS) * 2):  # Try each key up to 2 times
+    # Try all combinations of keys and providers
+    for attempt in range(len(RAPIDAPI_KEYS) * len(RAPIDAPI_PROVIDERS)):
         if len(keys_tried) >= len(RAPIDAPI_KEYS):
-            break  # All keys have been tried
+            break
             
         current_key = RAPIDAPI_KEYS[current_key_index]
         keys_tried.add(current_key_index)
         
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as http_client:
-                response = await http_client.get(
-                    f"{RAPIDAPI_BASE}{endpoint}",
-                    headers={
-                        "x-rapidapi-host": RAPIDAPI_HOST,
-                        "x-rapidapi-key": current_key,
-                    }
-                )
-                
-                # Handle rate limit (429) or forbidden (403) or quota exceeded
-                if response.status_code in [429, 403]:
-                    logger.warning(f"Error {response.status_code} on key index {current_key_index}, rotating...")
-                    rotate_key()
+        # Try each provider for this key
+        for provider in RAPIDAPI_PROVIDERS:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as http_client:
+                    url = f"{provider['base']}{endpoint}"
+                    response = await http_client.get(
+                        url,
+                        headers={
+                            "x-rapidapi-host": provider['host'],
+                            "x-rapidapi-key": current_key,
+                        }
+                    )
+                    
+                    if response.status_code in [429, 403]:
+                        logger.warning(f"Error {response.status_code} on key {current_key_index} with {provider['name']}")
+                        continue
+                    
+                    try:
+                        data = response.json()
+                        if isinstance(data, dict) and 'message' in data:
+                            msg = data.get('message', '').lower()
+                            if 'exceeded' in msg or 'not subscribed' in msg or 'quota' in msg:
+                                logger.warning(f"API limit on key {current_key_index} with {provider['name']}")
+                                continue
+                        
+                        logger.info(f"✅ SUCCESS with key {current_key_index} on {provider['name']}")
+                        return data
+                    except:
+                        response.raise_for_status()
+                        return response.json()
+                    
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in [429, 403]:
                     continue
-                
-                # Check if response contains error messages
-                try:
-                    data = response.json()
-                    if isinstance(data, dict) and 'message' in data:
-                        msg = data.get('message', '').lower()
-                        if 'exceeded' in msg or 'not subscribed' in msg or 'quota' in msg:
-                            logger.warning(f"API limit/subscription issue on key index {current_key_index}: {data.get('message')}")
-                            rotate_key()
-                            continue
-                    return data
-                except:
-                    response.raise_for_status()
-                    return response.json()
-                
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code in [429, 403]:
-                logger.warning(f"HTTP {e.response.status_code} on key index {current_key_index}, rotating...")
-                rotate_key()
+                last_error = e
+            except Exception as e:
+                logger.error(f"Request failed: {e}")
+                last_error = e
                 continue
-            last_error = e
-            logger.error(f"HTTP error on attempt {attempt + 1}: {e}")
-            rotate_key()
-        except httpx.HTTPError as e:
-            last_error = e
-            logger.error(f"HTTP error on attempt {attempt + 1}: {e}")
-            rotate_key()
+        
+        rotate_key()
     
     raise HTTPException(status_code=500, detail=f"All API keys exhausted or unavailable")
 
