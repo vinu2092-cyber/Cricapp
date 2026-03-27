@@ -943,9 +943,6 @@ const styles = StyleSheet.create({
   bottomPadding: {
     height: 100, // Increased to prevent banner ad overlap
   },
-  voiceButton: {
-    padding: 4,
-  },
   voiceButtonLocked: {
     opacity: 0.4,
   },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -23,36 +23,19 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   isLive = false 
 }) => {
   const [language, setLanguage] = useState<Language>('english');
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
-  const [displayCount, setDisplayCount] = useState(10); // Show 10 initially
+  const [displayCount, setDisplayCount] = useState(10);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const lastCommentaryCount = useRef(0);
   
   const { isPro } = usePro();
   const { BannerAdComponent } = useAdMob();
 
-  // AUTO-PLAY: Voice for new balls when Pro and voice enabled
-  useEffect(() => {
-    if (!isPro || !voiceEnabled || !isLive) return;
-
-    // Check if new commentary arrived
-    if (commentary.length > lastCommentaryCount.current && lastCommentaryCount.current > 0) {
-      const newCommentary = commentary[0]; // Latest ball is first
-      speakCommentary(newCommentary.english, 0);
-    }
-
-    lastCommentaryCount.current = commentary.length;
-  }, [commentary.length, isPro, voiceEnabled, isLive]);
-
-  const speakCommentary = async (text: string, index: number) => {
+  const speakCommentary = (text: string, index: number) => {
     try {
-      // Stop any current speech
-      await Speech.stop();
-      
+      Speech.stop();
       setSpeakingIndex(index);
       
-      await Speech.speak(text, {
+      Speech.speak(text, {
         language: 'en-IN',
         pitch: 1.0,
         rate: 0.9,
@@ -66,14 +49,6 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     }
   };
 
-  const toggleVoice = () => {
-    if (voiceEnabled) {
-      Speech.stop();
-      setSpeakingIndex(null);
-    }
-    setVoiceEnabled(!voiceEnabled);
-  };
-
   const handleLoadMore = () => {
     setIsLoadingMore(true);
     setTimeout(() => {
@@ -84,46 +59,31 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
   const getEventColor = (event?: string) => {
     switch (event) {
-      case 'wicket':
-        return '#FF4444';
-      case 'six':
-        return '#9C27B0';
-      case 'four':
-        return '#4CAF50';
-      case 'dot':
-        return '#999';
-      default:
-        return '#2196F3';
+      case 'wicket': return '#FF4444';
+      case 'six': return '#9C27B0';
+      case 'four': return '#4CAF50';
+      case 'dot': return '#999';
+      default: return '#2196F3';
     }
   };
 
   const getEventIcon = (event?: string) => {
     switch (event) {
-      case 'wicket':
-        return 'alert-circle';
-      case 'six':
-        return 'star';
-      case 'four':
-        return 'flash';
-      case 'dot':
-        return 'ellipse-outline';
-      default:
-        return 'radio-button-on';
+      case 'wicket': return 'alert-circle';
+      case 'six': return 'star';
+      case 'four': return 'flash';
+      case 'dot': return 'ellipse-outline';
+      default: return 'radio-button-on';
     }
   };
 
   const getEventLabel = (event?: string) => {
     switch (event) {
-      case 'wicket':
-        return language === 'english' ? 'WICKET' : 'विकेट';
-      case 'six':
-        return language === 'english' ? 'SIX' : 'छक्का';
-      case 'four':
-        return language === 'english' ? 'FOUR' : 'चौका';
-      case 'dot':
-        return language === 'english' ? 'DOT' : 'डॉट';
-      default:
-        return '';
+      case 'wicket': return language === 'english' ? 'WICKET' : 'विकेट';
+      case 'six': return language === 'english' ? 'SIX' : 'छक्का';
+      case 'four': return language === 'english' ? 'FOUR' : 'चौका';
+      case 'dot': return language === 'english' ? 'DOT' : 'डॉट';
+      default: return '';
     }
   };
 
@@ -140,26 +100,6 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           </Text>
         </View>
         
-        {/* Voice Toggle - Pro Feature */}
-        <TouchableOpacity
-          style={[
-            styles.voiceButton,
-            !isPro && styles.voiceButtonLocked,
-            voiceEnabled && isPro && styles.voiceButtonActive,
-          ]}
-          onPress={isPro ? toggleVoice : undefined}
-        >
-          <Ionicons 
-            name={voiceEnabled ? "volume-high" : "volume-mute"} 
-            size={20} 
-            color={isPro ? (voiceEnabled ? "#4CAF50" : "#666") : "#999"} 
-          />
-          {!isPro && (
-            <Ionicons name="lock-closed" size={12} color="#999" style={styles.lockIcon} />
-          )}
-        </TouchableOpacity>
-        
-        {/* Language Toggle */}
         <View style={styles.languageToggle}>
           <TouchableOpacity
             style={[
@@ -168,12 +108,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             ]}
             onPress={() => setLanguage('english')}
           >
-            <Text
-              style={[
-                styles.langText,
-                language === 'english' && styles.langTextActive,
-              ]}
-            >
+            <Text style={[styles.langText, language === 'english' && styles.langTextActive]}>
               EN
             </Text>
           </TouchableOpacity>
@@ -184,12 +119,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             ]}
             onPress={() => setLanguage('hindi')}
           >
-            <Text
-              style={[
-                styles.langText,
-                language === 'hindi' && styles.langTextActive,
-              ]}
-            >
+            <Text style={[styles.langText, language === 'hindi' && styles.langTextActive]}>
               हि
             </Text>
           </TouchableOpacity>
@@ -197,64 +127,56 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       </View>
 
       <ScrollView style={styles.commentaryList} nestedScrollEnabled>
-        {displayedCommentary.map((item, index) => (
-          <React.Fragment key={index}>
-            <View style={styles.commentaryItem}>
-              <View style={styles.overBall}>
-                <Text style={styles.overText}>{item.over}</Text>
-              </View>
-              
-              <View style={styles.commentaryContent}>
-                {item.event && item.event !== 'normal' && (
-                  <View
-                    style={[
-                      styles.eventBadge,
-                      { backgroundColor: getEventColor(item.event) },
-                    ]}
+        {displayedCommentary.map((item, index) => {
+          const showBanner = !isPro && (index + 1) % 6 === 0;
+          
+          return (
+            <View key={index}>
+              <View style={styles.commentaryItem}>
+                <View style={styles.overBall}>
+                  <Text style={styles.overText}>{item.over}</Text>
+                </View>
+                
+                <View style={styles.commentaryContent}>
+                  {item.event && item.event !== 'normal' && (
+                    <View style={[styles.eventBadge, { backgroundColor: getEventColor(item.event) }]}>
+                      <Ionicons name={getEventIcon(item.event) as any} size={12} color="#FFF" />
+                      <Text style={styles.eventText}>{getEventLabel(item.event)}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.commentaryText}>
+                    {language === 'english' ? item.english : item.hindi}
+                  </Text>
+                  {item.runs !== undefined && item.runs > 0 && (
+                    <View style={styles.runsContainer}>
+                      <Text style={styles.runsText}>+{item.runs}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {isPro && (
+                  <TouchableOpacity
+                    style={styles.speakButton}
+                    onPress={() => speakCommentary(item.english, index)}
                   >
                     <Ionicons
-                      name={getEventIcon(item.event) as any}
-                      size={12}
-                      color="#FFF"
+                      name={speakingIndex === index ? "stop-circle" : "play-circle"}
+                      size={24}
+                      color={speakingIndex === index ? "#FF4444" : "#4CAF50"}
                     />
-                    <Text style={styles.eventText}>{getEventLabel(item.event)}</Text>
-                  </View>
-                )}
-                <Text style={styles.commentaryText}>
-                  {language === 'english' ? item.english : item.hindi}
-                </Text>
-                {item.runs !== undefined && item.runs > 0 && (
-                  <View style={styles.runsContainer}>
-                    <Text style={styles.runsText}>+{item.runs}</Text>
-                  </View>
+                  </TouchableOpacity>
                 )}
               </View>
 
-              {/* Voice Button for Each Ball - Pro Only */}
-              {isPro && (
-                <TouchableOpacity
-                  style={styles.speakButton}
-                  onPress={() => speakCommentary(item.english, index)}
-                >
-                  <Ionicons
-                    name={speakingIndex === index ? "stop-circle" : "play-circle"}
-                    size={24}
-                    color={speakingIndex === index ? "#FF4444" : "#4CAF50"}
-                  />
-                </TouchableOpacity>
+              {showBanner && (
+                <View style={styles.bannerAdContainer}>
+                  <BannerAdComponent size="BANNER" />
+                </View>
               )}
             </View>
+          );
+        })}
 
-            {/* BANNER AD: Show after every 6 balls (every over) for non-Pro users */}
-            {!isPro && (index + 1) % 6 === 0 && (
-              <View style={styles.bannerAdContainer}>
-                <BannerAdComponent size="BANNER" />
-              </View>
-            )}
-          </React.Fragment>
-        ))}
-
-        {/* LOAD MORE BUTTON */}
         {hasMore && (
           <View style={styles.loadMoreContainer}>
             <TouchableOpacity
@@ -276,7 +198,6 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           </View>
         )}
 
-        {/* Total Commentary Count */}
         <View style={styles.countContainer}>
           <Text style={styles.countText}>
             {displayCount} of {commentary.length} commentary items
@@ -322,24 +243,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#333',
-  },
-  voiceButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(76, 175, 80, 0.1)',
-    marginRight: 8,
-    position: 'relative',
-  },
-  voiceButtonLocked: {
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  voiceButtonActive: {
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-  },
-  lockIcon: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
   },
   languageToggle: {
     flexDirection: 'row',
