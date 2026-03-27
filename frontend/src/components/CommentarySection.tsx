@@ -10,7 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { Commentary, Language } from '../types/match';
-import { useProContext } from '../context/ProContext';
+import { usePro } from '../context/ProContext';
 import { useAdMob } from '../context/AdMobContext';
 
 interface CommentarySectionProps {
@@ -29,7 +29,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const lastCommentaryCount = useRef(0);
   
-  const { isPro } = useProContext();
+  const { isPro } = usePro();
   const { BannerAdComponent } = useAdMob();
 
   // AUTO-PLAY: Voice for new balls when Pro and voice enabled
