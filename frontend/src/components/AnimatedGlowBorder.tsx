@@ -1,15 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withRepeat,
-  withSequence,
-  Easing,
-  interpolateColor,
-  runOnJS,
-} from 'react-native-reanimated';
+import { View, StyleSheet, Dimensions, Animated } from 'react-native';
 
 interface AnimatedGlowBorderProps {
   children: React.ReactNode;
@@ -30,204 +20,111 @@ const NEON_COLORS = [
   '#00FF7F', // Spring Green
   '#FF1493', // Deep Pink
   '#1E90FF', // Dodger Blue
-  '#FF6347', // Tomato
-  '#39FF14', // Neon Green
-  '#FF073A', // Neon Red
-  '#B026FF', // Neon Purple
-  '#0FFF50', // Malachite
-  '#FF5F1F', // Neon Orange
 ];
 
 const getRandomColor = () => {
   return NEON_COLORS[Math.floor(Math.random() * NEON_COLORS.length)];
 };
 
-const getRandomSpeed = () => {
-  // Random duration between 1000ms (fast) and 4000ms (slow)
-  return Math.floor(Math.random() * 3000) + 1000;
-};
-
 const AnimatedGlowBorder: React.FC<AnimatedGlowBorderProps> = ({ children }) => {
-  const [colors, setColors] = useState({
-    color1: getRandomColor(),
-    color2: getRandomColor(),
-    color3: getRandomColor(),
-    color4: getRandomColor(),
-  });
-  
-  const [animationSpeed, setAnimationSpeed] = useState(getRandomSpeed());
-  
-  // Animation values for each border side
-  const topProgress = useSharedValue(0);
-  const rightProgress = useSharedValue(0);
-  const bottomProgress = useSharedValue(0);
-  const leftProgress = useSharedValue(0);
-  
-  // Glow intensity
-  const glowIntensity = useSharedValue(0.5);
+  const [currentColor, setCurrentColor] = useState(getRandomColor());
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0.5)).current;
 
-  // Change colors randomly
+  // Color rotation animation
   useEffect(() => {
     const colorInterval = setInterval(() => {
-      setColors({
-        color1: getRandomColor(),
-        color2: getRandomColor(),
-        color3: getRandomColor(),
-        color4: getRandomColor(),
-      });
+      setCurrentColor(getRandomColor());
     }, 2000);
 
     return () => clearInterval(colorInterval);
   }, []);
 
-  // Change animation speed randomly
+  // Fade animation
   useEffect(() => {
-    const speedInterval = setInterval(() => {
-      setAnimationSpeed(getRandomSpeed());
-    }, 5000);
-
-    return () => clearInterval(speedInterval);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
   }, []);
 
-  // Start animations
+  // Glow pulse animation
   useEffect(() => {
-    // Animate color progress with current speed
-    topProgress.value = withRepeat(
-      withTiming(1, { duration: animationSpeed, easing: Easing.linear }),
-      -1,
-      true
-    );
-    
-    rightProgress.value = withRepeat(
-      withSequence(
-        withTiming(0.25, { duration: 0 }),
-        withTiming(1.25, { duration: animationSpeed, easing: Easing.linear })
-      ),
-      -1,
-      true
-    );
-    
-    bottomProgress.value = withRepeat(
-      withSequence(
-        withTiming(0.5, { duration: 0 }),
-        withTiming(1.5, { duration: animationSpeed, easing: Easing.linear })
-      ),
-      -1,
-      true
-    );
-    
-    leftProgress.value = withRepeat(
-      withSequence(
-        withTiming(0.75, { duration: 0 }),
-        withTiming(1.75, { duration: animationSpeed, easing: Easing.linear })
-      ),
-      -1,
-      true
-    );
-
-    // Glow pulse
-    glowIntensity.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: animationSpeed / 2, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.5, { duration: animationSpeed / 2, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-  }, [animationSpeed]);
-
-  // Animated styles for each border
-  const topBorderStyle = useAnimatedStyle(() => {
-    const progress = topProgress.value % 1;
-    return {
-      backgroundColor: interpolateColor(
-        progress,
-        [0, 0.33, 0.66, 1],
-        [colors.color1, colors.color2, colors.color3, colors.color4]
-      ),
-      shadowColor: interpolateColor(
-        progress,
-        [0, 0.33, 0.66, 1],
-        [colors.color1, colors.color2, colors.color3, colors.color4]
-      ),
-      shadowOpacity: glowIntensity.value,
-      shadowRadius: 12 * glowIntensity.value,
-    };
-  });
-
-  const rightBorderStyle = useAnimatedStyle(() => {
-    const progress = rightProgress.value % 1;
-    return {
-      backgroundColor: interpolateColor(
-        progress,
-        [0, 0.33, 0.66, 1],
-        [colors.color2, colors.color3, colors.color4, colors.color1]
-      ),
-      shadowColor: interpolateColor(
-        progress,
-        [0, 0.33, 0.66, 1],
-        [colors.color2, colors.color3, colors.color4, colors.color1]
-      ),
-      shadowOpacity: glowIntensity.value,
-      shadowRadius: 12 * glowIntensity.value,
-    };
-  });
-
-  const bottomBorderStyle = useAnimatedStyle(() => {
-    const progress = bottomProgress.value % 1;
-    return {
-      backgroundColor: interpolateColor(
-        progress,
-        [0, 0.33, 0.66, 1],
-        [colors.color3, colors.color4, colors.color1, colors.color2]
-      ),
-      shadowColor: interpolateColor(
-        progress,
-        [0, 0.33, 0.66, 1],
-        [colors.color3, colors.color4, colors.color1, colors.color2]
-      ),
-      shadowOpacity: glowIntensity.value,
-      shadowRadius: 12 * glowIntensity.value,
-    };
-  });
-
-  const leftBorderStyle = useAnimatedStyle(() => {
-    const progress = leftProgress.value % 1;
-    return {
-      backgroundColor: interpolateColor(
-        progress,
-        [0, 0.33, 0.66, 1],
-        [colors.color4, colors.color1, colors.color2, colors.color3]
-      ),
-      shadowColor: interpolateColor(
-        progress,
-        [0, 0.33, 0.66, 1],
-        [colors.color4, colors.color1, colors.color2, colors.color3]
-      ),
-      shadowOpacity: glowIntensity.value,
-      shadowRadius: 12 * glowIntensity.value,
-    };
-  });
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: false,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0.5,
+          duration: 1500,
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+  }, []);
 
   return (
     <View style={styles.container}>
       {/* Top Border */}
-      <Animated.View style={[styles.borderTop, topBorderStyle]} />
+      <Animated.View 
+        style={[
+          styles.borderTop, 
+          { 
+            backgroundColor: currentColor,
+            shadowColor: currentColor,
+            shadowOpacity: glowAnim,
+          }
+        ]} 
+      />
       
       {/* Right Border */}
-      <Animated.View style={[styles.borderRight, rightBorderStyle]} />
+      <Animated.View 
+        style={[
+          styles.borderRight, 
+          { 
+            backgroundColor: currentColor,
+            shadowColor: currentColor,
+            shadowOpacity: glowAnim,
+          }
+        ]} 
+      />
       
       {/* Bottom Border */}
-      <Animated.View style={[styles.borderBottom, bottomBorderStyle]} />
+      <Animated.View 
+        style={[
+          styles.borderBottom, 
+          { 
+            backgroundColor: currentColor,
+            shadowColor: currentColor,
+            shadowOpacity: glowAnim,
+          }
+        ]} 
+      />
       
       {/* Left Border */}
-      <Animated.View style={[styles.borderLeft, leftBorderStyle]} />
-
-      {/* Corner glow effects */}
-      <Animated.View style={[styles.cornerTopLeft, topBorderStyle]} />
-      <Animated.View style={[styles.cornerTopRight, rightBorderStyle]} />
-      <Animated.View style={[styles.cornerBottomRight, bottomBorderStyle]} />
-      <Animated.View style={[styles.cornerBottomLeft, leftBorderStyle]} />
+      <Animated.View 
+        style={[
+          styles.borderLeft, 
+          { 
+            backgroundColor: currentColor,
+            shadowColor: currentColor,
+            shadowOpacity: glowAnim,
+          }
+        ]} 
+      />
 
       {/* Main Content */}
       <View style={styles.content}>
@@ -259,6 +156,7 @@ const styles = StyleSheet.create({
     height: BORDER_WIDTH,
     zIndex: 1000,
     shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
     elevation: 10,
   },
   borderRight: {
@@ -269,6 +167,7 @@ const styles = StyleSheet.create({
     width: BORDER_WIDTH,
     zIndex: 1000,
     shadowOffset: { width: -4, height: 0 },
+    shadowRadius: 12,
     elevation: 10,
   },
   borderBottom: {
@@ -279,6 +178,7 @@ const styles = StyleSheet.create({
     height: BORDER_WIDTH,
     zIndex: 1000,
     shadowOffset: { width: 0, height: -4 },
+    shadowRadius: 12,
     elevation: 10,
   },
   borderLeft: {
@@ -289,52 +189,8 @@ const styles = StyleSheet.create({
     width: BORDER_WIDTH,
     zIndex: 1000,
     shadowOffset: { width: 4, height: 0 },
+    shadowRadius: 12,
     elevation: 10,
-  },
-  // Corner glow overlays for smooth transitions
-  cornerTopLeft: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: BORDER_WIDTH * 2,
-    height: BORDER_WIDTH * 2,
-    borderTopLeftRadius: 4,
-    zIndex: 1001,
-    shadowOffset: { width: 2, height: 2 },
-    elevation: 11,
-  },
-  cornerTopRight: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: BORDER_WIDTH * 2,
-    height: BORDER_WIDTH * 2,
-    borderTopRightRadius: 4,
-    zIndex: 1001,
-    shadowOffset: { width: -2, height: 2 },
-    elevation: 11,
-  },
-  cornerBottomRight: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: BORDER_WIDTH * 2,
-    height: BORDER_WIDTH * 2,
-    borderBottomRightRadius: 4,
-    zIndex: 1001,
-    shadowOffset: { width: -2, height: -2 },
-    elevation: 11,
-  },
-  cornerBottomLeft: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    width: BORDER_WIDTH * 2,
-    height: BORDER_WIDTH * 2,
-    borderBottomLeftRadius: 4,
-    zIndex: 1001,
-    shadowOffset: { width: 2, height: -2 },
-    elevation: 11,
   },
 });
 

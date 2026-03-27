@@ -9,6 +9,9 @@
       "android": {
         "gradleCommand": ":app:assembleDebug",
         "buildType": "apk"
+      },
+      "env": {
+        "NODE_ENV": "development"
       }
     },
     "preview": {
@@ -17,11 +20,19 @@
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease",
         "withoutCredentials": true
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "EXPO_USE_METRO_WORKSPACE_ROOT": "1"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "EXPO_USE_METRO_WORKSPACE_ROOT": "1"
       }
     }
   },
