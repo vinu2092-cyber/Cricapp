@@ -1,115 +1,124 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
-  StyleSheet,
-  ImageBackground,
-  FlatList,
-  RefreshControl,
   Text,
+  StyleSheet,
+  FlatList,
   TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { Match } from '../src/types/match';
+import MatchCard from '../src/components/MatchCard';
 import Header from '../src/components/Header';
 import Footer from '../src/components/Footer';
-import TabBar from '../src/components/TabBar';
-import CategoryFilter from '../src/components/CategoryFilter';
-import MatchCard from '../src/components/MatchCard';
-import AdModal from '../src/components/AdModal';
 import LoadingScreen from '../src/components/LoadingScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
-import FloatingScoreboard from '../src/components/FloatingScoreboard';
-import SplashScreen from '../src/components/SplashScreen';
-import { usePro } from '../src/context/ProContext';
-import { useAdMob } from '../src/context/AdMobContext';
-import { fetchAllMatches, simulateLiveScoreUpdate } from '../src/services/api';
-import { Match, MatchStatus, MatchCategory } from '../src/types/match';
+import { AdMobProvider } from '../src/context/AdMobContext';
+import { ProProvider } from '../src/context/ProContext';
+import { getBackendUrl } from '../src/services/api';
 
-const AUTO_REFRESH_INTERVAL = 50000; // 50 seconds - Smart Fetching interval
+type TabType = 'live' | 'recent' | 'upcoming';
+type CategoryType = 'all' | 'international' | 'league' | 'domestic';
+
+const BACKEND_URL = getBackendUrl();
+
+// UPDATED: Auto-refresh reduced to 30 seconds
+const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds - Smart Fetching interval
 
 export default function Index() {
   const router = useRouter();
-  const { isPro, startAdChallenge, isWatchingAds } = usePro();
-  const { trackClick } = useAdMob();
-  
-  const [showSplash, setShowSplash] = useState(true);
-  const [activeTab, setActiveTab] = useState<MatchStatus>('live');
-  const [activeCategory, setActiveCategory] = useState<MatchCategory>('All');
+  const [activeTab, setActiveTab] = useState<TabType>('live');
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all');
   const [matches, setMatches] = useState<Match[]>([]);
+  const [filteredMatches, setFilteredMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [showAdModal, setShowAdModal] = useState(false);
-  const [showFloatingScoreboard, setShowFloatingScoreboard] = useState(false);
-  const [selectedLiveMatch, setSelectedLiveMatch] = useState<Match | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFetchTime = useRef<{ [key: string]: number }>({});
+  
+  // UPDATED: Cache duration reduced to 30 seconds
+  const CACHE_DURATION = 30000; // 30 seconds cache - matches API refresh interval
 
-  // Smart caching for matches
-  const matchesCache = useRef<{
-    data: Match[];
-    timestamp: number;
-  } | null>(null);
-  const CACHE_DURATION = 50000; // 50 seconds cache - matches API refresh interval
-
-  const loadMatches = async () => {
+  // Fetch matches from backend
+  const fetchMatches = async (tab: TabType, forceRefresh = false) => {
     try {
-      setError(false);
-      
-      // Check cache first
+      const cacheKey = `matches_${tab}`;
       const now = Date.now();
-      if (matchesCache.current && (now - matchesCache.current.timestamp) < CACHE_DURATION) {
-        console.log('Using cached matches data');
-        setMatches(matchesCache.current.data);
-        return;
+
+      // Check cache if not force refreshing
+      if (!forceRefresh && lastFetchTime.current[cacheKey]) {
+        const timeSinceLastFetch = now - lastFetchTime.current[cacheKey];
+        if (timeSinceLastFetch < CACHE_DURATION) {
+          console.log(`Using cached data for ${tab} (${Math.round(timeSinceLastFetch / 1000)}s old)`);
+          
+          // Try to load from AsyncStorage
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsedMatches = JSON.parse(cachedData);
+            setMatches(parsedMatches);
+            return parsedMatches;
+          }
+        }
+      }
+
+      const endpoint = `${BACKEND_URL}/api/cricket/matches/${tab}`;
+      console.log(`Fetching ${tab} matches from:`, endpoint);
+      
+      const response = await axios.get(endpoint, {
+        timeout: 10000,
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.data && response.data.typeMatches) {
+        const allMatches = extractMatches(response.data.typeMatches);
+        setMatches(allMatches);
+        
+        // Cache the data
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(allMatches));
+        lastFetchTime.current[cacheKey] = now;
+        
+        return allMatches;
+      }
+    } catch (err) {
+      console.error('Error fetching matches:', err);
+      
+      // Try to use stale cache on error
+      const cacheKey = `matches_${tab}`;
+      const cachedData = await AsyncStorage.getItem(cacheKey);
+      if (cachedData) {
+        console.log('Using stale cache due to error');
+        const parsedMatches = JSON.parse(cachedData);
+        setMatches(parsedMatches);
+        return parsedMatches;
       }
       
-      console.log('Fetching fresh matches data');
-      const data = await fetchAllMatches();
-      setMatches(data);
-      
-      // Update cache
-      matchesCache.current = {
-        data,
-        timestamp: now,
-      };
-    } catch (err) {
-      console.error('Error loading matches:', err);
-      setError(true);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      throw err;
     }
   };
 
-  useEffect(() => {
-    loadMatches();
-  }, []);
-
-  // Auto-refresh for live matches
+  // Start auto-refresh for live matches
   useEffect(() => {
     if (activeTab === 'live') {
       // Start auto-refresh
       autoRefreshRef.current = setInterval(() => {
-        setMatches((prevMatches) => {
-          return prevMatches.map((match) => {
-            if (match.status === 'live') {
-              return simulateLiveScoreUpdate(match);
-            }
-            return match;
-          });
-        });
-        
-        // Also update selected live match for floating scoreboard
-        if (selectedLiveMatch) {
-          setSelectedLiveMatch((prev) => {
-            if (prev && prev.status === 'live') {
-              return simulateLiveScoreUpdate(prev);
-            }
-            return prev;
-          });
-        }
+        console.log('Auto-refreshing live matches...');
+        fetchMatches('live', true).catch(console.error);
       }, AUTO_REFRESH_INTERVAL);
+
+      return () => {
+        if (autoRefreshRef.current) {
+          clearInterval(autoRefreshRef.current);
+          autoRefreshRef.current = null;
+        }
+      };
     } else {
       // Clear auto-refresh when not on live tab
       if (autoRefreshRef.current) {
@@ -117,257 +126,317 @@ export default function Index() {
         autoRefreshRef.current = null;
       }
     }
+  }, [activeTab]);
 
-    return () => {
-      if (autoRefreshRef.current) {
-        clearInterval(autoRefreshRef.current);
+  // Initial load and tab changes
+  useEffect(() => {
+    const loadMatches = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        await fetchMatches(activeTab);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load matches');
+      } finally {
+        setLoading(false);
       }
     };
-  }, [activeTab, selectedLiveMatch]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
     loadMatches();
-  }, []);
+  }, [activeTab]);
 
-  const handleUnlockPro = () => {
-    trackClick(); // Track click for smart interstitial
-    if (!isPro) {
-      startAdChallenge();
-      setShowAdModal(true);
-    }
-  };
-
-  const handleMatchPress = (match: Match) => {
-    trackClick(); // Track click for smart interstitial
-    router.push({
-      pathname: '/match/[id]',
-      params: { id: match.matchId },
-    });
-  };
-
-  const handlePopupPress = (match: Match) => {
-    trackClick(); // Track click for smart interstitial
-    if (isPro) {
-      setSelectedLiveMatch(match);
-      setShowFloatingScoreboard(true);
+  // Filter matches by category
+  useEffect(() => {
+    if (selectedCategory === 'all') {
+      setFilteredMatches(matches);
     } else {
-      // Prompt to unlock Pro
-      startAdChallenge();
-      setShowAdModal(true);
+      const filtered = matches.filter(
+        (match) => match.matchFormat.toLowerCase() === selectedCategory
+      );
+      setFilteredMatches(filtered);
+    }
+  }, [matches, selectedCategory]);
+
+  // Extract matches from Cricbuzz API response
+  const extractMatches = (typeMatches: any[]): Match[] => {
+    const allMatches: Match[] = [];
+
+    typeMatches.forEach((typeMatch) => {
+      const matchType = typeMatch.matchType;
+      typeMatch.seriesMatches?.forEach((seriesMatch: any) => {
+        const seriesAdWrapper = seriesMatch.seriesAdWrapper;
+        const seriesName = seriesAdWrapper.seriesName;
+
+        seriesAdWrapper.matches?.forEach((match: any) => {
+          const matchInfo = match.matchInfo;
+          const matchScore = match.matchScore;
+
+          allMatches.push({
+            id: matchInfo.matchId.toString(),
+            team1: matchInfo.team1.teamSName,
+            team2: matchInfo.team2.teamSName,
+            team1Score: matchScore?.team1Score?.inngs1
+              ? `${matchScore.team1Score.inngs1.runs}/${matchScore.team1Score.inngs1.wickets} (${matchScore.team1Score.inngs1.overs})`
+              : 'Yet to bat',
+            team2Score: matchScore?.team2Score?.inngs1
+              ? `${matchScore.team2Score.inngs1.runs}/${matchScore.team2Score.inngs1.wickets} (${matchScore.team2Score.inngs1.overs})`
+              : 'Yet to bat',
+            status: matchInfo.status || 'Scheduled',
+            matchFormat: matchType,
+            venue: matchInfo.venueInfo?.city || 'TBD',
+            series: seriesName,
+            startTime: matchInfo.startDate
+              ? new Date(parseInt(matchInfo.startDate)).toLocaleString()
+              : undefined,
+            result: matchInfo.status,
+            isLive: matchInfo.state === 'Live' || matchInfo.state === 'In Progress',
+          });
+        });
+      });
+    });
+
+    return allMatches;
+  };
+
+  // Handle pull to refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchMatches(activeTab, true);
+    } catch (err) {
+      console.error('Refresh error:', err);
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  const handleTabChange = (tab: MatchStatus) => {
-    trackClick(); // Track click for smart interstitial
-    setActiveTab(tab);
+  // Handle retry
+  const handleRetry = () => {
+    setLoading(true);
+    setError(null);
+    fetchMatches(activeTab, true)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
   };
-
-  const handleCategoryChange = (category: MatchCategory) => {
-    trackClick(); // Track click for smart interstitial
-    setActiveCategory(category);
-  };
-
-  // Filter matches by status and category
-  const filteredMatches = matches
-    .filter((match) => match.status === activeTab)
-    .filter((match) => {
-      if (activeCategory === 'All') return true;
-      return match.category === activeCategory;
-    })
-    .sort((a, b) => {
-      // Sort by timestamp (chronological - earliest first)
-      const timeA = a.timestamp || 0;
-      const timeB = b.timestamp || 0;
-      return timeA - timeB;
-    });
-
-  // Show splash screen on first load
-  if (showSplash) {
-    return <SplashScreen onFinish={() => setShowSplash(false)} />;
-  }
 
   if (loading) {
-    return <LoadingScreen />;
+    return (
+      <AdMobProvider>
+        <ProProvider>
+          <LoadingScreen message="Loading cricket matches..." />
+        </ProProvider>
+      </AdMobProvider>
+    );
   }
 
   if (error) {
     return (
-      <ErrorScreen
-        onGoBack={() => {
-          setLoading(true);
-          loadMatches();
-        }}
-        message="Could not load matches. Pull to refresh."
-      />
+      <AdMobProvider>
+        <ProProvider>
+          <ErrorScreen message={error} onRetry={handleRetry} />
+        </ProProvider>
+      </AdMobProvider>
     );
   }
 
-  const renderEmptyList = () => (
-    <View style={styles.emptyContainer}>
-      <Text style={styles.emptyText}>
-        No {activeTab} matches available
-      </Text>
-    </View>
-  );
-
-  const renderMatchItem = ({ item }: { item: Match }) => (
-    <View>
-      <MatchCard
-        match={item}
-        onPress={() => handleMatchPress(item)}
-      />
-      {/* Pop-up button for live matches */}
-      {activeTab === 'live' && item.status === 'live' && (
-        <TouchableOpacity
-          style={[
-            styles.popupButton,
-            isPro ? styles.popupButtonActive : styles.popupButtonInactive,
-          ]}
-          onPress={() => handlePopupPress(item)}
-        >
-          <Ionicons
-            name="tv-outline"
-            size={14}
-            color={isPro ? '#FFF' : '#666'}
-          />
-          <Text style={[
-            styles.popupButtonText,
-            isPro ? styles.popupButtonTextActive : styles.popupButtonTextInactive,
-          ]}>
-            Pop-up
-          </Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.content}>
-        <Header onUnlockPro={handleUnlockPro} />
-        <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
-        <CategoryFilter activeCategory={activeCategory} onCategoryChange={handleCategoryChange} />
-        
-        {/* Auto-refresh indicator for live tab */}
-        {activeTab === 'live' && filteredMatches.length > 0 && (
-          <View style={styles.autoRefreshBanner}>
-            <Text style={styles.autoRefreshText}>
-              Auto-refreshing every 50 seconds
-            </Text>
+    <AdMobProvider>
+      <ProProvider>
+        <View style={styles.container}>
+          <Header />
+
+          {/* Tab Bar */}
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                activeTab === 'live' && styles.activeTab,
+              ]}
+              onPress={() => setActiveTab('live')}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === 'live' && styles.activeTabText,
+                ]}
+              >
+                🔴 LIVE
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                activeTab === 'recent' && styles.activeTab,
+              ]}
+              onPress={() => setActiveTab('recent')}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === 'recent' && styles.activeTabText,
+                ]}
+              >
+                ✅ RECENT
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                activeTab === 'upcoming' && styles.activeTab,
+              ]}
+              onPress={() => setActiveTab('upcoming')}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === 'upcoming' && styles.activeTabText,
+                ]}
+              >
+                📅 UPCOMING
+              </Text>
+            </TouchableOpacity>
           </View>
-        )}
-        
-        <ImageBackground
-          source={require('../assets/images/wallpaper.png')}
-          style={styles.matchesBackground}
-          resizeMode="repeat"
-        >
+
+          {/* Category Filter */}
+          <View style={styles.categoryFilter}>
+            {(['all', 'international', 'league', 'domestic'] as CategoryType[]).map(
+              (category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={[
+                    styles.categoryChip,
+                    selectedCategory === category && styles.activeCategoryChip,
+                  ]}
+                  onPress={() => setSelectedCategory(category)}
+                >
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      selectedCategory === category && styles.activeCategoryText,
+                    ]}
+                  >
+                    {category.charAt(0).toUpperCase() + category.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              )
+            )}
+          </View>
+
+          {/* Auto-refresh indicator for live matches */}
+          {activeTab === 'live' && (
+            <View style={styles.autoRefreshBanner}>
+              <Text style={styles.autoRefreshText}>
+                🔄 Auto-refreshing every 30 seconds
+              </Text>
+            </View>
+          )}
+
+          {/* Match List */}
           <FlatList
             data={filteredMatches}
-            keyExtractor={(item) => item.matchId}
-            renderItem={renderMatchItem}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#4CAF50"
-                colors={['#4CAF50']}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <MatchCard
+                match={item}
+                onPress={() => router.push(`/match/${item.id}`)}
               />
+            )}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             }
-            ListEmptyComponent={renderEmptyList}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No matches found</Text>
+              </View>
+            }
           />
-        </ImageBackground>
-        
-        <Footer />
-      </View>
-      
-      <AdModal
-        visible={showAdModal || isWatchingAds}
-        onClose={() => setShowAdModal(false)}
-      />
-      
-      {/* Floating Scoreboard */}
-      {selectedLiveMatch && (
-        <FloatingScoreboard
-          match={selectedLiveMatch}
-          visible={showFloatingScoreboard}
-          onClose={() => {
-            setShowFloatingScoreboard(false);
-            setSelectedLiveMatch(null);
-          }}
-          isPro={isPro}
-        />
-      )}
-    </SafeAreaView>
+
+          <Footer />
+        </View>
+      </ProProvider>
+    </AdMobProvider>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#f5f5dc',
   },
-  content: {
-    flex: 1,
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    elevation: 2,
   },
-  matchesBackground: {
+  tab: {
     flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  activeTab: {
+    borderBottomWidth: 3,
+    borderBottomColor: '#4CAF50',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  activeTabText: {
+    color: '#4CAF50',
+  },
+  categoryFilter: {
+    flexDirection: 'row',
+    padding: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  categoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+  },
+  activeCategoryChip: {
+    backgroundColor: '#4CAF50',
+  },
+  categoryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  activeCategoryText: {
+    color: '#fff',
+  },
+  autoRefreshBanner: {
+    backgroundColor: '#E8F5E9',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#C8E6C9',
+  },
+  autoRefreshText: {
+    fontSize: 12,
+    color: '#2E7D32',
+    textAlign: 'center',
+    fontWeight: '500',
   },
   listContent: {
     paddingVertical: 8,
-    paddingBottom: 16,
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+    padding: 32,
     alignItems: 'center',
-    paddingVertical: 60,
   },
   emptyText: {
     fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
-    textTransform: 'capitalize',
-  },
-  autoRefreshBanner: {
-    backgroundColor: '#FF4444',
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  autoRefreshText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  popupButton: {
-    position: 'absolute',
-    right: 24,
-    bottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 4,
-  },
-  popupButtonActive: {
-    backgroundColor: '#4CAF50',
-  },
-  popupButtonInactive: {
-    backgroundColor: '#E0E0E0',
-  },
-  popupButtonText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  popupButtonTextActive: {
-    color: '#FFF',
-  },
-  popupButtonTextInactive: {
-    color: '#666',
+    color: '#999',
   },
 });

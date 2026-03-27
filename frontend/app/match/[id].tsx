@@ -26,8 +26,8 @@ import FloatingScoreboard from '../../src/components/FloatingScoreboard';
 import { usePro } from '../../src/context/ProContext';
 import { useAdMob, ADMOB_CONFIG } from '../../src/context/AdMobContext';
 
-const AUTO_REFRESH_INTERVAL = 50000; // 50 seconds - Smart Fetching
-const CACHE_DURATION = 50000; // 50 seconds cache
+const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds - Smart Fetching
+const CACHE_DURATION = 30000; // 30 seconds cache
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Match cache
@@ -558,7 +558,7 @@ export default function MatchDetail() {
                 <View style={styles.autoRefreshBanner}>
                   <Ionicons name="sync" size={14} color="#FFF" />
                   <Text style={styles.autoRefreshText}>
-                    Auto-refreshing every 50 seconds
+                    Auto-refreshing every 30 seconds
                   </Text>
                 </View>
               )}
