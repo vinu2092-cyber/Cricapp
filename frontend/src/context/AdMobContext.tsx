@@ -1,6 +1,6 @@
 /**
- * Type declaration for AdMobContext
- * This resolves to AdMobContext.native.tsx for React Native builds
+ * AdMobContext.tsx - Export wrapper
+ * Exports from the native implementation
  */
 
 export * from './AdMobContext.native';
