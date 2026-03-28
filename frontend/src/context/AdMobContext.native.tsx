@@ -1,13 +1,24 @@
 /**
- * AdMob Context - Mock Implementation for Expo SDK 54
- * Note: react-native-google-mobile-ads is not compatible with Expo SDK 54
- * This mock implementation maintains the same API for easy switch to real AdMob later
+ * Real AdMob Context for Expo SDK 52 + react-native-google-mobile-ads@14.11.0
+ * Production-ready implementation with actual Google Mobile Ads SDK
  */
-import React, { createContext, useContext, useState, useRef, ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { createContext, useContext, useState, useRef, useEffect, ReactNode } from 'react';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// AdMob Configuration from app.json
+// Import Google Mobile Ads SDK
+import mobileAds, {
+  BannerAd,
+  BannerAdSize,
+  InterstitialAd,
+  RewardedAd,
+  AppOpenAd,
+  AdEventType,
+  RewardedAdEventType,
+  TestIds,
+} from 'react-native-google-mobile-ads';
+
+// AdMob Configuration from app.json - Use your real Ad Unit IDs
 export const ADMOB_CONFIG = {
   appId: Constants.expoConfig?.extra?.admob?.appId || 'ca-app-pub-9675798593675825~2399929714',
   appOpenAdId: Constants.expoConfig?.extra?.admob?.appOpenAdId || 'ca-app-pub-9675798593675825/4826782503',
@@ -45,100 +56,242 @@ export const useAdMob = () => {
   return context;
 };
 
-// Mock Banner Ad Component
-const MockBannerAd: React.FC<{ size?: string }> = ({ size = 'BANNER' }) => {
+// Real Banner Ad Component
+const RealBannerAd: React.FC<{ size?: string }> = ({ size = 'BANNER' }) => {
+  const getBannerSize = () => {
+    switch (size) {
+      case 'LARGE_BANNER':
+        return BannerAdSize.LARGE_BANNER;
+      case 'MEDIUM_RECTANGLE':
+        return BannerAdSize.MEDIUM_RECTANGLE;
+      case 'FULL_BANNER':
+        return BannerAdSize.FULL_BANNER;
+      case 'LEADERBOARD':
+        return BannerAdSize.LEADERBOARD;
+      default:
+        return BannerAdSize.BANNER;
+    }
+  };
+
   return (
-    <View style={styles.mockBanner}>
-      <Text style={styles.mockBannerText}>AD</Text>
-      <Text style={styles.mockBannerSubtext}>Banner Ad Placeholder</Text>
+    <View style={styles.bannerContainer}>
+      <BannerAd
+        unitId={ADMOB_CONFIG.bannerAdId}
+        size={getBannerSize()}
+        requestOptions={{
+          requestNonPersonalizedAdsOnly: false,
+        }}
+        onAdLoaded={() => console.log('[AdMob] Banner ad loaded')}
+        onAdFailedToLoad={(error) => console.log('[AdMob] Banner ad failed:', error)}
+      />
     </View>
   );
 };
 
+// Create ad instances
+let interstitialAd: InterstitialAd | null = null;
+let rewardedAd: RewardedAd | null = null;
+let appOpenAd: AppOpenAd | null = null;
+
 export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAdMobInitialized, setIsAdMobInitialized] = useState(true);
+  const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
   const [isPro, setIsPro] = useState(false);
   const [clickCount, setClickCount] = useState(0);
   const [clickThreshold, setClickThreshold] = useState(getRandomClickThreshold());
   const [rewardedAdsWatched, setRewardedAdsWatched] = useState(0);
   const proTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Initialize AdMob SDK
+  useEffect(() => {
+    const initAdMob = async () => {
+      try {
+        // Configure test device
+        await mobileAds().setRequestConfiguration({
+          testDeviceIdentifiers: [ADMOB_CONFIG.testDeviceId],
+        });
+
+        // Initialize the SDK
+        await mobileAds().initialize();
+        console.log('[AdMob] SDK initialized successfully');
+        setIsAdMobInitialized(true);
+
+        // Preload ads
+        loadInterstitialAd();
+        loadRewardedAd();
+        loadAppOpenAd();
+      } catch (error) {
+        console.error('[AdMob] Initialization error:', error);
+        setIsAdMobInitialized(true); // Continue even if init fails
+      }
+    };
+
+    initAdMob();
+
+    return () => {
+      if (proTimeoutRef.current) {
+        clearTimeout(proTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Load Interstitial Ad
+  const loadInterstitialAd = () => {
+    interstitialAd = InterstitialAd.createForAdRequest(ADMOB_CONFIG.interstitialAdId, {
+      requestNonPersonalizedAdsOnly: false,
+    });
+
+    interstitialAd.addAdEventListener(AdEventType.LOADED, () => {
+      console.log('[AdMob] Interstitial ad loaded');
+    });
+
+    interstitialAd.addAdEventListener(AdEventType.CLOSED, () => {
+      console.log('[AdMob] Interstitial ad closed');
+      loadInterstitialAd(); // Preload next ad
+    });
+
+    interstitialAd.load();
+  };
+
+  // Load Rewarded Ad
+  const loadRewardedAd = () => {
+    rewardedAd = RewardedAd.createForAdRequest(ADMOB_CONFIG.rewardedAdId, {
+      requestNonPersonalizedAdsOnly: false,
+    });
+
+    rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      console.log('[AdMob] Rewarded ad loaded');
+    });
+
+    rewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, (reward) => {
+      console.log('[AdMob] User earned reward:', reward);
+    });
+
+    rewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
+      console.log('[AdMob] Rewarded ad closed');
+      loadRewardedAd(); // Preload next ad
+    });
+
+    rewardedAd.load();
+  };
+
+  // Load App Open Ad
+  const loadAppOpenAd = () => {
+    appOpenAd = AppOpenAd.createForAdRequest(ADMOB_CONFIG.appOpenAdId, {
+      requestNonPersonalizedAdsOnly: false,
+    });
+
+    appOpenAd.addAdEventListener(AdEventType.LOADED, () => {
+      console.log('[AdMob] App open ad loaded');
+    });
+
+    appOpenAd.addAdEventListener(AdEventType.CLOSED, () => {
+      console.log('[AdMob] App open ad closed');
+      loadAppOpenAd(); // Preload next ad
+    });
+
+    appOpenAd.load();
+  };
+
   // Track clicks - show interstitial every 10-15 clicks ONLY for non-Pro users
   const trackClick = () => {
     if (isPro) {
-      console.log('[AdMob Mock] Pro user - skipping click-based ad');
+      console.log('[AdMob] Pro user - skipping click-based ad');
       return;
     }
-    
+
     const newCount = clickCount + 1;
     setClickCount(newCount);
-    
+
     if (newCount >= clickThreshold) {
-      console.log(`[AdMob Mock] Click threshold reached (${newCount}/${clickThreshold}), showing interstitial`);
+      console.log(`[AdMob] Click threshold reached (${newCount}/${clickThreshold}), showing interstitial`);
       showInterstitialAd();
       setClickCount(0);
       setClickThreshold(getRandomClickThreshold());
     }
   };
 
-  // Show interstitial ad (mock)
+  // Show interstitial ad
   const showInterstitialAd = async (): Promise<void> => {
-    console.log('[AdMob Mock] Showing interstitial ad...');
-    // In real implementation, this would show actual ad
     return new Promise((resolve) => {
-      setTimeout(() => {
-        console.log('[AdMob Mock] Interstitial ad completed');
+      if (interstitialAd?.loaded) {
+        interstitialAd.show();
+        const unsubscribe = interstitialAd.addAdEventListener(AdEventType.CLOSED, () => {
+          unsubscribe();
+          resolve();
+        });
+      } else {
+        console.log('[AdMob] Interstitial not loaded yet');
+        loadInterstitialAd();
         resolve();
-      }, 1000);
+      }
     });
   };
 
-  // Show rewarded ad (mock) - returns true if user watched the ad
+  // Show rewarded ad - returns true if user watched the ad
   const showRewardedAd = async (): Promise<boolean> => {
-    console.log('[AdMob Mock] Showing rewarded ad...');
-    
     return new Promise((resolve) => {
-      // Simulate watching ad
-      setTimeout(() => {
-        const newCount = rewardedAdsWatched + 1;
-        setRewardedAdsWatched(newCount);
-        console.log(`[AdMob Mock] Rewarded ad completed (${newCount}/3)`);
-        
-        // After 3 rewarded ads, unlock Pro for 30 minutes
-        if (newCount >= 3) {
-          console.log('[AdMob Mock] 3 ads watched! Unlocking Pro for 30 minutes...');
-          setIsPro(true);
-          setRewardedAdsWatched(0);
-          
-          // Clear any existing timeout
-          if (proTimeoutRef.current) {
-            clearTimeout(proTimeoutRef.current);
+      if (rewardedAd?.loaded) {
+        let rewarded = false;
+
+        const rewardListener = rewardedAd.addAdEventListener(
+          RewardedAdEventType.EARNED_REWARD,
+          () => {
+            rewarded = true;
+            const newCount = rewardedAdsWatched + 1;
+            setRewardedAdsWatched(newCount);
+            console.log(`[AdMob] Rewarded ad completed (${newCount}/3)`);
+
+            // After 3 rewarded ads, unlock Pro for 30 minutes
+            if (newCount >= 3) {
+              console.log('[AdMob] 3 ads watched! Unlocking Pro for 30 minutes...');
+              setIsPro(true);
+              setRewardedAdsWatched(0);
+
+              if (proTimeoutRef.current) {
+                clearTimeout(proTimeoutRef.current);
+              }
+
+              proTimeoutRef.current = setTimeout(() => {
+                console.log('[AdMob] Pro access expired');
+                setIsPro(false);
+              }, PRO_ACCESS_DURATION);
+            }
           }
-          
-          // Set timeout to revoke Pro access after 30 minutes
-          proTimeoutRef.current = setTimeout(() => {
-            console.log('[AdMob Mock] Pro access expired');
-            setIsPro(false);
-          }, PRO_ACCESS_DURATION);
-        }
-        
-        resolve(true);
-      }, 2000);
+        );
+
+        const closeListener = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
+          rewardListener();
+          closeListener();
+          resolve(rewarded);
+        });
+
+        rewardedAd.show();
+      } else {
+        console.log('[AdMob] Rewarded ad not loaded yet');
+        loadRewardedAd();
+        resolve(false);
+      }
     });
   };
 
-  // Show app open ad (mock)
+  // Show app open ad
   const showAppOpenAd = async (): Promise<void> => {
-    console.log('[AdMob Mock] Showing app open ad...');
     return new Promise((resolve) => {
-      setTimeout(() => {
-        console.log('[AdMob Mock] App open ad completed');
+      if (appOpenAd?.loaded) {
+        appOpenAd.show();
+        const unsubscribe = appOpenAd.addAdEventListener(AdEventType.CLOSED, () => {
+          unsubscribe();
+          resolve();
+        });
+      } else {
+        console.log('[AdMob] App open ad not loaded yet');
+        loadAppOpenAd();
         resolve();
-      }, 500);
+      }
     });
   };
 
-  // Manual Pro unlock (for testing or special cases)
+  // Manual Pro unlock trigger
   const unlockPro = () => {
     showRewardedAd();
   };
@@ -152,37 +305,17 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     showRewardedAd,
     showAppOpenAd,
     unlockPro,
-    BannerAdComponent: MockBannerAd,
+    BannerAdComponent: RealBannerAd,
   };
 
-  return (
-    <AdMobContext.Provider value={value}>
-      {children}
-    </AdMobContext.Provider>
-  );
+  return <AdMobContext.Provider value={value}>{children}</AdMobContext.Provider>;
 };
 
 const styles = StyleSheet.create({
-  mockBanner: {
-    backgroundColor: '#2a2a2a',
-    padding: 12,
+  bannerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
     marginVertical: 8,
-    borderWidth: 1,
-    borderColor: '#444',
-    minHeight: 60,
-  },
-  mockBannerText: {
-    color: '#888',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  mockBannerSubtext: {
-    color: '#666',
-    fontSize: 10,
-    marginTop: 2,
   },
 });
 
