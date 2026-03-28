@@ -8,7 +8,7 @@
     "scheme": "cricapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
-    "owner": "cricapp-1",
+    "owner": "gemmibuild",
     "extra": {
       "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
       "admob": {
@@ -22,7 +22,7 @@
       "router": {},
       "backendUrl": "https://dragable-ui-test.preview.emergentagent.com",
       "eas": {
-        "projectId": "2e891145-de46-4415-841e-67271e25a146"
+        "projectId": "47d65cb3-f161-4591-bbd9-9d062e96ca5d"
       }
     },
     "splash": {
@@ -45,9 +45,22 @@
     "plugins": [
       "expo-router",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "minSdkVersion": 24,
+            "kotlinVersion": "2.0.21",
+            "newArchEnabled": false
+          }
+        }
+      ],
+      [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-9675798593675825~2399929714"
+          "androidAppId": "ca-app-pub-9675798593675825~2399929714",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ]
     ],

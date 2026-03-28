@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 5.2.0"
+    "version": ">= 5.2.0",
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -9,9 +10,6 @@
       "android": {
         "gradleCommand": ":app:assembleDebug",
         "buildType": "apk"
-      },
-      "env": {
-        "NODE_ENV": "development"
       }
     },
     "preview": {
@@ -21,22 +19,12 @@
         "gradleCommand": ":app:assembleRelease",
         "withoutCredentials": true,
         "resourceClass": "medium"
-      },
-      "env": {
-        "NODE_ENV": "production",
-        "EXPO_USE_METRO_WORKSPACE_ROOT": "1",
-        "EXPO_NO_DOTENV": "1"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle",
         "resourceClass": "medium"
-      },
-      "env": {
-        "NODE_ENV": "production",
-        "EXPO_USE_METRO_WORKSPACE_ROOT": "1",
-        "EXPO_NO_DOTENV": "1"
       }
     }
   },

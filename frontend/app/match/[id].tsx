@@ -12,6 +12,7 @@ import {
   Platform,
   Switch,
   Modal,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -326,6 +327,24 @@ export default function MatchDetail() {
     return match.teams[0]?.runs !== undefined || match.teams[1]?.runs !== undefined;
   };
 
+  // Open Cricbuzz page in external browser
+  const openCricbuzzPage = async () => {
+    if (!match?.matchId) return;
+    
+    const matchUrl = `https://www.cricbuzz.com/live-cricket-scores/${match.matchId}`;
+    
+    try {
+      const canOpen = await Linking.canOpenURL(matchUrl);
+      if (canOpen) {
+        await Linking.openURL(matchUrl);
+      } else {
+        console.log('Cannot open URL:', matchUrl);
+      }
+    } catch (error) {
+      console.error('Error opening Cricbuzz URL:', error);
+    }
+  };
+
   // Render commentary with over-based banner ads for ALL users and Load More
   const renderCommentaryWithAds = () => {
     if (!match?.commentary) return null;
@@ -455,6 +474,17 @@ export default function MatchDetail() {
             )}
           </TouchableOpacity>
         )}
+        
+        {/* View Full Info on Cricbuzz Button */}
+        <TouchableOpacity
+          style={styles.cricbuzzButton}
+          onPress={openCricbuzzPage}
+          data-testid="view-cricbuzz-btn"
+        >
+          <Ionicons name="open-outline" size={20} color="#FFF" />
+          <Text style={styles.cricbuzzButtonText}>View Full Info on Cricbuzz</Text>
+          <Ionicons name="arrow-forward" size={18} color="#FFF" />
+        </TouchableOpacity>
       </>
     );
   };
@@ -1150,5 +1180,29 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontSize: 16,
     fontWeight: '600',
+  },
+  cricbuzzButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1a73e8',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginVertical: 20,
+    marginHorizontal: 16,
+    gap: 10,
+    shadowColor: '#1a73e8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  cricbuzzButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
   },
 });
