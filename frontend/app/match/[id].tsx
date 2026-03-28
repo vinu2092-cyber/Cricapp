@@ -26,9 +26,10 @@ import FloatingScoreboard from '../../src/components/FloatingScoreboard';
 import { usePro } from '../../src/context/ProContext';
 import { useAdMob, ADMOB_CONFIG } from '../../src/context/AdMobContext';
 
-const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds - Smart Fetching
-const CACHE_DURATION = 30000; // 30 seconds cache
+const AUTO_REFRESH_INTERVAL = 60000; // 60 seconds - Smart Fetching with cache
+const CACHE_DURATION = 180000; // 3 minutes cache for API key longevity
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const COMMENTARY_PAGE_SIZE = 20; // Items per page for Load More
 
 // Match cache
 interface CacheEntry {
@@ -41,7 +42,7 @@ export default function MatchDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { isPro } = usePro();
-  const { trackClick, showRewardedAd } = useAdMob();
+  const { trackClick, showRewardedAd, showAppOpenAd, BannerAdComponent } = useAdMob();
   
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,6 +79,10 @@ export default function MatchDetail() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [lastSpokenIndex, setLastSpokenIndex] = useState(-1);
+  
+  // Commentary pagination for Load More
+  const [commentaryDisplayCount, setCommentaryDisplayCount] = useState(COMMENTARY_PAGE_SIZE);
+  const [isLoadingMoreCommentary, setIsLoadingMoreCommentary] = useState(false);
   
   // Scroll position preservation
   const scrollViewRef = useRef<ScrollView>(null);
@@ -321,89 +326,147 @@ export default function MatchDetail() {
     return match.teams[0]?.runs !== undefined || match.teams[1]?.runs !== undefined;
   };
 
-  // Render commentary with over-based banner ads and Hindi support
+  // Render commentary with over-based banner ads for ALL users and Load More
   const renderCommentaryWithAds = () => {
     if (!match?.commentary) return null;
 
-    const items: Array<{ type: 'commentary' | 'ad'; data: any; key: string }> = [];
-    let overEndCount = 0;
+    const items: Array<{ type: 'commentary' | 'ad' | 'over-start'; data: any; key: string }> = [];
+    let lastOver = '';
+    let overStartCount = 0;
 
-    match.commentary.forEach((comm, index) => {
+    // Only show limited commentary based on pagination
+    const displayedCommentary = match.commentary.slice(0, commentaryDisplayCount);
+
+    displayedCommentary.forEach((comm, index) => {
+      // Over start banner ad - for ALL users (both Pro and non-Pro)
+      const currentOver = comm.over.split('.')[0];
+      if (currentOver !== lastOver && lastOver !== '') {
+        overStartCount++;
+        items.push({
+          type: 'over-start',
+          data: { overNumber: currentOver, adIndex: overStartCount },
+          key: `over-start-${index}-${overStartCount}`,
+        });
+      }
+      lastOver = currentOver;
+
       items.push({
         type: 'commentary',
         data: comm,
         key: `comm-${index}`,
       });
 
-      const isOverEnd = comm.ball === 6 || comm.event === 'over-break' || comm.over.includes('.6');
+      // Over end banner ad - for ALL users
+      const isOverEnd = comm.ball === 6 || comm.event === 'over-break' || comm.over.endsWith('.6');
       
-      if (isOverEnd && !isPro) {
-        overEndCount++;
+      if (isOverEnd) {
         items.push({
           type: 'ad',
-          data: { overNumber: comm.over, adIndex: overEndCount },
-          key: `ad-${index}-${overEndCount}`,
+          data: { overNumber: comm.over, adIndex: index, isOverEnd: true },
+          key: `ad-${index}`,
         });
       }
     });
 
-    return items.map((item) => {
-      if (item.type === 'ad') {
-        return (
-          <View key={item.key} style={styles.bannerAdContainer}>
-            <Text style={styles.bannerAdLabel}>ADVERTISEMENT</Text>
-            <View style={styles.bannerAdPlaceholder}>
-              <Text style={styles.bannerAdText}>Banner Ad - Over {item.data.overNumber}</Text>
-              <Text style={styles.bannerAdSubtext}>AdMob ID: {ADMOB_CONFIG.bannerAdId}</Text>
-            </View>
-          </View>
-        );
-      }
-
-      const comm = item.data as Commentary;
-      const eventColor =
-        comm.event === 'wicket' ? '#FF4444' :
-        comm.event === 'four' ? '#4CAF50' :
-        comm.event === 'six' ? '#9C27B0' : '#666';
-
-      const displayText = comm.english;
-
-      return (
-        <View key={item.key} style={styles.commentaryItem}>
-          <View style={styles.commentaryHeader}>
-            <Text style={styles.commentaryOver}>{comm.over}</Text>
-            {comm.event !== 'normal' && comm.event !== 'dot' && (
-              <View style={[styles.eventBadge, { backgroundColor: eventColor }]}>
-                <Text style={styles.eventBadgeText}>
-                  {comm.event === 'wicket' ? 'W' :
-                   comm.event === 'four' ? '4' :
-                   comm.event === 'six' ? '6' : ''}
-                </Text>
+    return (
+      <>
+        {items.map((item) => {
+          // Banner ads at over start - FOR ALL USERS
+          if (item.type === 'over-start') {
+            return (
+              <View key={item.key} style={styles.bannerAdContainer}>
+                <Text style={styles.bannerAdLabel}>OVER {item.data.overNumber} STARTING</Text>
+                <BannerAdComponent size="BANNER" />
               </View>
+            );
+          }
+          
+          // Banner ads at over end - FOR ALL USERS
+          if (item.type === 'ad') {
+            return (
+              <View key={item.key} style={styles.bannerAdContainer}>
+                <Text style={styles.bannerAdLabel}>OVER COMPLETE</Text>
+                <BannerAdComponent size="BANNER" />
+              </View>
+            );
+          }
+
+          const comm = item.data as Commentary;
+          const eventColor =
+            comm.event === 'wicket' ? '#FF4444' :
+            comm.event === 'four' ? '#4CAF50' :
+            comm.event === 'six' ? '#9C27B0' : '#666';
+
+          const displayText = comm.english;
+
+          return (
+            <View key={item.key} style={styles.commentaryItem}>
+              <View style={styles.commentaryHeader}>
+                <Text style={styles.commentaryOver}>{comm.over}</Text>
+                {comm.event !== 'normal' && comm.event !== 'dot' && (
+                  <View style={[styles.eventBadge, { backgroundColor: eventColor }]}>
+                    <Text style={styles.eventBadgeText}>
+                      {comm.event === 'wicket' ? 'W' :
+                       comm.event === 'four' ? '4' :
+                       comm.event === 'six' ? '6' : ''}
+                    </Text>
+                  </View>
+                )}
+                {comm.runs !== undefined && comm.runs > 0 && (
+                  <Text style={styles.commentaryRuns}>
+                    {`${comm.runs} run${comm.runs > 1 ? 's' : ''}`}
+                  </Text>
+                )}
+                {/* Voice button for each commentary - LOCKED for non-Pro */}
+                <TouchableOpacity
+                  style={[styles.voiceButton, !effectiveIsPro && styles.voiceButtonLocked]}
+                  onPress={() => speakSingleCommentary(comm)}
+                  disabled={!effectiveIsPro}
+                >
+                  <Ionicons
+                    name={isSpeaking ? "volume-high" : "volume-medium-outline"}
+                    size={18}
+                    color={effectiveIsPro ? "#4CAF50" : "#CCC"}
+                  />
+                  {!effectiveIsPro && <Text style={styles.lockIcon}>🔒</Text>}
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.commentaryText}>{displayText}</Text>
+            </View>
+          );
+        })}
+        
+        {/* Load More Button for full match commentary */}
+        {match.commentary.length > commentaryDisplayCount && (
+          <TouchableOpacity
+            style={styles.loadMoreButton}
+            onPress={handleLoadMoreCommentary}
+            disabled={isLoadingMoreCommentary}
+          >
+            {isLoadingMoreCommentary ? (
+              <ActivityIndicator color="#4CAF50" size="small" />
+            ) : (
+              <>
+                <Ionicons name="chevron-down-circle" size={22} color="#4CAF50" />
+                <Text style={styles.loadMoreText}>
+                  Load More ({match.commentary.length - commentaryDisplayCount} remaining)
+                </Text>
+              </>
             )}
-            {comm.runs !== undefined && comm.runs > 0 && (
-              <Text style={styles.commentaryRuns}>
-                {`${comm.runs} run${comm.runs > 1 ? 's' : ''}`}
-              </Text>
-            )}
-            {/* Voice button for each commentary - LOCKED for non-Pro */}
-            <TouchableOpacity
-              style={[styles.voiceButton, !effectiveIsPro && styles.voiceButtonLocked]}
-              onPress={() => speakSingleCommentary(comm)}
-              disabled={!effectiveIsPro}
-            >
-              <Ionicons
-                name={isSpeaking ? "volume-high" : "volume-medium-outline"}
-                size={18}
-                color={effectiveIsPro ? "#4CAF50" : "#CCC"}
-              />
-              {!effectiveIsPro && <Text style={styles.lockIcon}>🔒</Text>}
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.commentaryText}>{displayText}</Text>
-        </View>
-      );
-    });
+          </TouchableOpacity>
+        )}
+      </>
+    );
+  };
+
+  // Handle Load More commentary
+  const handleLoadMoreCommentary = () => {
+    setIsLoadingMoreCommentary(true);
+    // Simulate loading delay
+    setTimeout(() => {
+      setCommentaryDisplayCount(prev => Math.min(prev + COMMENTARY_PAGE_SIZE, match?.commentary?.length || 0));
+      setIsLoadingMoreCommentary(false);
+    }, 500);
   };
 
   if (loading) {
@@ -1068,5 +1131,24 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 14,
     textAlign: 'center',
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 30,
+    marginVertical: 16,
+    marginHorizontal: 16,
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    gap: 10,
+  },
+  loadMoreText: {
+    color: '#4CAF50',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

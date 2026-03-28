@@ -74,17 +74,21 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [clickThreshold, setClickThreshold] = useState(getRandomClickThreshold());
   const proTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialize AdMob SDK
+  // Initialize AdMob SDK with test device
   useEffect(() => {
     const initAdMob = async () => {
       if (sdkAvailable && mobileAds) {
         try {
+          // Configure test device for debugging
+          await mobileAds().setRequestConfiguration({
+            testDeviceIdentifiers: [ADMOB_CONFIG.testDeviceId],
+          });
+          
           await mobileAds().initialize();
-          console.log('[AdMob] Initialized successfully');
+          console.log('[AdMob] Initialized successfully with test device:', ADMOB_CONFIG.testDeviceId);
           setIsAdMobInitialized(true);
           
-          // Show App Open Ad on launch
-          showAppOpenAd();
+          // Note: App Open Ad is now handled in _layout.tsx for ALL users
         } catch (error) {
           console.error('[AdMob] Init error:', error);
           setIsAdMobInitialized(true); // Continue even if init fails
@@ -104,15 +108,19 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
   }, []);
 
-  // Track clicks - show interstitial every 10-15 clicks for non-Pro users
+  // Track clicks - show interstitial every 10-15 clicks ONLY for non-Pro users
+  // Pro users (after watching 3 ads) get 30 minutes without click-based ads
   const trackClick = () => {
-    if (isPro) return; // Pro users don't see click-based ads
+    if (isPro) {
+      console.log('[AdMob] Pro user - skipping click-based ad');
+      return; // Pro users don't see click-based interstitial ads
+    }
     
     const newCount = clickCount + 1;
     setClickCount(newCount);
     
     if (newCount >= clickThreshold) {
-      console.log(`[AdMob] Click threshold reached (${newCount}/${clickThreshold}), showing interstitial`);
+      console.log(`[AdMob] Click threshold reached (${newCount}/${clickThreshold}), showing interstitial for non-Pro user`);
       showInterstitialAd();
       setClickCount(0);
       setClickThreshold(getRandomClickThreshold()); // New random threshold

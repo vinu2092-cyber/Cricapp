@@ -22,6 +22,10 @@ interface FloatingScoreboardProps {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// Bigger scoreboard dimensions for better visibility
+const SCOREBOARD_WIDTH = 320;
+const SCOREBOARD_WIDTH_MINIMIZED = 260;
+
 const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
   match,
   visible,
@@ -31,8 +35,12 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
   const [isMinimized, setIsMinimized] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentCommentaryIndex, setCurrentCommentaryIndex] = useState(0);
-  const position = useRef(new Animated.ValueXY({ x: SCREEN_WIDTH - 260, y: 80 })).current;
+  const [isDragging, setIsDragging] = useState(false);
+  const position = useRef(new Animated.ValueXY({ x: SCREEN_WIDTH - SCOREBOARD_WIDTH - 10, y: 80 })).current;
   const scale = useRef(new Animated.Value(0)).current;
+  
+  // Store last valid position to prevent crash
+  const lastValidPosition = useRef({ x: SCREEN_WIDTH - SCOREBOARD_WIDTH - 10, y: 80 });
 
   useEffect(() => {
     if (visible) {
@@ -54,40 +62,77 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
     };
   }, []);
 
+  // Safe pan responder with crash prevention
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        position.setOffset({
-          x: (position.x as any)._value,
-          y: (position.y as any)._value,
-        });
-        position.setValue({ x: 0, y: 0 });
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only move if gesture is significant
+        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
       },
-      onPanResponderMove: Animated.event(
-        [null, { dx: position.x, dy: position.y }],
-        { useNativeDriver: false }
-      ),
+      onPanResponderGrant: () => {
+        try {
+          setIsDragging(true);
+          // Safely get current values
+          const currentX = (position.x as any)._value || lastValidPosition.current.x;
+          const currentY = (position.y as any)._value || lastValidPosition.current.y;
+          
+          position.setOffset({ x: currentX, y: currentY });
+          position.setValue({ x: 0, y: 0 });
+        } catch (error) {
+          console.warn('PanResponder grant error:', error);
+          // Reset to last valid position
+          position.setValue(lastValidPosition.current);
+        }
+      },
+      onPanResponderMove: (_, gestureState) => {
+        try {
+          // Manual position update instead of Animated.event to prevent crashes
+          position.setValue({ x: gestureState.dx, y: gestureState.dy });
+        } catch (error) {
+          console.warn('PanResponder move error:', error);
+        }
+      },
       onPanResponderRelease: () => {
-        position.flattenOffset();
-        
-        let currentX = (position.x as any)._value;
-        let currentY = (position.y as any)._value;
-        
-        const widgetWidth = isMinimized ? 160 : 240;
-        const widgetHeight = isMinimized ? 60 : 240;
-        
-        if (currentX < 0) currentX = 0;
-        if (currentX > SCREEN_WIDTH - widgetWidth) currentX = SCREEN_WIDTH - widgetWidth;
-        if (currentY < 50) currentY = 50;
-        if (currentY > SCREEN_HEIGHT - widgetHeight - 100) currentY = SCREEN_HEIGHT - widgetHeight - 100;
-        
-        Animated.spring(position, {
-          toValue: { x: currentX, y: currentY },
-          useNativeDriver: false,
-          friction: 7,
-        }).start();
+        try {
+          setIsDragging(false);
+          position.flattenOffset();
+          
+          let currentX = (position.x as any)._value || lastValidPosition.current.x;
+          let currentY = (position.y as any)._value || lastValidPosition.current.y;
+          
+          // Ensure values are valid numbers
+          if (isNaN(currentX)) currentX = lastValidPosition.current.x;
+          if (isNaN(currentY)) currentY = lastValidPosition.current.y;
+          
+          const widgetWidth = isMinimized ? SCOREBOARD_WIDTH_MINIMIZED : SCOREBOARD_WIDTH;
+          const widgetHeight = isMinimized ? 80 : 280;
+          
+          // Clamp to screen bounds with safe margins
+          if (currentX < 10) currentX = 10;
+          if (currentX > SCREEN_WIDTH - widgetWidth - 10) currentX = SCREEN_WIDTH - widgetWidth - 10;
+          if (currentY < 60) currentY = 60;
+          if (currentY > SCREEN_HEIGHT - widgetHeight - 120) currentY = SCREEN_HEIGHT - widgetHeight - 120;
+          
+          // Update last valid position
+          lastValidPosition.current = { x: currentX, y: currentY };
+          
+          Animated.spring(position, {
+            toValue: { x: currentX, y: currentY },
+            useNativeDriver: false,
+            friction: 7,
+            tension: 40,
+          }).start();
+        } catch (error) {
+          console.warn('PanResponder release error:', error);
+          // Reset to last valid position on error
+          position.setValue(lastValidPosition.current);
+        }
+      },
+      onPanResponderTerminate: () => {
+        setIsDragging(false);
+        // Reset to last valid position on terminate
+        position.setValue(lastValidPosition.current);
       },
     })
   ).current;
@@ -268,51 +313,51 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    backgroundColor: 'rgba(20, 20, 20, 0.95)',
-    borderRadius: 16,
-    padding: 14,
-    minWidth: 230,
-    maxWidth: 280,
+    backgroundColor: 'rgba(20, 20, 20, 0.98)',
+    borderRadius: 20,
+    padding: 18,
+    minWidth: SCOREBOARD_WIDTH,
+    maxWidth: SCOREBOARD_WIDTH + 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 15,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 20,
     zIndex: 9999,
-    borderWidth: 1,
-    borderColor: 'rgba(76, 175, 80, 0.3)',
+    borderWidth: 2,
+    borderColor: 'rgba(76, 175, 80, 0.5)',
   },
   containerMinimized: {
-    minWidth: 180,
-    maxWidth: 220,
-    padding: 10,
+    minWidth: SCOREBOARD_WIDTH_MINIMIZED,
+    maxWidth: SCOREBOARD_WIDTH_MINIMIZED + 20,
+    padding: 14,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 14,
   },
   dragHandle: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
   dragLine: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#666',
-    borderRadius: 2,
+    width: 50,
+    height: 5,
+    backgroundColor: '#777',
+    borderRadius: 3,
   },
   controls: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
   },
   controlButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -321,81 +366,86 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     backgroundColor: '#FF4444',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-    marginBottom: 10,
-    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginBottom: 14,
+    gap: 6,
   },
   liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#FFF',
   },
   liveText: {
     color: '#FFF',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 'bold',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
   scoreContainer: {
-    gap: 10,
+    gap: 14,
   },
   teamScore: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
   },
   teamName: {
     color: '#FFF',
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '700',
-    minWidth: 50,
+    minWidth: 60,
   },
   score: {
     color: '#4CAF50',
-    fontSize: 20,
+    fontSize: 28,
     fontWeight: 'bold',
     flex: 1,
     textAlign: 'right',
   },
   overs: {
-    color: '#AAA',
-    fontSize: 12,
-    minWidth: 55,
+    color: '#CCC',
+    fontSize: 14,
+    minWidth: 65,
     textAlign: 'right',
   },
   statusText: {
     color: '#FFD700',
-    fontSize: 11,
-    marginTop: 8,
+    fontSize: 13,
+    marginTop: 12,
     textAlign: 'center',
     fontStyle: 'italic',
+    paddingHorizontal: 8,
   },
   voiceControls: {
-    marginTop: 12,
+    marginTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    paddingTop: 10,
+    borderTopColor: 'rgba(255, 255, 255, 0.15)',
+    paddingTop: 14,
   },
   voiceButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 24,
-    gap: 8,
+    backgroundColor: 'rgba(76, 175, 80, 0.25)',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 28,
+    gap: 10,
   },
   voiceButtonActive: {
     backgroundColor: '#4CAF50',
   },
   voiceButtonText: {
     color: '#4CAF50',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
   },
   voiceButtonTextActive: {
@@ -404,15 +454,15 @@ const styles = StyleSheet.create({
   speakingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    gap: 6,
-    paddingHorizontal: 4,
+    marginTop: 10,
+    gap: 8,
+    paddingHorizontal: 6,
   },
   speakingText: {
-    color: '#AAA',
-    fontSize: 11,
+    color: '#CCC',
+    fontSize: 13,
     flex: 1,
-    lineHeight: 16,
+    lineHeight: 18,
   },
 });
 

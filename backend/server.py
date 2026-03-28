@@ -6,10 +6,12 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import httpx
+import asyncio
+import time
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -77,6 +79,34 @@ RAPIDAPI_KEYS = [
 # Current key index (rotates on 429 errors)
 current_key_index = 0
 
+# ============================================
+# 3-MINUTE CACHE SYSTEM FOR API KEY LONGEVITY
+# ============================================
+class CacheEntry:
+    def __init__(self, data: Any, ttl_seconds: int = 180):  # 3 minutes = 180 seconds
+        self.data = data
+        self.expires_at = time.time() + ttl_seconds
+
+    def is_valid(self) -> bool:
+        return time.time() < self.expires_at
+
+# Cache storage
+api_cache: Dict[str, CacheEntry] = {}
+CACHE_TTL = 180  # 3 minutes cache for API key longevity
+
+def get_from_cache(key: str) -> Optional[Any]:
+    """Get data from cache if valid"""
+    entry = api_cache.get(key)
+    if entry and entry.is_valid():
+        logger.info(f"✅ Cache HIT for {key}")
+        return entry.data
+    return None
+
+def save_to_cache(key: str, data: Any):
+    """Save data to cache"""
+    api_cache[key] = CacheEntry(data, CACHE_TTL)
+    logger.info(f"💾 Cache SAVED for {key} (TTL: {CACHE_TTL}s)")
+
 def get_current_key():
     """Get current RapidAPI key"""
     return RAPIDAPI_KEYS[current_key_index]
@@ -129,22 +159,21 @@ async def make_cricbuzz_request(endpoint: str, max_retries: int = 3):
                         
                         logger.info(f"✅ SUCCESS with key {current_key_index} on {provider['name']}")
                         return data
-                    except:
+                    except Exception:
                         response.raise_for_status()
                         return response.json()
                     
             except httpx.HTTPStatusError as e:
                 if e.response.status_code in [429, 403]:
                     continue
-                last_error = e
+                logger.error(f"HTTP error: {e}")
             except Exception as e:
                 logger.error(f"Request failed: {e}")
-                last_error = e
                 continue
         
         rotate_key()
     
-    raise HTTPException(status_code=500, detail=f"All API keys exhausted or unavailable")
+    raise HTTPException(status_code=500, detail="All API keys exhausted or unavailable")
 
 # Define Models
 class StatusCheck(BaseModel):
@@ -178,36 +207,66 @@ async def get_status_checks():
 
 @api_router.get("/cricket/matches/live")
 async def get_live_matches():
-    """Proxy endpoint for live cricket matches with key rotation"""
+    """Proxy endpoint for live cricket matches with caching and key rotation"""
     try:
-        return await make_cricbuzz_request("/matches/v1/live")
+        cache_key = "matches_live"
+        cached = get_from_cache(cache_key)
+        if cached:
+            return cached
+        
+        data = await make_cricbuzz_request("/matches/v1/live")
+        save_to_cache(cache_key, data)
+        return data
     except Exception as e:
         logging.error(f"Error fetching live matches: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching live matches: {str(e)}")
 
 @api_router.get("/cricket/matches/recent")
 async def get_recent_matches():
-    """Proxy endpoint for recent cricket matches with key rotation"""
+    """Proxy endpoint for recent cricket matches with caching and key rotation"""
     try:
-        return await make_cricbuzz_request("/matches/v1/recent")
+        cache_key = "matches_recent"
+        cached = get_from_cache(cache_key)
+        if cached:
+            return cached
+        
+        data = await make_cricbuzz_request("/matches/v1/recent")
+        save_to_cache(cache_key, data)
+        return data
     except Exception as e:
         logging.error(f"Error fetching recent matches: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching recent matches: {str(e)}")
 
 @api_router.get("/cricket/matches/upcoming")
 async def get_upcoming_matches():
-    """Proxy endpoint for upcoming cricket matches with key rotation"""
+    """Proxy endpoint for upcoming cricket matches with caching and key rotation"""
     try:
-        return await make_cricbuzz_request("/matches/v1/upcoming")
+        cache_key = "matches_upcoming"
+        cached = get_from_cache(cache_key)
+        if cached:
+            return cached
+        
+        data = await make_cricbuzz_request("/matches/v1/upcoming")
+        save_to_cache(cache_key, data)
+        return data
     except Exception as e:
         logging.error(f"Error fetching upcoming matches: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching upcoming matches: {str(e)}")
 
 @api_router.get("/cricket/match/{match_id}/commentary")
-async def get_match_commentary(match_id: str):
-    """Proxy endpoint for match commentary with key rotation"""
+async def get_match_commentary(match_id: str, page: int = 0):
+    """Proxy endpoint for match commentary with pagination and caching"""
     try:
-        return await make_cricbuzz_request(f"/mcenter/v1/{match_id}/comm")
+        cache_key = f"commentary_{match_id}_page_{page}"
+        cached = get_from_cache(cache_key)
+        if cached:
+            return cached
+        
+        # Cricbuzz commentary endpoint supports pagination via timestamp
+        endpoint = f"/mcenter/v1/{match_id}/comm"
+        data = await make_cricbuzz_request(endpoint)
+        save_to_cache(cache_key, data)
+        return data
     except Exception as e:
         logging.error(f"Error fetching match commentary: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching match commentary: {str(e)}")

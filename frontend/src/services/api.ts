@@ -51,8 +51,8 @@ const CACHE_KEYS = {
   MATCH_DETAIL: 'cricapp_match_', // + matchId
 };
 
-const CACHE_DURATION = 50000; // 50 seconds - Smart Fetching as per requirements
-const REFRESH_INTERVAL = 50000; // 50 seconds refresh interval
+const CACHE_DURATION = 180000; // 3 minutes (180 seconds) - Long life for API keys
+const REFRESH_INTERVAL = 60000; // 60 seconds refresh interval
 
 // ============================================
 // ASYNC STORAGE CACHE HELPERS
