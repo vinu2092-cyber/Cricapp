@@ -31,7 +31,7 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
   const [isMinimized, setIsMinimized] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentCommentaryIndex, setCurrentCommentaryIndex] = useState(0);
-  const position = useRef(new Animated.ValueXY({ x: SCREEN_WIDTH - 180, y: 100 })).current;
+  const position = useRef(new Animated.ValueXY({ x: SCREEN_WIDTH - 260, y: 80 })).current;
   const scale = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -72,12 +72,11 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
       onPanResponderRelease: () => {
         position.flattenOffset();
         
-        // Keep within screen bounds
         let currentX = (position.x as any)._value;
         let currentY = (position.y as any)._value;
         
-        const widgetWidth = isMinimized ? 120 : 160;
-        const widgetHeight = isMinimized ? 50 : 180;
+        const widgetWidth = isMinimized ? 160 : 240;
+        const widgetHeight = isMinimized ? 60 : 240;
         
         if (currentX < 0) currentX = 0;
         if (currentX > SCREEN_WIDTH - widgetWidth) currentX = SCREEN_WIDTH - widgetWidth;
@@ -184,12 +183,12 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
           >
             <Ionicons
               name={isMinimized ? 'expand' : 'contract'}
-              size={16}
+              size={18}
               color="#FFF"
             />
           </TouchableOpacity>
           <TouchableOpacity style={styles.controlButton} onPress={onClose}>
-            <Ionicons name="close" size={16} color="#FFF" />
+            <Ionicons name="close" size={18} color="#FFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -204,26 +203,35 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
 
       {/* Score display */}
       <View style={styles.scoreContainer}>
+        {/* Team 1 - Always visible */}
         <View style={styles.teamScore}>
-          <Text style={styles.teamName}>{team1?.shortName || 'TM1'}</Text>
+          <Text style={styles.teamName} numberOfLines={1}>{team1?.shortName || 'TM1'}</Text>
           <Text style={styles.score}>
             {team1?.runs !== undefined ? `${team1.runs}/${team1.wickets || 0}` : '-'}
           </Text>
-          {!isMinimized && team1?.overs && (
-            <Text style={styles.overs}>({team1.overs} ov)</Text>
-          )}
+          <Text style={styles.overs}>
+            {team1?.overs ? `(${team1.overs} ov)` : ''}
+          </Text>
         </View>
         
-        {!isMinimized && team2 && (
+        {/* Team 2 - Always visible (even minimized) */}
+        {team2 && (
           <View style={styles.teamScore}>
-            <Text style={styles.teamName}>{team2?.shortName || 'TM2'}</Text>
+            <Text style={styles.teamName} numberOfLines={1}>{team2?.shortName || 'TM2'}</Text>
             <Text style={styles.score}>
               {team2?.runs !== undefined ? `${team2.runs}/${team2.wickets || 0}` : '-'}
             </Text>
-            {team2?.overs && <Text style={styles.overs}>({team2.overs} ov)</Text>}
+            <Text style={styles.overs}>
+              {team2?.overs ? `(${team2.overs} ov)` : ''}
+            </Text>
           </View>
         )}
       </View>
+
+      {/* Status text */}
+      {!isMinimized && match.result && (
+        <Text style={styles.statusText} numberOfLines={2}>{match.result}</Text>
+      )}
 
       {/* Voice commentary controls - only in expanded mode */}
       {!isMinimized && (
@@ -234,7 +242,7 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
           >
             <Ionicons
               name={isSpeaking ? 'pause' : 'volume-high'}
-              size={18}
+              size={20}
               color={isSpeaking ? '#FFF' : '#4CAF50'}
             />
             <Text style={[styles.voiceButtonText, isSpeaking && styles.voiceButtonTextActive]}>
@@ -247,9 +255,9 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
       {/* Current commentary being spoken */}
       {!isMinimized && isSpeaking && match.commentary && match.commentary[currentCommentaryIndex] && (
         <View style={styles.speakingIndicator}>
-          <Ionicons name="mic" size={12} color="#4CAF50" />
-          <Text style={styles.speakingText} numberOfLines={1}>
-            {match.commentary[currentCommentaryIndex].over}
+          <Ionicons name="mic" size={14} color="#4CAF50" />
+          <Text style={styles.speakingText} numberOfLines={2}>
+            {match.commentary[currentCommentaryIndex].over}: {match.commentary[currentCommentaryIndex].english}
           </Text>
         </View>
       )}
@@ -260,26 +268,30 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    backgroundColor: 'rgba(26, 26, 26, 0.95)',
+    backgroundColor: 'rgba(20, 20, 20, 0.95)',
     borderRadius: 16,
-    padding: 12,
-    minWidth: 160,
+    padding: 14,
+    minWidth: 230,
+    maxWidth: 280,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 15,
     zIndex: 9999,
+    borderWidth: 1,
+    borderColor: 'rgba(76, 175, 80, 0.3)',
   },
   containerMinimized: {
-    minWidth: 120,
-    padding: 8,
+    minWidth: 180,
+    maxWidth: 220,
+    padding: 10,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   dragHandle: {
     flex: 1,
@@ -287,7 +299,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   dragLine: {
-    width: 30,
+    width: 40,
     height: 4,
     backgroundColor: '#666',
     borderRadius: 2,
@@ -297,9 +309,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   controlButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -309,25 +321,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     backgroundColor: '#FF4444',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginBottom: 8,
-    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginBottom: 10,
+    gap: 5,
   },
   liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#FFF',
   },
   liveText: {
     color: '#FFF',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 'bold',
+    letterSpacing: 1,
   },
   scoreContainer: {
-    gap: 8,
+    gap: 10,
   },
   teamScore: {
     flexDirection: 'row',
@@ -337,41 +350,52 @@ const styles = StyleSheet.create({
   },
   teamName: {
     color: '#FFF',
-    fontSize: 12,
-    fontWeight: '600',
-    minWidth: 35,
+    fontSize: 15,
+    fontWeight: '700',
+    minWidth: 50,
   },
   score: {
     color: '#4CAF50',
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
+    flex: 1,
+    textAlign: 'right',
   },
   overs: {
-    color: '#999',
-    fontSize: 10,
+    color: '#AAA',
+    fontSize: 12,
+    minWidth: 55,
+    textAlign: 'right',
+  },
+  statusText: {
+    color: '#FFD700',
+    fontSize: 11,
+    marginTop: 8,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   voiceControls: {
     marginTop: 12,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    paddingTop: 8,
+    paddingTop: 10,
   },
   voiceButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(76, 175, 80, 0.2)',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    gap: 8,
   },
   voiceButtonActive: {
     backgroundColor: '#4CAF50',
   },
   voiceButtonText: {
     color: '#4CAF50',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
   voiceButtonTextActive: {
@@ -381,12 +405,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
-    gap: 4,
+    gap: 6,
+    paddingHorizontal: 4,
   },
   speakingText: {
-    color: '#999',
-    fontSize: 10,
+    color: '#AAA',
+    fontSize: 11,
     flex: 1,
+    lineHeight: 16,
   },
 });
 

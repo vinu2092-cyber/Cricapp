@@ -9,14 +9,20 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 interface ErrorScreenProps {
-  onGoBack: () => void;
+  onGoBack?: () => void;
+  onRetry?: () => void;
   message?: string;
 }
 
 const ErrorScreen: React.FC<ErrorScreenProps> = ({
   onGoBack,
+  onRetry,
   message = 'Could not load match.',
 }) => {
+  const handlePress = onRetry || onGoBack || (() => {});
+  const buttonText = onRetry ? 'Retry' : 'Go Back';
+  const buttonIcon = onRetry ? 'refresh' : 'arrow-back';
+
   return (
     <ImageBackground
       source={require('../../assets/images/wallpaper.png')}
@@ -30,11 +36,11 @@ const ErrorScreen: React.FC<ErrorScreenProps> = ({
           <Text style={styles.errorText}>{message}</Text>
           <TouchableOpacity
             style={styles.goBackButton}
-            onPress={onGoBack}
+            onPress={handlePress}
             activeOpacity={0.8}
           >
-            <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
-            <Text style={styles.goBackText}>Go Back</Text>
+            <Ionicons name={buttonIcon as any} size={18} color="#FFFFFF" />
+            <Text style={styles.goBackText}>{buttonText}</Text>
           </TouchableOpacity>
         </View>
       </View>

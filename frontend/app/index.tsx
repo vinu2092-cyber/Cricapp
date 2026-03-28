@@ -11,7 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { Match } from '../src/types/match';
+import { Match, Team } from '../src/types/match';
 import MatchCard from '../src/components/MatchCard';
 import Header from '../src/components/Header';
 import Footer from '../src/components/Footer';
@@ -26,8 +26,8 @@ type CategoryType = 'all' | 'international' | 'league' | 'domestic';
 
 const BACKEND_URL = getBackendUrl();
 
-// UPDATED: Auto-refresh reduced to 30 seconds
-const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds - Smart Fetching interval
+// Auto-refresh reduced to 30 seconds
+const AUTO_REFRESH_INTERVAL = 30000;
 
 export default function Index() {
   const router = useRouter();
@@ -42,8 +42,7 @@ export default function Index() {
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFetchTime = useRef<{ [key: string]: number }>({});
   
-  // UPDATED: Cache duration reduced to 30 seconds
-  const CACHE_DURATION = 30000; // 30 seconds cache - matches API refresh interval
+  const CACHE_DURATION = 30000;
 
   // Fetch matches from backend
   const fetchMatches = async (tab: TabType, forceRefresh = false) => {
@@ -57,7 +56,6 @@ export default function Index() {
         if (timeSinceLastFetch < CACHE_DURATION) {
           console.log(`Using cached data for ${tab} (${Math.round(timeSinceLastFetch / 1000)}s old)`);
           
-          // Try to load from AsyncStorage
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsedMatches = JSON.parse(cachedData);
@@ -71,14 +69,14 @@ export default function Index() {
       console.log(`Fetching ${tab} matches from:`, endpoint);
       
       const response = await axios.get(endpoint, {
-        timeout: 10000,
+        timeout: 15000,
         headers: {
           'Accept': 'application/json',
         },
       });
 
       if (response.data && response.data.typeMatches) {
-        const allMatches = extractMatches(response.data.typeMatches);
+        const allMatches = extractMatches(response.data.typeMatches, tab);
         setMatches(allMatches);
         
         // Cache the data
@@ -107,7 +105,6 @@ export default function Index() {
   // Start auto-refresh for live matches
   useEffect(() => {
     if (activeTab === 'live') {
-      // Start auto-refresh
       autoRefreshRef.current = setInterval(() => {
         console.log('Auto-refreshing live matches...');
         fetchMatches('live', true).catch(console.error);
@@ -120,7 +117,6 @@ export default function Index() {
         }
       };
     } else {
-      // Clear auto-refresh when not on live tab
       if (autoRefreshRef.current) {
         clearInterval(autoRefreshRef.current);
         autoRefreshRef.current = null;
@@ -151,45 +147,121 @@ export default function Index() {
       setFilteredMatches(matches);
     } else {
       const filtered = matches.filter(
-        (match) => match.matchFormat.toLowerCase() === selectedCategory
+        (match) => match.category?.toLowerCase() === selectedCategory
       );
       setFilteredMatches(filtered);
     }
   }, [matches, selectedCategory]);
 
-  // Extract matches from Cricbuzz API response
-  const extractMatches = (typeMatches: any[]): Match[] => {
+  // Determine match status from API state
+  const determineMatchStatus = (state: string): 'live' | 'recent' | 'upcoming' => {
+    const lowerState = state.toLowerCase();
+    if (lowerState.includes('progress') || lowerState.includes('innings break') || lowerState === 'live') {
+      return 'live';
+    }
+    if (lowerState.includes('complete') || lowerState.includes('won') || lowerState.includes('abandoned') || lowerState.includes('drawn') || lowerState.includes('tied')) {
+      return 'recent';
+    }
+    return 'upcoming';
+  };
+
+  // Categorize match type
+  const categorizeMatch = (matchType: string, seriesName: string): string => {
+    const lowerMatchType = matchType.toLowerCase();
+    const lowerSeriesName = seriesName.toLowerCase();
+    
+    if (lowerMatchType === 'women') return 'Women';
+    if (lowerMatchType === 'league' || 
+        lowerSeriesName.includes('ipl') || 
+        lowerSeriesName.includes('bbl') || 
+        lowerSeriesName.includes('psl') ||
+        lowerSeriesName.includes('cpl')) {
+      return 'League';
+    }
+    if (lowerMatchType === 'international') return 'International';
+    return 'Domestic';
+  };
+
+  // Extract matches from Cricbuzz API response - produces proper Match objects
+  const extractMatches = (typeMatches: any[], tab: TabType): Match[] => {
     const allMatches: Match[] = [];
 
     typeMatches.forEach((typeMatch) => {
       const matchType = typeMatch.matchType;
       typeMatch.seriesMatches?.forEach((seriesMatch: any) => {
         const seriesAdWrapper = seriesMatch.seriesAdWrapper;
-        const seriesName = seriesAdWrapper.seriesName;
+        if (!seriesAdWrapper || !seriesAdWrapper.matches) return;
+        
+        const seriesName = seriesAdWrapper.seriesName || '';
 
-        seriesAdWrapper.matches?.forEach((match: any) => {
+        seriesAdWrapper.matches.forEach((match: any) => {
           const matchInfo = match.matchInfo;
           const matchScore = match.matchScore;
+          if (!matchInfo) return;
+
+          const status = determineMatchStatus(matchInfo.state || '');
+          const category = categorizeMatch(matchType, seriesName);
+
+          // Build teams array matching Team interface
+          const teams: Team[] = [];
+          
+          // Team 1
+          const team1Score = matchScore?.team1Score?.inngs1;
+          teams.push({
+            name: matchInfo.team1?.teamName || 'Team 1',
+            shortName: matchInfo.team1?.teamSName || 'TM1',
+            runs: team1Score?.runs,
+            wickets: team1Score?.wickets,
+            overs: team1Score?.overs?.toString(),
+          });
+
+          // Team 2
+          const team2Score = matchScore?.team2Score?.inngs1;
+          teams.push({
+            name: matchInfo.team2?.teamName || 'Team 2',
+            shortName: matchInfo.team2?.teamSName || 'TM2',
+            runs: team2Score?.runs,
+            wickets: team2Score?.wickets,
+            overs: team2Score?.overs?.toString(),
+          });
+
+          // Result text
+          let result: string | undefined;
+          if (status === 'recent' && matchInfo.status) {
+            result = matchInfo.status;
+          } else if (status === 'live' && matchInfo.status) {
+            result = matchInfo.status;
+          }
+
+          // Start time for upcoming
+          let startTime: string | undefined;
+          if (matchInfo.startDate) {
+            try {
+              const date = new Date(parseInt(matchInfo.startDate));
+              startTime = date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+            } catch (e) {}
+          }
+
+          const venue = matchInfo.venueInfo 
+            ? `${matchInfo.venueInfo.ground || ''}, ${matchInfo.venueInfo.city || ''}`
+            : 'TBD';
 
           allMatches.push({
-            id: matchInfo.matchId.toString(),
-            team1: matchInfo.team1.teamSName,
-            team2: matchInfo.team2.teamSName,
-            team1Score: matchScore?.team1Score?.inngs1
-              ? `${matchScore.team1Score.inngs1.runs}/${matchScore.team1Score.inngs1.wickets} (${matchScore.team1Score.inngs1.overs})`
-              : 'Yet to bat',
-            team2Score: matchScore?.team2Score?.inngs1
-              ? `${matchScore.team2Score.inngs1.runs}/${matchScore.team2Score.inngs1.wickets} (${matchScore.team2Score.inngs1.overs})`
-              : 'Yet to bat',
-            status: matchInfo.status || 'Scheduled',
-            matchFormat: matchType,
-            venue: matchInfo.venueInfo?.city || 'TBD',
+            matchId: matchInfo.matchId.toString(),
+            status,
             series: seriesName,
-            startTime: matchInfo.startDate
-              ? new Date(parseInt(matchInfo.startDate)).toLocaleString()
-              : undefined,
-            result: matchInfo.status,
-            isLive: matchInfo.state === 'Live' || matchInfo.state === 'In Progress',
+            matchType: matchInfo.matchFormat?.toUpperCase() || 'T20',
+            venue,
+            teams,
+            result,
+            startTime,
+            category,
+            timestamp: matchInfo.startDate ? parseInt(matchInfo.startDate) : undefined,
           });
         });
       });
@@ -215,7 +287,7 @@ export default function Index() {
     setLoading(true);
     setError(null);
     fetchMatches(activeTab, true)
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
   };
 
@@ -260,7 +332,7 @@ export default function Index() {
                   activeTab === 'live' && styles.activeTabText,
                 ]}
               >
-                🔴 LIVE
+                LIVE
               </Text>
             </TouchableOpacity>
 
@@ -277,7 +349,7 @@ export default function Index() {
                   activeTab === 'recent' && styles.activeTabText,
                 ]}
               >
-                ✅ RECENT
+                RECENT
               </Text>
             </TouchableOpacity>
 
@@ -294,7 +366,7 @@ export default function Index() {
                   activeTab === 'upcoming' && styles.activeTabText,
                 ]}
               >
-                📅 UPCOMING
+                UPCOMING
               </Text>
             </TouchableOpacity>
           </View>
@@ -328,7 +400,7 @@ export default function Index() {
           {activeTab === 'live' && (
             <View style={styles.autoRefreshBanner}>
               <Text style={styles.autoRefreshText}>
-                🔄 Auto-refreshing every 30 seconds
+                Auto-refreshing every 30 seconds
               </Text>
             </View>
           )}
@@ -336,11 +408,11 @@ export default function Index() {
           {/* Match List */}
           <FlatList
             data={filteredMatches}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.matchId}
             renderItem={({ item }) => (
               <MatchCard
                 match={item}
-                onPress={() => router.push(`/match/${item.id}`)}
+                onPress={() => router.push(`/match/${item.matchId}`)}
               />
             )}
             contentContainerStyle={styles.listContent}

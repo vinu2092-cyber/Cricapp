@@ -8,7 +8,7 @@
     "scheme": "cricapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
-    "owner": "mycricapp",
+    "owner": "cricapp-1",
     "extra": {
       "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
       "admob": {
@@ -20,7 +20,7 @@
         "testDeviceId": "553c7721-4821-461b-9f62-8584b1e60745"
       },
       "router": {},
-      "backendUrl": "https://cric-overlay-native.preview.emergentagent.com",
+      "backendUrl": "https://dragable-ui-test.preview.emergentagent.com",
       "eas": {
         "projectId": "5446a4ee-77fd-467e-ae93-44e9d16642cf"
       }
@@ -38,7 +38,8 @@
       "package": "com.mycricapp.live",
       "permissions": [
         "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE"
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
     "plugins": [

@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePro } from '../context/ProContext';
 
 interface HeaderProps {
-  onUnlockPro: () => void;
+  onUnlockPro?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {

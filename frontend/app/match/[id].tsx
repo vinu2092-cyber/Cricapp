@@ -475,15 +475,26 @@ export default function MatchDetail() {
         </View>
 
         {match.status === 'live' && (
-          <TouchableOpacity
-            style={[styles.floatingScoreboardButton, !isPro && styles.floatingScoreboardButtonLocked]}
-            onPress={handleFloatingScoreboardToggle}
-          >
-            <Ionicons name={showFloatingScoreboard ? "tv" : "tv-outline"} size={16} color={isPro ? '#FFF' : '#999'} />
-            <Text style={[styles.floatingScoreboardButtonText, !isPro && styles.floatingScoreboardButtonTextLocked]}>
-              {isPro ? 'Floating Score' : '🔒 Pro Only'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.floatingScoreboardButton, !isPro && styles.floatingScoreboardButtonLocked]}
+              onPress={handleFloatingScoreboardToggle}
+            >
+              <Ionicons name={showFloatingScoreboard ? "tv" : "tv-outline"} size={16} color={isPro ? '#FFF' : '#999'} />
+              <Text style={[styles.floatingScoreboardButtonText, !isPro && styles.floatingScoreboardButtonTextLocked]}>
+                {isPro ? 'Floating Score' : 'Pro Only'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.overlayButton, showFloatingScoreboard && styles.overlayButtonActive]}
+              onPress={handleFloatingScoreboardToggle}
+            >
+              <Ionicons name="layers" size={16} color={showFloatingScoreboard ? '#FFF' : '#4CAF50'} />
+              <Text style={[styles.overlayButtonText, showFloatingScoreboard && styles.overlayButtonTextActive]}>
+                {showFloatingScoreboard ? 'Overlay ON' : 'Overlay OFF'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {match.result && (
@@ -760,7 +771,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 16,
     gap: 6,
-    marginTop: 4,
+    flex: 1,
   },
   floatingScoreboardButtonLocked: {
     backgroundColor: '#333',
@@ -772,6 +783,36 @@ const styles = StyleSheet.create({
   },
   floatingScoreboardButtonTextLocked: {
     color: '#999',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  overlayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(76, 175, 80, 0.15)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    gap: 6,
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  overlayButtonActive: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
+  overlayButtonText: {
+    color: '#4CAF50',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  overlayButtonTextActive: {
+    color: '#FFF',
   },
   resultContainer: {
     flexDirection: 'row',

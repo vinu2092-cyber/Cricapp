@@ -8,7 +8,7 @@ import Constants from 'expo-constants';
 // ============================================
 
 // Get backend URL from multiple sources with fallback
-const getBackendUrl = () => {
+export const getBackendUrl = () => {
   // Try expo-constants extra config first (for native builds)
   if (Constants.expoConfig?.extra?.backendUrl) {
     return Constants.expoConfig.extra.backendUrl;
@@ -20,7 +20,7 @@ const getBackendUrl = () => {
   }
   
   // Fallback to current backend URL
-  return 'https://cric-overlay-native.preview.emergentagent.com';
+  return 'https://dragable-ui-test.preview.emergentagent.com';
 };
 
 const BACKEND_URL = getBackendUrl();
