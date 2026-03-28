@@ -22,7 +22,7 @@
       "router": {},
       "backendUrl": "https://dragable-ui-test.preview.emergentagent.com",
       "eas": {
-        "projectId": "5446a4ee-77fd-467e-ae93-44e9d16642cf"
+        "projectId": "2e891145-de46-4415-841e-67271e25a146"
       }
     },
     "splash": {
@@ -43,7 +43,13 @@
       ]
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-9675798593675825~2399929714"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

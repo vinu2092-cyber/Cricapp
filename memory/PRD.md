@@ -1,103 +1,90 @@
-# CrickApp - Cricket Score Tracking Mobile App
+# CricApp - Product Requirements Document
 
-## Overview
-CrickApp is an Expo React Native mobile application for tracking live, recent, and upcoming cricket matches. The app features a modern UI with cricket-themed design elements.
+## Original Problem Statement
+Cricket live score app (React Native Expo for Android) with issues:
+1. Floating draggable pop-up scoreboard too small - scores not visible
+2. Match data not loading in the app
+3. Previous agents broke basic UI when fixing issues
+4. Need APK and AAB builds with minimized size
+5. AdMob ads integration for Pro unlock system
 
-## Key Features
+## Architecture
+- **Frontend**: React Native (Expo SDK 54) - Android-only mobile app
+- **Backend**: FastAPI proxy to Cricbuzz via RapidAPI (multiple API keys with rotation)
+- **Database**: MongoDB (for status checks)
+- **Ads**: Google AdMob (react-native-google-mobile-ads)
+- **Build**: EAS Build (Expo Application Services)
 
-### 1. Match List Display
-- **Live Matches Tab**: Shows ongoing cricket matches with live scores (AUTO-REFRESH every 10 seconds)
-- **Recent Matches Tab**: Displays completed matches with results from API
-- **Upcoming Matches Tab**: Shows scheduled future matches
+## User Personas
+- Cricket fans wanting live scores on their Android phones
+- Users who want floating scoreboard overlay while using other apps
+- Free users (see ads) vs Pro users (30-min ad-free after watching 3 rewarded ads)
 
-### 2. Match Cards
-- Team names and short codes
-- Scores with runs/wickets format
-- Overs played
-- Match result or status
-- Animated LIVE indicator for live matches
-- Click to view match details
+## Core Requirements
+1. Live, Recent, Upcoming match listings with category filters
+2. Match detail with cricket field, commentary, scores
+3. Floating draggable scoreboard (Pro feature)
+4. Voice commentary (Pro feature)
+5. AdMob monetization (App Open, Banner, Interstitial every 10-15 clicks, Rewarded for Pro)
+6. Pro system: Watch 3 rewarded ads → 30 min Pro access
+7. SYSTEM_ALERT_WINDOW permission for overlay
 
-### 3. Match Details Screen
-- Full series name and match type
-- Venue with location icon
-- Detailed scorecard with team badges
-- Match result with trophy icon
-- Match format information
-- Auto-refresh for live matches (every 10 seconds)
+## What's Been Implemented (March 28, 2026)
+- [x] Fixed data loading: Rewrote index.tsx extractMatches to produce proper Match type objects
+- [x] Fixed getBackendUrl export from api.ts
+- [x] Fixed category filter (uses match.category instead of match.matchFormat)
+- [x] Fixed navigation (uses matchId instead of id)
+- [x] Fixed Header component (onUnlockPro made optional)
+- [x] Fixed ErrorScreen (added onRetry support)
+- [x] Fixed FloatingScoreboard size (minWidth 230, bigger fonts, always shows both teams)
+- [x] Added doodle wallpaper background to home page (ImageBackground)
+- [x] Added Pro unlock modal to home page
+- [x] Fixed Pro button flow (opens modal instead of alert)
+- [x] Added "Overlay ON/OFF" button alongside "Floating Score"
+- [x] Integrated real AdMob SDK (react-native-google-mobile-ads v16.3.1)
+- [x] Added SYSTEM_ALERT_WINDOW permission
+- [x] Updated Expo account (cricapp-1) and project ID
+- [x] Optimized image assets for smaller APK
+- [x] Started EAS builds (APK + AAB)
 
-### 4. Ball-by-Ball Commentary (NEW)
-- Dual language support: **English** and **Hindi**
-- Language toggle switch (EN/हि) to instantly swap languages
-- Over and ball number display
-- Event badges (WICKET, SIX, FOUR, DOT)
-- Color-coded events for visual distinction
+## Build Details
+- **Expo Account**: cricapp-1 (tempcp23@gmail.com)
+- **Project**: @cricapp-1/cric-app
+- **Project ID**: 2e891145-de46-4415-841e-67271e25a146
+- **APK Build**: 60eeac97-f68d-4ecf-93b5-9472224c37b5
+- **AAB Build**: 88e3e2da-266f-447e-8a45-bd921e824728
+- **Build Dashboard**: https://expo.dev/accounts/cricapp-1/projects/cric-app/builds
 
-### 5. Pro Unlock Feature
-- "UNLOCK PRO" button in header
-- Mock ad watching flow (3 ads required)
-- Progress tracking with numbered circles
-- 5-second countdown per ad
-- Pro status persisted using AsyncStorage
+## AdMob Configuration
+- App ID: ca-app-pub-9675798593675825~2399929714
+- App Open: ca-app-pub-9675798593675825/4826782503
+- Interstitial: ca-app-pub-9675798593675825/8438724452
+- Banner: ca-app-pub-9675798593675825/8616886104
+- Rewarded: ca-app-pub-9675798593675825/6702740458
 
-### 6. UI Design
-- Cricket doodle wallpaper pattern background
-- Green grass header and footer images
-- CrickApp logo in header
-- Green color scheme matching cricket theme
-- Status badges (LIVE-red, RESULT-green, UPCOMING-blue)
-- Auto-refresh indicator banner for live matches
+## API Keys (RapidAPI - Cricbuzz)
+- 10 API keys with rotation system
+- 2 providers for fallback
+- Backend URL: https://dragable-ui-test.preview.emergentagent.com
 
-## Data Sources
-- **External API**: https://cric-app-old-archive-api-server.vercel.app/api/matches (Recent matches)
-- **Mock Data**: Live and Upcoming matches are simulated for demonstration
+## Prioritized Backlog
+### P0 (Critical)
+- [x] Data loading fix
+- [x] AdMob real integration
+- [x] Build APK/AAB
 
-## Auto-Refresh Feature
-- Live matches auto-update scores every 10 seconds
-- Visual indicator shows "Auto-refreshing every 10 seconds"
-- Works on both home screen and match details page
+### P1 (Important)
+- [ ] Native FloatingScoreService.java for true home screen overlay
+- [ ] Test innings handling for Test matches (show latest innings)
 
-## Tech Stack
-- **Frontend**: Expo React Native with TypeScript
-- **Navigation**: expo-router (file-based routing)
-- **State Management**: React Context (ProContext)
-- **HTTP Client**: Axios
-- **Storage**: AsyncStorage for Pro status persistence
-- **Icons**: @expo/vector-icons (Ionicons)
-- **Animations**: React Native Animated API
+### P2 (Nice to have)
+- [ ] Push notifications for live score updates
+- [ ] Widget for home screen
+- [ ] Multi-language support beyond English/Hindi
 
-## File Structure
-```
-/app/frontend/
-├── app/
-│   ├── _layout.tsx (Root layout with ProProvider)
-│   ├── index.tsx (Home screen with match list + auto-refresh)
-│   └── match/
-│       └── [id].tsx (Match detail with commentary)
-├── src/
-│   ├── components/
-│   │   ├── Header.tsx
-│   │   ├── Footer.tsx
-│   │   ├── TabBar.tsx
-│   │   ├── MatchCard.tsx
-│   │   ├── AdModal.tsx
-│   │   ├── ErrorScreen.tsx
-│   │   ├── LoadingScreen.tsx
-│   │   ├── CommentarySection.tsx (NEW - Dual language commentary)
-│   │   └── LiveIndicator.tsx (NEW - Animated LIVE badge)
-│   ├── context/
-│   │   └── ProContext.tsx
-│   ├── services/
-│   │   └── api.ts (API + mock data + live score simulation)
-│   └── types/
-│       └── match.ts (includes Commentary type)
-└── assets/images/
-    ├── logo.png
-    ├── wallpaper.png
-    └── header-grass.png
-```
-
-## Assets Used
-- **logo.png**: CrickApp logo with cricket ball, bat, and stumps
-- **wallpaper.png**: Cricket doodle pattern (bats, stumps, balls, gloves)
-- **header-grass.png**: Green cricket field grass texture
+## Next Tasks
+1. Download APK from build dashboard and test on device
+2. Download AAB and upload to Play Store
+3. Push code to GitHub using "Save to Github" feature
+4. Test AdMob ads on real device
+5. Consider native overlay service for home screen

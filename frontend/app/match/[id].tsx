@@ -277,10 +277,11 @@ export default function MatchDetail() {
 
   const handleFloatingScoreboardToggle = () => {
     trackClick();
-    if (isPro) {
+    if (effectiveIsPro) {
       setShowFloatingScoreboard(!showFloatingScoreboard);
     } else {
-      alert('Unlock Pro to use Floating Scoreboard feature');
+      // Open Pro unlock modal instead of just alert
+      unlockPro();
     }
   };
 
@@ -477,12 +478,12 @@ export default function MatchDetail() {
         {match.status === 'live' && (
           <View style={styles.buttonRow}>
             <TouchableOpacity
-              style={[styles.floatingScoreboardButton, !isPro && styles.floatingScoreboardButtonLocked]}
+              style={[styles.floatingScoreboardButton, !effectiveIsPro && styles.floatingScoreboardButtonLocked]}
               onPress={handleFloatingScoreboardToggle}
             >
-              <Ionicons name={showFloatingScoreboard ? "tv" : "tv-outline"} size={16} color={isPro ? '#FFF' : '#999'} />
-              <Text style={[styles.floatingScoreboardButtonText, !isPro && styles.floatingScoreboardButtonTextLocked]}>
-                {isPro ? 'Floating Score' : 'Pro Only'}
+              <Ionicons name={showFloatingScoreboard ? "tv" : "tv-outline"} size={16} color={effectiveIsPro ? '#FFF' : '#999'} />
+              <Text style={[styles.floatingScoreboardButtonText, !effectiveIsPro && styles.floatingScoreboardButtonTextLocked]}>
+                {effectiveIsPro ? 'Floating Score' : 'Pro Only'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity

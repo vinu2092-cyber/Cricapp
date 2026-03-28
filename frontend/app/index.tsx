@@ -7,18 +7,21 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  ImageBackground,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { Ionicons } from '@expo/vector-icons';
 import { Match, Team } from '../src/types/match';
 import MatchCard from '../src/components/MatchCard';
 import Header from '../src/components/Header';
 import Footer from '../src/components/Footer';
 import LoadingScreen from '../src/components/LoadingScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
-import { AdMobProvider } from '../src/context/AdMobContext';
-import { ProProvider } from '../src/context/ProContext';
+import { AdMobProvider, useAdMob } from '../src/context/AdMobContext';
+import { ProProvider, usePro } from '../src/context/ProContext';
 import { getBackendUrl } from '../src/services/api';
 
 type TabType = 'live' | 'recent' | 'upcoming';
@@ -38,6 +41,7 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showProModal, setShowProModal] = useState(false);
 
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFetchTime = useRef<{ [key: string]: number }>({});
@@ -315,7 +319,7 @@ export default function Index() {
     <AdMobProvider>
       <ProProvider>
         <View style={styles.container}>
-          <Header />
+          <Header onUnlockPro={() => setShowProModal(true)} />
 
           {/* Tab Bar */}
           <View style={styles.tabBar}>
@@ -405,28 +409,89 @@ export default function Index() {
             </View>
           )}
 
-          {/* Match List */}
-          <FlatList
-            data={filteredMatches}
-            keyExtractor={(item) => item.matchId}
-            renderItem={({ item }) => (
-              <MatchCard
-                match={item}
-                onPress={() => router.push(`/match/${item.matchId}`)}
-              />
-            )}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No matches found</Text>
-              </View>
-            }
-          />
+          {/* Match List with Wallpaper Background */}
+          <ImageBackground
+            source={require('../assets/images/wallpaper.png')}
+            style={styles.wallpaperBackground}
+            resizeMode="repeat"
+          >
+            <FlatList
+              data={filteredMatches}
+              keyExtractor={(item) => item.matchId}
+              renderItem={({ item }) => (
+                <MatchCard
+                  match={item}
+                  onPress={() => router.push(`/match/${item.matchId}`)}
+                />
+              )}
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No matches found</Text>
+                </View>
+              }
+            />
+          </ImageBackground>
 
           <Footer />
+
+          {/* Pro Unlock Modal */}
+          <Modal
+            visible={showProModal}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowProModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.proModalContainer}>
+                <Text style={styles.proModalTitle}>Unlock Pro Features</Text>
+                
+                <View style={styles.proFeaturesList}>
+                  <View style={styles.proFeatureItem}>
+                    <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                    <Text style={styles.proFeature}>Voice Commentary</Text>
+                  </View>
+                  <View style={styles.proFeatureItem}>
+                    <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                    <Text style={styles.proFeature}>Floating Scoreboard</Text>
+                  </View>
+                  <View style={styles.proFeatureItem}>
+                    <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                    <Text style={styles.proFeature}>No Click Ads for 30 mins</Text>
+                  </View>
+                </View>
+                
+                <Text style={styles.proModalSubtitle}>
+                  Watch 3 short ads to unlock Pro for 30 minutes
+                </Text>
+                
+                <TouchableOpacity
+                  style={styles.proModalButton}
+                  onPress={() => {
+                    setShowProModal(false);
+                    // Navigate to a live match to use Pro features
+                    if (filteredMatches.length > 0 && filteredMatches[0].status === 'live') {
+                      router.push(`/match/${filteredMatches[0].matchId}`);
+                    } else {
+                      alert('Open any live match to watch ads and unlock Pro!');
+                    }
+                  }}
+                >
+                  <Text style={styles.proModalButtonText}>Go to Live Match</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.proModalCancelButton}
+                  onPress={() => setShowProModal(false)}
+                >
+                  <Text style={styles.proModalCancelText}>Maybe Later</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </View>
       </ProProvider>
     </AdMobProvider>
@@ -500,6 +565,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
+  wallpaperBackground: {
+    flex: 1,
+  },
   listContent: {
     paddingVertical: 8,
   },
@@ -510,5 +578,71 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#999',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  proModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 30,
+    width: '85%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  proModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  proFeaturesList: {
+    marginBottom: 20,
+    gap: 12,
+  },
+  proFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  proFeature: {
+    fontSize: 16,
+    color: '#555',
+  },
+  proModalSubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  proModalButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    marginBottom: 10,
+  },
+  proModalButtonText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  proModalCancelButton: {
+    backgroundColor: 'transparent',
+    paddingVertical: 10,
+  },
+  proModalCancelText: {
+    color: '#999',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
