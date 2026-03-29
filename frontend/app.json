@@ -50,15 +50,16 @@
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "minSdkVersion": 23
+            "minSdkVersion": 23,
+            "buildToolsVersion": "35.0.0"
           }
         }
       ],
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-9675798593675825~2399929714",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+          "android_app_id": "ca-app-pub-9675798593675825~2399929714",
+          "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
         }
       ]
     ],
