@@ -25,6 +25,10 @@
         "projectId": "47d65cb3-f161-4591-bbd9-9d062e96ca5d"
       }
     },
+    "react-native-google-mobile-ads": {
+      "android_app_id": "ca-app-pub-9675798593675825~2399929714",
+      "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
+    },
     "splash": {
       "image": "./assets/splash_doodle.png",
       "resizeMode": "cover",
