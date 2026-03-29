@@ -38,8 +38,8 @@ jobs:
       - name: Install dependencies
         working-directory: ./frontend
         run: |
-          npm install -g yarn
-          yarn install
+          npm install --legacy-peer-deps
+          npm install expo-asset ajv --save-dev
           
       - name: CRITICAL - Hard Clean Native Folder
         working-directory: ./frontend
@@ -52,14 +52,14 @@ jobs:
         working-directory: ./frontend/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=512m"
 
       - name: Build AAB (Release)
         if: ${{ github.event.inputs.build_type == 'aab' || github.event.inputs.build_type == 'both' }}
         working-directory: ./frontend/android
         run: |
           chmod +x gradlew
-          ./gradlew bundleRelease --no-daemon
+          ./gradlew bundleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=512m"
 
       - name: Upload APK artifact
         if: ${{ github.event.inputs.build_type == 'apk' || github.event.inputs.build_type == 'both' }}
