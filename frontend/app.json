@@ -13,6 +13,14 @@
       "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
       "router": {},
       "backendUrl": "https://dragable-ui-test.preview.emergentagent.com",
+      "admob": {
+        "appId": "ca-app-pub-9675798593675825~2399929714",
+        "appOpenAdId": "ca-app-pub-9675798593675825/4826782503",
+        "bannerAdId": "ca-app-pub-9675798593675825/8616886104",
+        "interstitialAdId": "ca-app-pub-9675798593675825/8438724452",
+        "rewardedAdId": "ca-app-pub-9675798593675825/6702704058",
+        "testDeviceId": "553c7721-4821-461b-9f62-8584b1e60745"
+      },
       "eas": {
         "projectId": "47d65cb3-f161-4591-bbd9-9d062e96ca5d"
       }
