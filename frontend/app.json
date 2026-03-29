@@ -18,7 +18,7 @@
         "appOpenAdId": "ca-app-pub-9675798593675825/4826782503",
         "bannerAdId": "ca-app-pub-9675798593675825/8616886104",
         "interstitialAdId": "ca-app-pub-9675798593675825/8438724452",
-        "rewardedAdId": "ca-app-pub-9675798593675825/6702704058",
+        "rewardedAdId": "ca-app-pub-9675798593675825/6702740458",
         "testDeviceId": "553c7721-4821-461b-9f62-8584b1e60745"
       },
       "eas": {
@@ -46,29 +46,23 @@
         "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
-    "react-native-google-mobile-ads": {
-      "android_app_id": "ca-app-pub-9675798593675825~2399929714",
-      "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
-    },
     "plugins": [
       "expo-router",
-      "expo-asset",
       [
         "expo-build-properties",
         {
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "minSdkVersion": 24,
-            "buildToolsVersion": "35.0.0"
+            "minSdkVersion": 24
           }
         }
       ],
       [
         "react-native-google-mobile-ads",
         {
-          "android_app_id": "ca-app-pub-9675798593675825~2399929714",
-          "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
+          "androidAppId": "ca-app-pub-9675798593675825~2399929714",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ]
     ],
