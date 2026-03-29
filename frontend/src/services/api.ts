@@ -355,19 +355,43 @@ export async function fetchAllMatches(): Promise<Match[]> {
   }
 }
 
-export async function fetchMatchById(matchId: string): Promise<Match | null> {
+export async function fetchMatchById(matchId: string, forceRefresh: boolean = false): Promise<Match | null> {
   const cacheKey = `${CACHE_KEYS.MATCH_DETAIL}${matchId}`;
-  const cached = await getFromCache<Match>(cacheKey);
-  if (cached) return cached;
+  
+  if (!forceRefresh) {
+    const cached = await getFromCache<Match>(cacheKey);
+    if (cached) return cached;
+  }
   
   try {
-    const data = await makeApiRequest<any>(`/mcenter/v1/${matchId}`);
+    // Fetch match info and commentary in parallel
+    const [matchData, commentaryData] = await Promise.all([
+      makeApiRequest<any>(`/mcenter/v1/${matchId}`),
+      makeApiRequest<any>(`/mcenter/v1/${matchId}/comm`).catch(() => null),
+    ]);
     
-    if (data?.matchInfo) {
+    if (matchData?.matchInfo) {
       const match = transformToMatch({
-        matchInfo: data.matchInfo,
-        matchScore: data.scoreCard?.[0] || data.matchScore,
+        matchInfo: matchData.matchInfo,
+        matchScore: matchData.scoreCard?.[0] || matchData.matchScore,
       });
+      
+      // Add commentary to match
+      if (commentaryData?.commentaryList) {
+        match.commentary = commentaryData.commentaryList
+          .filter((c: any) => c.commText)
+          .map((c: any, index: number) => ({
+            id: `${matchId}-${index}`,
+            over: c.overNumber ? `${Math.floor(c.overNumber)}.${c.ballNbr || 0}` : '0.0',
+            ball: c.ballNbr || 0,
+            runs: c.batRuns || 0,
+            event: getEventType(c.eventType),
+            english: c.commText || '',
+            hindi: c.commText || '',
+            timestamp: c.timestamp || Date.now(),
+          }));
+      }
+      
       await saveToCache(cacheKey, match);
       return match;
     }
