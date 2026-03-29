@@ -39,26 +39,27 @@ jobs:
         working-directory: ./frontend
         run: |
           npm install -g yarn
-          yarn install
+          yarn install --frozen-lockfile
           
-      - name: Generate Android native project
+      - name: CRITICAL - Hard Clean Native Folder
         working-directory: ./frontend
         run: |
+          rm -rf android
           npx expo prebuild --platform android --clean
-
-      - name: Make gradlew executable
-        working-directory: ./frontend/android
-        run: chmod +x gradlew
 
       - name: Build APK (Release)
         if: ${{ github.event.inputs.build_type == 'apk' || github.event.inputs.build_type == 'both' }}
         working-directory: ./frontend/android
-        run: ./gradlew assembleRelease --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
 
       - name: Build AAB (Release)
         if: ${{ github.event.inputs.build_type == 'aab' || github.event.inputs.build_type == 'both' }}
         working-directory: ./frontend/android
-        run: ./gradlew bundleRelease --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease --no-daemon
 
       - name: Upload APK artifact
         if: ${{ github.event.inputs.build_type == 'apk' || github.event.inputs.build_type == 'both' }}
@@ -66,7 +67,6 @@ jobs:
         with:
           name: CricApp-Release-APK
           path: frontend/android/app/build/outputs/apk/release/app-release.apk
-          retention-days: 30
 
       - name: Upload AAB artifact
         if: ${{ github.event.inputs.build_type == 'aab' || github.event.inputs.build_type == 'both' }}
@@ -74,18 +74,3 @@ jobs:
         with:
           name: CricApp-Release-AAB
           path: frontend/android/app/build/outputs/bundle/release/app-release.aab
-          retention-days: 30
-
-      - name: Build Summary
-        run: |
-          echo "## Build Complete! " >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Artifacts Generated:" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ github.event.inputs.build_type }}" == "apk" || "${{ github.event.inputs.build_type }}" == "both" ]]; then
-            echo "- APK (Release)" >> $GITHUB_STEP_SUMMARY
-          fi
-          if [[ "${{ github.event.inputs.build_type }}" == "aab" || "${{ github.event.inputs.build_type }}" == "both" ]]; then
-            echo "- AAB (Release)" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download artifacts from the Actions tab above." >> $GITHUB_STEP_SUMMARY
