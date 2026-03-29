@@ -23,13 +23,9 @@ const getClient = () => {
   currentKeyIndex = (currentKeyIndex + 1) % RAPIDAPI_KEYS.length;
   return axios.create({
     baseURL: `https://${RAPIDAPI_HOST}`,
+    timeout: 15000,
     headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': RAPIDAPI_HOST }
   });
-};
-
-export const openCricbuzzMatch = async (matchId: string) => {
-  const url = `https://www.cricbuzz.com/live-cricket-scores/${matchId}`;
-  if (await Linking.canOpenURL(url)) await Linking.openURL(url);
 };
 
 const transformToMatch = (m: any): Match => {
@@ -50,25 +46,38 @@ const transformToMatch = (m: any): Match => {
   };
 };
 
+function extract(data: any): Match[] {
+  const matches: Match[] = [];
+  if (!data?.typeMatches) return matches;
+  data.typeMatches.forEach((t: any) => {
+    t.seriesMatches?.forEach((s: any) => {
+      s.seriesAdWrapper?.matches?.forEach((m: any) => {
+        if (m.matchInfo) matches.push(transformToMatch(m));
+      });
+    });
+  });
+  return matches;
+}
+
 export async function fetchLiveMatches(): Promise<Match[]> {
   try {
     const res = await getClient().get('/matches/v1/live');
     return extract(res.data);
-  } catch { return []; }
+  } catch (e) { return []; }
 }
 
 export async function fetchRecentMatches(): Promise<Match[]> {
   try {
     const res = await getClient().get('/matches/v1/recent');
     return extract(res.data);
-  } catch { return []; }
+  } catch (e) { return []; }
 }
 
 export async function fetchUpcomingMatches(): Promise<Match[]> {
   try {
     const res = await getClient().get('/matches/v1/upcoming');
     return extract(res.data);
-  } catch { return []; }
+  } catch (e) { return []; }
 }
 
 export async function fetchMatchById(id: string): Promise<Match | null> {
@@ -85,11 +94,10 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
       event: c.event?.toLowerCase() || 'normal'
     }));
     return match;
-  } catch { return null; }
+  } catch (e) { return null; }
 }
 
-function extract(data: any): Match[] {
-  const matches: Match[] = [];
-  data?.typeMatches?.forEach((t: any) => t.seriesMatches?.forEach((s: any) => s.seriesAdWrapper?.matches?.forEach((m: any) => matches.push(transformToMatch(m)))));
-  return matches;
-}
+export const openCricbuzzMatch = async (matchId: string) => {
+  const url = `https://www.cricbuzz.com/live-cricket-scores/${matchId}`;
+  if (await Linking.canOpenURL(url)) await Linking.openURL(url);
+};
