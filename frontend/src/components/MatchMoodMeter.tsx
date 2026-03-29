@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Dimensions } from 'react-native';
 
 interface MatchMoodMeterProps {
-  event?: 'wicket' | 'four' | 'six' | 'dot' | 'normal' | null;
+  event?: 'wicket' | 'four' | 'six' | 'dot' | 'wide' | 'normal' | null;
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -36,6 +36,9 @@ const MatchMoodMeter: React.FC<MatchMoodMeterProps> = ({ event }) => {
     } else if (event === 'four') {
       triggerConfetti(CELEBRATION_COLORS, 12);
       triggerFlash('#4CAF50');
+    } else if (event === 'wide') {
+      triggerFlash('#FF9800');
+      triggerConfetti(['#FF9800', '#FFC107', '#FFE082'], 6);
     }
   }, [event]);
 

@@ -239,8 +239,19 @@ export default function Index() {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="baseball-outline" size={48} color="#999" />
-              <Text style={styles.emptyText}>No matches found</Text>
+              <Text style={styles.emptyText}>
+                {activeTab === 'live' ? 'No live matches right now' : 
+                 activeTab === 'upcoming' ? 'No upcoming matches' : 'No recent matches'}
+              </Text>
               <Text style={styles.emptySubtext}>Pull down to refresh</Text>
+              {activeTab === 'live' && (
+                <TouchableOpacity
+                  style={styles.switchTabBtn}
+                  onPress={() => setActiveTab('recent')}
+                >
+                  <Text style={styles.switchTabText}>Check Recent Matches</Text>
+                </TouchableOpacity>
+              )}
             </View>
           }
         />
@@ -432,6 +443,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     marginTop: 8,
+  },
+  switchTabBtn: {
+    marginTop: 16,
+    backgroundColor: '#4CAF50',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  switchTabText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,

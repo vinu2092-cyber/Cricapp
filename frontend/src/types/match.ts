@@ -14,7 +14,7 @@ export interface Commentary {
   english: string;
   hindi?: string;
   runs?: number;
-  event?: 'wicket' | 'four' | 'six' | 'dot' | 'normal';
+  event?: 'wicket' | 'four' | 'six' | 'dot' | 'wide' | 'normal';
   timestamp?: number;
 }
 

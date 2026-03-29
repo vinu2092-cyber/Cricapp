@@ -41,17 +41,46 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [clickCount, setClickCount] = useState(0);
   const [targetClicks] = useState(Math.floor(Math.random() * 6) + 10);
   const rewardedRef = useRef<RewardedAd | null>(null);
+  const rewardedLoadingRef = useRef(false);
+  const retryCountRef = useRef(0);
+  const maxRetries = 5;
 
   const loadRewardedAd = useCallback(() => {
+    if (rewardedLoadingRef.current) return;
+    rewardedLoadingRef.current = true;
+    
     try {
       const ad = RewardedAd.createForAdRequest(ADMOB_CONFIG.rewardedAdId);
-      ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
-        console.log('Rewarded Ad Loaded');
+      
+      const loadedUnsubscribe = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        console.log('Rewarded Ad Loaded successfully');
         rewardedRef.current = ad;
+        rewardedLoadingRef.current = false;
+        retryCountRef.current = 0;
       });
+      
+      const errorUnsubscribe = ad.addAdEventListener(AdEventType.ERROR, (error) => {
+        console.warn('Rewarded ad load error:', error);
+        rewardedLoadingRef.current = false;
+        
+        // Retry with exponential backoff
+        if (retryCountRef.current < maxRetries) {
+          retryCountRef.current += 1;
+          const delay = Math.min(2000 * Math.pow(2, retryCountRef.current), 30000);
+          console.log(`Retrying rewarded ad load in ${delay}ms (attempt ${retryCountRef.current})`);
+          setTimeout(() => loadRewardedAd(), delay);
+        }
+      });
+      
       ad.load();
     } catch (error) {
-      console.warn('Failed to load rewarded ad:', error);
+      console.warn('Failed to create rewarded ad:', error);
+      rewardedLoadingRef.current = false;
+      
+      if (retryCountRef.current < maxRetries) {
+        retryCountRef.current += 1;
+        setTimeout(() => loadRewardedAd(), 5000);
+      }
     }
   }, []);
 
@@ -65,7 +94,9 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       })
       .catch((err) => {
         console.warn('AdMob init failed:', err);
-        setIsAdMobInitialized(true);
+        setIsAdMobInitialized(true); // Still mark as initialized to not block UI
+        // Retry loading ads after a delay
+        setTimeout(() => loadRewardedAd(), 3000);
       });
   }, [loadRewardedAd]);
 
@@ -84,7 +115,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           resolve();
         });
         appOpenAd.load();
-        // Timeout fallback
         setTimeout(resolve, 8000);
       } catch (error) {
         console.warn('App Open Ad failed:', error);
@@ -95,36 +125,72 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const showRewardedAd = async (): Promise<boolean> => {
     return new Promise((resolve) => {
+      // If ad not loaded, try loading and wait briefly
       if (!rewardedRef.current) {
-        Alert.alert('Ad not ready', 'Please wait a few seconds and try again.');
+        // Start loading
         loadRewardedAd();
-        resolve(false);
+        
+        // Wait up to 5 seconds for ad to load
+        let waited = 0;
+        const checkInterval = setInterval(() => {
+          waited += 500;
+          if (rewardedRef.current) {
+            clearInterval(checkInterval);
+            showLoadedRewardedAd(resolve);
+          } else if (waited >= 5000) {
+            clearInterval(checkInterval);
+            Alert.alert('Ad not ready', 'Please wait a few seconds and try again. Ad is being loaded.');
+            resolve(false);
+          }
+        }, 500);
         return;
       }
+      
+      showLoadedRewardedAd(resolve);
+    });
+  };
+  
+  const showLoadedRewardedAd = (resolve: (value: boolean) => void) => {
+    if (!rewardedRef.current) {
+      resolve(false);
+      return;
+    }
+    
+    try {
+      let rewarded = false;
+      
+      const earnedListener = rewardedRef.current.addAdEventListener(
+        RewardedAdEventType.EARNED_REWARD,
+        () => {
+          rewarded = true;
+        }
+      );
 
-      try {
-        const earnedListener = rewardedRef.current.addAdEventListener(
-          RewardedAdEventType.EARNED_REWARD,
-          () => {
-            resolve(true);
-          }
-        );
-
-        const closeListener = rewardedRef.current.addAdEventListener(AdEventType.CLOSED, () => {
-          earnedListener();
-          closeListener();
-          rewardedRef.current = null;
-          loadRewardedAd();
-        });
-
-        rewardedRef.current.show();
-      } catch (error) {
-        console.warn('Rewarded ad show failed:', error);
+      const closeListener = rewardedRef.current.addAdEventListener(AdEventType.CLOSED, () => {
+        earnedListener();
+        closeListener();
+        rewardedRef.current = null;
+        // Pre-load next ad immediately
+        loadRewardedAd();
+        resolve(rewarded);
+      });
+      
+      const errorListener = rewardedRef.current.addAdEventListener(AdEventType.ERROR, () => {
+        earnedListener();
+        closeListener();
+        errorListener();
         rewardedRef.current = null;
         loadRewardedAd();
         resolve(false);
-      }
-    });
+      });
+
+      rewardedRef.current.show();
+    } catch (error) {
+      console.warn('Rewarded ad show failed:', error);
+      rewardedRef.current = null;
+      loadRewardedAd();
+      resolve(false);
+    }
   };
 
   const showInterstitialAd = async (): Promise<boolean> => {

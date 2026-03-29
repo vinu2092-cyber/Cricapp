@@ -31,15 +31,14 @@ let currentHostIndex = 0;
 // Primary: Use backend proxy (has caching + key rotation)
 const backendClient = axios.create({
   baseURL: BACKEND_URL,
-  timeout: 20000,
+  timeout: 10000,
 });
 
-// Fallback: Direct API client with key rotation
+// Direct API client with key + host rotation
 const getDirectClient = () => {
   const key = RAPIDAPI_KEYS[currentKeyIndex];
   const host = RAPIDAPI_HOSTS[currentHostIndex];
   currentKeyIndex = (currentKeyIndex + 1) % RAPIDAPI_KEYS.length;
-  // Rotate host every 5 keys
   if (currentKeyIndex % 5 === 0) {
     currentHostIndex = (currentHostIndex + 1) % RAPIDAPI_HOSTS.length;
   }
@@ -50,19 +49,42 @@ const getDirectClient = () => {
   });
 };
 
+// Retry direct API with multiple keys
+const directApiCall = async (endpoint: string, retries = 3): Promise<any> => {
+  let lastError: any = null;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const client = getDirectClient();
+      const res = await client.get(endpoint);
+      if (res.data) return res.data;
+    } catch (err: any) {
+      lastError = err;
+      if (err?.response?.status === 429 || err?.response?.status === 403) {
+        continue; // Try next key
+      }
+    }
+  }
+  throw lastError || new Error('All API keys exhausted');
+};
+
 const transformToMatch = (m: any): Match => {
   const info = m.matchInfo || m;
   const score = m.matchScore || {};
+  const state = (info.state || '').toLowerCase();
+  
+  let status: 'live' | 'recent' | 'upcoming' = 'upcoming';
+  if (state.includes('progress') || state.includes('toss') || state.includes('innings break') || state.includes('strategic')) {
+    status = 'live';
+  } else if (state.includes('complete')) {
+    status = 'recent';
+  }
+
   return {
     matchId: String(info.matchId),
     seriesName: info.seriesName || 'Series',
     matchDesc: info.matchDesc || '',
     matchType: info.matchFormat || 'T20',
-    status: info.state?.toLowerCase().includes('progress')
-      ? 'live'
-      : info.state?.toLowerCase().includes('complete')
-        ? 'recent'
-        : 'upcoming',
+    status,
     statusText: info.status || info.stateTitle || '',
     venue: info.venueInfo?.ground || 'Stadium',
     teams: [
@@ -97,7 +119,7 @@ function extract(data: any): Match[] {
   return matches;
 }
 
-// Try backend proxy first, fallback to direct API
+// Try backend proxy first, fallback to direct API with retries
 async function fetchWithFallback(
   backendEndpoint: string,
   directEndpoint: string,
@@ -106,15 +128,15 @@ async function fetchWithFallback(
   // Try backend proxy first (has cache + key rotation)
   try {
     const res = await backendClient.get(`/api${backendEndpoint}`);
-    return extractor(res.data);
+    if (res.data) return extractor(res.data);
   } catch (backendErr) {
-    console.warn('Backend proxy failed, using direct API:', backendErr);
+    console.warn('Backend proxy failed, using direct API');
   }
 
-  // Fallback: Direct RapidAPI call
+  // Fallback: Direct RapidAPI call with retries
   try {
-    const res = await getDirectClient().get(directEndpoint);
-    return extractor(res.data);
+    const data = await directApiCall(directEndpoint, 4);
+    return extractor(data);
   } catch (directErr) {
     console.error('Direct API also failed:', directErr);
     return extractor(null);
@@ -122,178 +144,306 @@ async function fetchWithFallback(
 }
 
 export async function fetchLiveMatches(): Promise<Match[]> {
-  return fetchWithFallback('/cricket/matches/live', '/matches/v1/live', (data) => extract(data || {}));
+  const allMatches = await fetchWithFallback(
+    '/cricket/matches/live',
+    '/matches/v1/live',
+    (data) => extract(data || {})
+  );
+  // Filter: Only show truly live matches in Live tab
+  return allMatches.filter((m: Match) => m.status === 'live');
 }
 
 export async function fetchRecentMatches(): Promise<Match[]> {
-  return fetchWithFallback('/cricket/matches/recent', '/matches/v1/recent', (data) => extract(data || {}));
+  const allMatches = await fetchWithFallback(
+    '/cricket/matches/recent',
+    '/matches/v1/recent',
+    (data) => extract(data || {})
+  );
+  // Recent tab: show completed matches
+  return allMatches.filter((m: Match) => m.status === 'recent');
 }
 
 export async function fetchUpcomingMatches(): Promise<Match[]> {
-  return fetchWithFallback('/cricket/matches/upcoming', '/matches/v1/upcoming', (data) => extract(data || {}));
+  const allMatches = await fetchWithFallback(
+    '/cricket/matches/upcoming',
+    '/matches/v1/upcoming',
+    (data) => extract(data || {})
+  );
+  // Upcoming tab: show upcoming matches
+  return allMatches.filter((m: Match) => m.status === 'upcoming');
 }
 
-export async function fetchMatchById(id: string): Promise<Match | null> {
-  // Try backend proxy for match info
-  try {
-    const res = await backendClient.get(`/api/cricket/match/${id}/commentary`);
-    const data = res.data;
-    if (!data) return null;
-
-    // Use normalized commentaryList from backend
-    const comms = data.commentaryList || [];
-    const matchHeader = data.matchHeader || {};
-    const miniscore = data.miniscore || {};
-
-    // Build match object
-    const match: Match = {
-      matchId: id,
-      status: matchHeader.state?.toLowerCase().includes('progress') ? 'live'
-        : matchHeader.state?.toLowerCase().includes('complete') ? 'recent'
-        : 'upcoming',
-      seriesName: matchHeader.seriesName || matchHeader.seriesname || 'Match',
-      statusText: matchHeader.status || '',
-      teams: [
-        { name: 'Team 1', shortName: 'TM1' },
-        { name: 'Team 2', shortName: 'TM2' },
-      ],
-      commentary: comms.map((c: any, i: number) => ({
-        id: `${id}-${i}`,
-        over: String(c.overNumber ?? '0.0'),
-        english: c.commText || '',
-        event: mapEvent(c.event),
-      })),
-    };
-
-    // Try to get team info from miniscore
-    if (miniscore.inningsscores) {
-      const inningsList = miniscore.inningsscores?.inningsscore || [];
-      if (inningsList.length > 0) {
-        const currentInnings = inningsList[inningsList.length - 1];
-        const batTeamShort = currentInnings.batteamshortname;
-        const idx = match.teams.findIndex((t) => t.shortName === batTeamShort);
-        if (idx >= 0) {
-          match.teams[idx].runs = currentInnings.runs;
-          match.teams[idx].wickets = currentInnings.wickets;
-          match.teams[idx].overs = currentInnings.overs;
-        }
-        // Get previous innings score
-        if (inningsList.length > 1) {
-          const prevInnings = inningsList[0];
-          const prevIdx = match.teams.findIndex((t) => t.shortName === prevInnings.batteamshortname);
-          if (prevIdx >= 0) {
-            match.teams[prevIdx].runs = prevInnings.runs;
-            match.teams[prevIdx].wickets = prevInnings.wickets;
-            match.teams[prevIdx].overs = prevInnings.overs;
-          }
-        }
-      }
-    }
-
-    // Also try match detail endpoint for full team info
-    try {
-      const detailRes = await backendClient.get(`/api/cricket/match/${id}`);
-      const detail = detailRes.data;
-      // Handle both camelCase and lowercase API responses
-      const info = detail?.matchInfo || detail;
-      if (info) {
-        match.seriesName = info.seriesName || info.seriesname || match.seriesName;
-        match.venue = info.venueInfo?.ground || info.venueinfo?.ground;
-        match.statusText = info.status || match.statusText;
-        match.status = (info.state || '').toLowerCase().includes('progress') ? 'live'
-          : (info.state || '').toLowerCase().includes('complete') ? 'recent'
-          : match.status;
-        const t1 = info.team1;
-        const t2 = info.team2;
-        if (t1) {
-          match.teams[0] = {
-            name: t1.teamName || t1.teamname || match.teams[0].name,
-            shortName: t1.teamSName || t1.teamsname || match.teams[0].shortName,
-            runs: match.teams[0].runs,
-            wickets: match.teams[0].wickets,
-            overs: match.teams[0].overs,
-          };
-        }
-        if (t2) {
-          match.teams[1] = {
-            name: t2.teamName || t2.teamname || match.teams[1].name,
-            shortName: t2.teamSName || t2.teamsname || match.teams[1].shortName,
-            runs: match.teams[1].runs,
-            wickets: match.teams[1].wickets,
-            overs: match.teams[1].overs,
-          };
-        }
-        // Get scores from matchScore (camelCase API)
-        const matchScore = detail?.matchScore;
-        if (matchScore) {
-          const t1s = matchScore.team1Score?.inngs1;
-          const t2s = matchScore.team2Score?.inngs1;
-          if (t1s) {
-            match.teams[0].runs = t1s.runs;
-            match.teams[0].wickets = t1s.wickets;
-            match.teams[0].overs = t1s.overs;
-          }
-          if (t2s) {
-            match.teams[1].runs = t2s.runs;
-            match.teams[1].wickets = t2s.wickets;
-            match.teams[1].overs = t2s.overs;
-          }
-        }
-      }
-    } catch (detailErr) {
-      // Detail fetch is optional, commentary still works
-      console.warn('Match detail fetch failed:', detailErr);
-    }
-
-    return match;
-  } catch (err) {
-    console.warn('Backend proxy failed for match detail:', err);
-  }
-
-  // Fallback: Direct API
-  try {
-    const client = getDirectClient();
-    const res = await client.get(`/mcenter/v1/${id}`);
-    const commRes = await getDirectClient().get(`/mcenter/v1/${id}/comm`).catch(() => null);
-    if (!res.data?.matchInfo) return null;
-    const match = transformToMatch(res.data);
-    if (commRes?.data?.comwrapper) {
-      const allComms: any[] = [];
-      for (const wrapper of commRes.data.comwrapper) {
-        const comm = wrapper.commentary;
-        if (Array.isArray(comm)) allComms.push(...comm);
-        else if (comm && typeof comm === 'object') allComms.push(comm);
-      }
-      match.commentary = allComms
-        .filter((c: any) => c.commtxt && !c.commtxt.startsWith('I0$'))
-        .map((c: any, i: number) => ({
-          id: `${id}-${i}`,
-          over: String(c.overnum ?? '0.0'),
-          english: c.commtxt || '',
-          event: mapEvent(c.eventtype?.toLowerCase()),
-        }));
-    }
-    return match;
-  } catch (e) {
-    console.error('Direct API also failed for match detail:', e);
-    return null;
-  }
-}
-
-function mapEvent(event?: string): 'wicket' | 'four' | 'six' | 'dot' | 'normal' {
+function mapEvent(event?: string): 'wicket' | 'four' | 'six' | 'dot' | 'wide' | 'normal' {
   if (!event) return 'normal';
   const e = event.toLowerCase();
   if (e.includes('wicket') || e.includes('out')) return 'wicket';
   if (e.includes('six')) return 'six';
   if (e.includes('four') || e.includes('boundary')) return 'four';
+  if (e.includes('wide')) return 'wide';
   if (e.includes('dot') || e === 'none') return 'dot';
   return 'normal';
+}
+
+// Parse raw cricbuzz commentary response into normalized format
+function parseRawCommentary(rawData: any, matchId: string): Commentary[] {
+  const commentary: Commentary[] = [];
+  
+  // Try commentaryList (from backend normalized response)
+  if (rawData?.commentaryList && Array.isArray(rawData.commentaryList)) {
+    return rawData.commentaryList.map((c: any, i: number) => ({
+      id: `${matchId}-${i}`,
+      over: String(c.overNumber ?? c.over ?? '0.0'),
+      english: c.commText || c.english || '',
+      event: mapEvent(c.event),
+    }));
+  }
+
+  // Parse raw cricbuzz comwrapper format
+  const allComms: any[] = [];
+  
+  // Handle comwrapper (direct API format)
+  if (rawData?.comwrapper) {
+    const comwrapper = Array.isArray(rawData.comwrapper) ? rawData.comwrapper : [rawData.comwrapper];
+    for (const wrapper of comwrapper) {
+      const comm = wrapper?.commentary;
+      if (Array.isArray(comm)) {
+        allComms.push(...comm);
+      } else if (comm && typeof comm === 'object') {
+        allComms.push(comm);
+      }
+    }
+  }
+  
+  // Handle commentaryList at root level
+  if (rawData?.commentaryList && Array.isArray(rawData.commentaryList)) {
+    allComms.push(...rawData.commentaryList);
+  }
+
+  // Filter and clean commentary
+  for (let i = 0; i < allComms.length; i++) {
+    const c = allComms[i];
+    if (!c || typeof c !== 'object') continue;
+    
+    let text = c.commtxt || c.commText || '';
+    
+    // If text starts with format markers, try to extract from commentaryformats
+    if (!text || text.startsWith('I0$')) {
+      const formats = c.commentaryformats || [];
+      for (const fmt of formats) {
+        for (const val of (fmt.value || [])) {
+          if (val && typeof val === 'object' && val.value) {
+            text = val.value;
+            break;
+          }
+        }
+        if (text && !text.startsWith('I0$')) break;
+      }
+    }
+    
+    if (!text || text.startsWith('I0$')) continue;
+    
+    // Clean format markers
+    text = text.replace(/[A-Z]\d+\$,?\s*/g, '').trim();
+    if (!text) continue;
+    
+    commentary.push({
+      id: `${matchId}-${i}`,
+      over: String(c.overnum ?? c.overNumber ?? '0.0'),
+      english: text,
+      event: mapEvent((c.eventtype || c.event || 'NONE').toLowerCase()),
+    });
+  }
+  
+  return commentary;
+}
+
+export async function fetchMatchById(id: string): Promise<Match | null> {
+  let match: Match | null = null;
+  let commentary: Commentary[] = [];
+  
+  // Strategy 1: Try backend proxy for match + commentary
+  try {
+    const commRes = await backendClient.get(`/api/cricket/match/${id}/commentary`);
+    const data = commRes.data;
+    if (data) {
+      commentary = parseRawCommentary(data, id);
+      
+      const matchHeader = data.matchHeader || {};
+      const miniscore = data.miniscore || {};
+      
+      match = {
+        matchId: id,
+        status: matchHeader.state?.toLowerCase().includes('progress') ? 'live'
+          : matchHeader.state?.toLowerCase().includes('complete') ? 'recent'
+          : 'upcoming',
+        seriesName: matchHeader.seriesName || matchHeader.seriesname || 'Match',
+        statusText: matchHeader.status || '',
+        teams: [
+          { name: 'Team 1', shortName: 'TM1' },
+          { name: 'Team 2', shortName: 'TM2' },
+        ],
+        commentary,
+      };
+      
+      // Extract team scores from miniscore
+      if (miniscore.inningsscores) {
+        const inningsList = miniscore.inningsscores?.inningsscore || [];
+        for (const inn of inningsList) {
+          const shortName = inn.batteamshortname;
+          const teamIdx = match.teams.findIndex(t => t.shortName === shortName);
+          if (teamIdx >= 0) {
+            match.teams[teamIdx].runs = inn.runs;
+            match.teams[teamIdx].wickets = inn.wickets;
+            match.teams[teamIdx].overs = inn.overs;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Backend commentary failed, trying match detail endpoint');
+  }
+  
+  // Strategy 2: Try backend match detail for team info
+  if (match) {
+    try {
+      const detailRes = await backendClient.get(`/api/cricket/match/${id}`);
+      const detail = detailRes.data;
+      const info = detail?.matchInfo || detail;
+      if (info) {
+        match.seriesName = info.seriesName || info.seriesname || match.seriesName;
+        match.venue = info.venueInfo?.ground || info.venueinfo?.ground;
+        match.statusText = info.status || match.statusText;
+        const t1 = info.team1;
+        const t2 = info.team2;
+        if (t1) {
+          match.teams[0].name = t1.teamName || t1.teamname || match.teams[0].name;
+          match.teams[0].shortName = t1.teamSName || t1.teamsname || match.teams[0].shortName;
+        }
+        if (t2) {
+          match.teams[1].name = t2.teamName || t2.teamname || match.teams[1].name;
+          match.teams[1].shortName = t2.teamSName || t2.teamsname || match.teams[1].shortName;
+        }
+        const matchScore = detail?.matchScore;
+        if (matchScore) {
+          const t1s = matchScore.team1Score?.inngs1;
+          const t2s = matchScore.team2Score?.inngs1;
+          if (t1s) {
+            match.teams[0].runs = t1s.runs ?? match.teams[0].runs;
+            match.teams[0].wickets = t1s.wickets ?? match.teams[0].wickets;
+            match.teams[0].overs = t1s.overs ?? match.teams[0].overs;
+          }
+          if (t2s) {
+            match.teams[1].runs = t2s.runs ?? match.teams[1].runs;
+            match.teams[1].wickets = t2s.wickets ?? match.teams[1].wickets;
+            match.teams[1].overs = t2s.overs ?? match.teams[1].overs;
+          }
+        }
+      }
+    } catch (detailErr) {
+      console.warn('Backend match detail failed');
+    }
+  }
+  
+  // If backend completely failed, try direct API
+  if (!match || commentary.length === 0) {
+    try {
+      // Fetch match info
+      const matchData = await directApiCall(`/mcenter/v1/${id}`, 3);
+      if (matchData) {
+        const info = matchData.matchInfo || matchData;
+        if (info) {
+          const transformed = transformToMatch(matchData);
+          match = match || transformed;
+          match.seriesName = info.seriesName || match.seriesName;
+          match.venue = info.venueInfo?.ground || match.venue;
+          match.statusText = info.status || match.statusText;
+          if (info.team1) {
+            match.teams[0].name = info.team1.teamName || match.teams[0].name;
+            match.teams[0].shortName = info.team1.teamSName || match.teams[0].shortName;
+          }
+          if (info.team2) {
+            match.teams[1].name = info.team2.teamName || match.teams[1].name;
+            match.teams[1].shortName = info.team2.teamSName || match.teams[1].shortName;
+          }
+          // Scores from matchScore
+          const ms = matchData.matchScore;
+          if (ms) {
+            if (ms.team1Score?.inngs1) {
+              match.teams[0].runs = ms.team1Score.inngs1.runs;
+              match.teams[0].wickets = ms.team1Score.inngs1.wickets;
+              match.teams[0].overs = ms.team1Score.inngs1.overs;
+            }
+            if (ms.team2Score?.inngs1) {
+              match.teams[1].runs = ms.team2Score.inngs1.runs;
+              match.teams[1].wickets = ms.team2Score.inngs1.wickets;
+              match.teams[1].overs = ms.team2Score.inngs1.overs;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Direct match info failed:', err);
+    }
+    
+    // Fetch commentary via direct API
+    if (commentary.length === 0) {
+      try {
+        const commData = await directApiCall(`/mcenter/v1/${id}/comm`, 3);
+        if (commData) {
+          commentary = parseRawCommentary(commData, id);
+          
+          // Also extract match header from comm response
+          if (!match) {
+            const mh = commData.matchheaders || commData.matchHeader || {};
+            const ms = commData.miniscore || {};
+            match = {
+              matchId: id,
+              status: (mh.state || '').toLowerCase().includes('progress') ? 'live' : 'recent',
+              seriesName: mh.seriesName || 'Match',
+              statusText: mh.status || '',
+              teams: [
+                { name: 'Team 1', shortName: 'TM1' },
+                { name: 'Team 2', shortName: 'TM2' },
+              ],
+              commentary,
+            };
+          }
+          
+          // Update miniscore from comm response
+          const ms = commData.miniscore || {};
+          if (ms.inningsscores && match) {
+            const inningsList = ms.inningsscores?.inningsscore || [];
+            for (const inn of inningsList) {
+              const shortName = inn.batteamshortname;
+              const teamIdx = match.teams.findIndex(t => t.shortName === shortName);
+              if (teamIdx >= 0) {
+                match.teams[teamIdx].runs = inn.runs ?? match.teams[teamIdx].runs;
+                match.teams[teamIdx].wickets = inn.wickets ?? match.teams[teamIdx].wickets;
+                match.teams[teamIdx].overs = inn.overs ?? match.teams[teamIdx].overs;
+              }
+            }
+          }
+        }
+      } catch (commErr) {
+        console.warn('Direct commentary fetch failed:', commErr);
+      }
+    }
+  }
+  
+  if (match) {
+    match.commentary = commentary;
+  }
+  
+  return match;
 }
 
 export const openCricbuzzMatch = async (matchId: string) => {
   const url = `https://www.cricbuzz.com/live-cricket-scores/${matchId}`;
   try {
     if (await Linking.canOpenURL(url)) {
+      await Linking.openURL(url);
+    } else {
+      // Fallback: try opening directly
       await Linking.openURL(url);
     }
   } catch (err) {

@@ -85,6 +85,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       case 'wicket': return '#FF4444';
       case 'six': return '#9C27B0';
       case 'four': return '#4CAF50';
+      case 'wide': return '#FF9800';
       case 'dot': return '#999';
       default: return '#2196F3';
     }
@@ -95,6 +96,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       case 'wicket': return 'alert-circle';
       case 'six': return 'star';
       case 'four': return 'flash';
+      case 'wide': return 'resize-outline';
       case 'dot': return 'ellipse-outline';
       default: return 'radio-button-on';
     }
@@ -105,6 +107,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       case 'wicket': return language === 'english' ? 'WICKET' : '\u0935\u093F\u0915\u0947\u091F';
       case 'six': return language === 'english' ? 'SIX' : '\u091B\u0915\u094D\u0915\u093E';
       case 'four': return language === 'english' ? 'FOUR' : '\u091A\u094C\u0915\u093E';
+      case 'wide': return language === 'english' ? 'WIDE' : '\u0935\u093E\u0907\u0921';
       case 'dot': return language === 'english' ? 'DOT' : '\u0921\u0949\u091F';
       default: return '';
     }
