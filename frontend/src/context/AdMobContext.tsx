@@ -1,91 +1,110 @@
-/**
- * AdMobContext.tsx - Default/Web mock implementation
- * 
- * On native platforms (Android/iOS), AdMobContext.native.tsx is used automatically
- * by React Native's platform-specific file resolution.
- * This file serves as the web/default fallback with mock functionality.
- */
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Platform } from 'react-native';
+import mobileAds, { 
+  RewardedAd, 
+  RewardedAdEventType, 
+  InterstitialAd, 
+  AdEventType,
+  BannerAd, 
+  BannerAdSize,
+  TestIds
+} from 'react-native-google-mobile-ads';
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { View, StyleSheet } from 'react-native';
-
+[span_3](start_span)// Production IDs from your configuration[span_3](end_span)
 export const ADMOB_CONFIG = {
   appId: 'ca-app-pub-9675798593675825~2399929714',
   appOpenAdId: 'ca-app-pub-9675798593675825/4826782503',
   interstitialAdId: 'ca-app-pub-9675798593675825/8438724452',
   bannerAdId: 'ca-app-pub-9675798593675825/8616886104',
   rewardedAdId: 'ca-app-pub-9675798593675825/6702740458',
-  testDeviceId: '553c7721-4821-461b-9f62-8584b1e60745',
 };
 
 interface AdMobContextType {
-  isAdMobInitialized: boolean;
-  isPro: boolean;
-  trackClick: () => void;
-  clickCount: number;
-  showAppOpenAd: () => Promise<void>;
-  showInterstitialAd: () => Promise<boolean>;
   showRewardedAd: () => Promise<boolean>;
+  showInterstitialAd: () => Promise<void>;
   BannerAdComponent: React.FC<{ size?: string }>;
 }
 
 const AdMobContext = createContext<AdMobContextType | undefined>(undefined);
 
 export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAdMobInitialized] = useState(true);
-  const [isPro, setIsPro] = useState(false);
-  const [clickCount, setClickCount] = useState(0);
+  const [rewarded, setRewarded] = useState<RewardedAd | null>(null);
 
-  const trackClick = () => {
-    setClickCount(c => c + 1);
+  useEffect(() => {
+    // Initialize Mobile Ads for Native Platforms
+    mobileAds().initialize().then(() => {
+      console.log('AdMob Initialized');
+      loadRewarded();
+    });
+  }, []);
+
+  const loadRewarded = () => {
+    const ad = RewardedAd.createForAdRequest(ADMOB_CONFIG.rewardedAdId);
+    ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      console.log('Rewarded Ad Loaded');
+      setRewarded(ad);
+    });
+    ad.load();
   };
 
-  const showAppOpenAd = async (): Promise<void> => {
-    console.log('[Mock AdMob] App Open Ad');
+  const showRewardedAd = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (!rewarded) {
+        console.log('Ad not ready, reloading...');
+        loadRewarded();
+        resolve(false);
+        return;
+      }
+
+      const unsubscribeEarned = rewarded.addAdEventListener(
+        RewardedAdEventType.EARNED_REWARD,
+        (reward) => {
+          console.log('User earned reward:', reward);
+          resolve(true);
+        }
+      );
+
+      const unsubscribeClosed = rewarded.addAdEventListener(
+        AdEventType.CLOSED,
+        () => {
+          unsubscribeEarned();
+          unsubscribeClosed();
+          loadRewarded(); // Reload for next time
+          resolve(false); // If they didn't finish the ad, resolve false
+        }
+      );
+
+      rewarded.show();
+    });
   };
 
-  const showInterstitialAd = async (): Promise<boolean> => {
-    if (isPro) return false;
-    console.log('[Mock AdMob] Interstitial Ad');
-    return true;
-  };
-
-  const showRewardedAd = async (): Promise<boolean> => {
-    console.log('[Mock AdMob] Rewarded Ad - simulating...');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return true;
+  const showInterstitialAd = async () => {
+    const interstitial = InterstitialAd.createForAdRequest(ADMOB_CONFIG.interstitialAdId);
+    interstitial.addAdEventListener(AdEventType.LOADED, () => {
+      interstitial.show();
+    });
+    interstitial.load();
   };
 
   const BannerAdComponent: React.FC<{ size?: string }> = () => (
-    <View style={styles.mockBanner} />
+    <BannerAd
+      unitId={ADMOB_CONFIG.bannerAdId}
+      size={BannerAdSize.BANNER}
+      requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+    />
   );
 
   return (
-    <AdMobContext.Provider value={{
-      isAdMobInitialized,
-      isPro,
-      trackClick,
-      clickCount,
-      showAppOpenAd,
-      showInterstitialAd,
-      showRewardedAd,
-      BannerAdComponent,
-    }}>
+    <AdMobContext.Provider value={{ showRewardedAd, showInterstitialAd, BannerAdComponent }}>
       {children}
     </AdMobContext.Provider>
   );
 };
 
-export const useAdMob = (): AdMobContextType => {
+export const useAdMob = () => {
   const context = useContext(AdMobContext);
-  if (!context) {
-    throw new Error('useAdMob must be used within AdMobProvider');
-  }
+  if (!context) throw new Error('useAdMob must be used within AdMobProvider');
   return context;
 };
-
-const styles = StyleSheet.create({
-  mockBanner: { height: 0, width: '100%' },
-});
 
 export default AdMobProvider;
