@@ -39,6 +39,7 @@ jobs:
         working-directory: ./frontend
         run: |
           npm install --legacy-peer-deps
+          npm install ajv --save-dev
           
       - name: CRITICAL - Hard Clean Native Folder
         working-directory: ./frontend
