@@ -10,9 +10,9 @@ export interface Team {
 export interface Commentary {
   id?: string;
   over: string;
-  ball: number;
+  ball?: number;
   english: string;
-  hindi: string;
+  hindi?: string;
   runs?: number;
   event?: 'wicket' | 'four' | 'six' | 'dot' | 'normal';
   timestamp?: number;

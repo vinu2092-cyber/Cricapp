@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ImageBackground,
   Modal,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,10 +20,10 @@ import LoadingScreen from '../src/components/LoadingScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
 import { useAdMob } from '../src/context/AdMobContext';
 import { usePro } from '../src/context/ProContext';
-import { 
-  fetchLiveMatches, 
-  fetchRecentMatches, 
-  fetchUpcomingMatches 
+import {
+  fetchLiveMatches,
+  fetchRecentMatches,
+  fetchUpcomingMatches,
 } from '../src/services/api';
 
 type TabType = 'live' | 'recent' | 'upcoming';
@@ -32,8 +33,8 @@ const AUTO_REFRESH_INTERVAL = 60000;
 
 export default function Index() {
   const router = useRouter();
-  const { trackClick } = useAdMob();
-  const { isPro } = usePro();
+  const { trackClick, showRewardedAd } = useAdMob();
+  const { isPro, adsWatched, setProFromAdMob } = usePro();
   
   const [activeTab, setActiveTab] = useState<TabType>('live');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all');
@@ -43,6 +44,7 @@ export default function Index() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showProModal, setShowProModal] = useState(false);
+  const [localAdsWatched, setLocalAdsWatched] = useState(0);
 
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -65,7 +67,7 @@ export default function Index() {
       
       const matchesWithCategory = fetchedMatches.map(match => ({
         ...match,
-        category: categorizeMatch(match.matchFormat || 'T20', match.seriesName || match.series || ''),
+        category: categorizeMatch(match.matchFormat || match.matchType || 'T20', match.seriesName || match.series || ''),
       }));
       
       setMatches(matchesWithCategory);
@@ -246,7 +248,7 @@ export default function Index() {
 
       <Footer />
 
-      {/* Pro Unlock Modal */}
+      {/* Pro Unlock Modal - Direct Ad Watching Flow */}
       <Modal
         visible={showProModal}
         transparent
@@ -255,45 +257,87 @@ export default function Index() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.proModalContainer}>
-            <Text style={styles.proModalTitle}>Unlock Pro Features</Text>
-            
-            <View style={styles.proFeaturesList}>
-              <View style={styles.proFeatureItem}>
-                <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-                <Text style={styles.proFeature}>Voice Commentary</Text>
-              </View>
-              <View style={styles.proFeatureItem}>
-                <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-                <Text style={styles.proFeature}>Floating Scoreboard</Text>
-              </View>
-              <View style={styles.proFeatureItem}>
-                <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-                <Text style={styles.proFeature}>No Click Ads for 30 mins</Text>
-              </View>
-            </View>
-            
-            <Text style={styles.proModalSubtitle}>
-              Watch 3 short ads to unlock Pro for 30 minutes
-            </Text>
-            
-            <TouchableOpacity
-              style={styles.proModalButton}
-              onPress={() => {
-                setShowProModal(false);
-                if (filteredMatches.length > 0 && filteredMatches[0].status === 'live') {
-                  router.push(`/match/${filteredMatches[0].matchId}`);
-                }
-              }}
-            >
-              <Text style={styles.proModalButtonText}>Go to Live Match</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.proModalCancelButton}
-              onPress={() => setShowProModal(false)}
-            >
-              <Text style={styles.proModalCancelText}>Maybe Later</Text>
-            </TouchableOpacity>
+            {isPro ? (
+              <>
+                <Ionicons name="checkmark-circle" size={50} color="#4CAF50" />
+                <Text style={styles.proModalTitle}>PRO Active!</Text>
+                <Text style={styles.proModalSubtitle}>
+                  Voice Commentary, Floating Scoreboard, and Ad-free browsing are unlocked for 30 minutes.
+                </Text>
+                <TouchableOpacity
+                  style={styles.proModalButton}
+                  onPress={() => setShowProModal(false)}
+                >
+                  <Text style={styles.proModalButtonText}>Continue</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.proModalTitle}>Unlock Pro Features</Text>
+                
+                <View style={styles.proFeaturesList}>
+                  <View style={styles.proFeatureItem}>
+                    <Ionicons name="mic" size={20} color="#4CAF50" />
+                    <Text style={styles.proFeature}>Voice Commentary (TTS)</Text>
+                  </View>
+                  <View style={styles.proFeatureItem}>
+                    <Ionicons name="layers" size={20} color="#4CAF50" />
+                    <Text style={styles.proFeature}>Draggable Floating Scoreboard</Text>
+                  </View>
+                  <View style={styles.proFeatureItem}>
+                    <Ionicons name="notifications" size={20} color="#4CAF50" />
+                    <Text style={styles.proFeature}>Score in Notification Bar</Text>
+                  </View>
+                  <View style={styles.proFeatureItem}>
+                    <Ionicons name="close-circle" size={20} color="#4CAF50" />
+                    <Text style={styles.proFeature}>No Click Ads for 30 mins</Text>
+                  </View>
+                </View>
+
+                {/* Progress Bar */}
+                <View style={styles.progressContainer}>
+                  <View style={styles.progressBar}>
+                    <View style={[styles.progressFill, { width: `${(localAdsWatched / 3) * 100}%` }]} />
+                  </View>
+                  <Text style={styles.progressText}>{localAdsWatched}/3 Ads Watched</Text>
+                </View>
+                
+                <TouchableOpacity
+                  style={styles.watchAdButton}
+                  onPress={async () => {
+                    const success = await showRewardedAd();
+                    if (success) {
+                      const next = localAdsWatched + 1;
+                      setLocalAdsWatched(next);
+                      if (next >= 3) {
+                        setProFromAdMob(true);
+                        setLocalAdsWatched(0);
+                        Alert.alert(
+                          'PRO Unlocked!',
+                          'Voice Commentary, Floating Scoreboard, and Ad-free mode active for 30 minutes!',
+                          [{ text: 'Awesome!', onPress: () => setShowProModal(false) }]
+                        );
+                      } else {
+                        Alert.alert('Great!', `${next}/3 ads watched. Keep going!`);
+                      }
+                    }
+                  }}
+                  data-testid="watch-ad-button"
+                >
+                  <Ionicons name="play-circle" size={24} color="#FFF" />
+                  <Text style={styles.watchAdText}>
+                    Watch Ad {localAdsWatched + 1} of 3
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.proModalCancelButton}
+                  onPress={() => { setShowProModal(false); setLocalAdsWatched(0); }}
+                >
+                  <Text style={styles.proModalCancelText}>Maybe Later</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -439,12 +483,53 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 30,
     marginBottom: 10,
+    marginTop: 10,
   },
   proModalButtonText: {
     color: '#FFF',
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  watchAdButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 30,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    elevation: 4,
+  },
+  watchAdText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  progressContainer: {
+    width: '100%',
+    marginVertical: 16,
+    alignItems: 'center',
+  },
+  progressBar: {
+    width: '100%',
+    height: 10,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 5,
+  },
+  progressText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4CAF50',
   },
   proModalCancelButton: {
     backgroundColor: 'transparent',

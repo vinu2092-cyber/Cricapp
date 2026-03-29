@@ -12,7 +12,7 @@
     "extra": {
       "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
       "router": {},
-      "backendUrl": "https://dragable-ui-test.preview.emergentagent.com",
+      "backendUrl": "https://scoreboard-pro-21.preview.emergentagent.com",
       "admob": {
         "appId": "ca-app-pub-9675798593675825~2399929714",
         "appOpenAdId": "ca-app-pub-9675798593675825/4826782503",
@@ -63,6 +63,14 @@
         {
           "androidAppId": "ca-app-pub-9675798593675825~2399929714",
           "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/logo.png",
+          "color": "#4CAF50",
+          "defaultChannel": "match-alerts"
         }
       ]
     ],

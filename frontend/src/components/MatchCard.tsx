@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Match } from '../types/match';
 import LiveIndicator from './LiveIndicator';
+import { useNotifications } from '../context/NotificationContext';
 
 interface MatchCardProps {
   match: Match;
@@ -10,6 +11,16 @@ interface MatchCardProps {
 }
 
 const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
+  const { isTracking, toggleTracking, notificationsEnabled, enableNotifications } = useNotifications();
+  const tracked = isTracking(match.matchId);
+
+  const handleBellPress = async () => {
+    if (!notificationsEnabled) {
+      const granted = await enableNotifications();
+      if (!granted) return;
+    }
+    toggleTracking(match.matchId, match.teams[0]?.shortName || 'TM1', match.teams[1]?.shortName || 'TM2');
+  };
   const getStatusBadge = () => {
     switch (match.status) {
       case 'live':
@@ -83,6 +94,20 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
       )}
 
       <View style={styles.cardFooter}>
+        {match.status === 'live' && (
+          <TouchableOpacity
+            style={[styles.bellBtn, tracked && styles.bellBtnActive]}
+            onPress={handleBellPress}
+            data-testid={`alert-toggle-${match.matchId}`}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons
+              name={tracked ? 'notifications' : 'notifications-outline'}
+              size={18}
+              color={tracked ? '#4CAF50' : '#888'}
+            />
+          </TouchableOpacity>
+        )}
         <Ionicons name="chevron-forward" size={20} color="#666" />
       </View>
     </TouchableOpacity>
@@ -202,6 +227,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 8,
     top: '50%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  bellBtn: {
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  bellBtnActive: {
+    backgroundColor: 'rgba(76, 175, 80, 0.15)',
   },
 });
 

@@ -7,11 +7,11 @@ import {
   Animated,
   PanResponder,
   Dimensions,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import { Match, Commentary } from '../types/match';
+import * as Notifications from 'expo-notifications';
+import { Match } from '../types/match';
 
 interface FloatingScoreboardProps {
   match: Match;
@@ -21,10 +21,8 @@ interface FloatingScoreboardProps {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// Bigger scoreboard dimensions for better visibility
-const SCOREBOARD_WIDTH = 320;
-const SCOREBOARD_WIDTH_MINIMIZED = 260;
+const SCOREBOARD_WIDTH = 330;
+const SCOREBOARD_WIDTH_MIN = 260;
 
 const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
   match,
@@ -34,21 +32,36 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
 }) => {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [currentCommentaryIndex, setCurrentCommentaryIndex] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const position = useRef(new Animated.ValueXY({ x: SCREEN_WIDTH - SCOREBOARD_WIDTH - 10, y: 80 })).current;
+  const [currentCommIdx, setCurrentCommIdx] = useState(0);
+  const [notifOverlayActive, setNotifOverlayActive] = useState(false);
+
+  // SAFE: Track position with listeners instead of accessing _value
+  const position = useRef(new Animated.ValueXY()).current;
   const scale = useRef(new Animated.Value(0)).current;
-  
-  // Store last valid position to prevent crash
-  const lastValidPosition = useRef({ x: SCREEN_WIDTH - SCOREBOARD_WIDTH - 10, y: 80 });
+  const posRef = useRef({ x: SCREEN_WIDTH - SCOREBOARD_WIDTH - 10, y: 80 });
+
+  // Set initial position
+  useEffect(() => {
+    position.setValue(posRef.current);
+  }, []);
+
+  // Track position safely via listeners
+  useEffect(() => {
+    const id = position.addListener((value) => {
+      if (value && !isNaN(value.x) && !isNaN(value.y)) {
+        posRef.current = { x: value.x, y: value.y };
+      }
+    });
+    return () => position.removeListener(id);
+  }, []);
 
   useEffect(() => {
     if (visible) {
       Animated.spring(scale, {
         toValue: 1,
         useNativeDriver: true,
-        tension: 100,
-        friction: 8,
+        tension: 80,
+        friction: 10,
       }).start();
     } else {
       scale.setValue(0);
@@ -59,141 +72,114 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
   useEffect(() => {
     return () => {
       stopSpeaking();
+      if (notifOverlayActive) disableNotifOverlay();
     };
   }, []);
 
-  // Safe pan responder with crash prevention
+  // SAFE PanResponder - no _value access
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only move if gesture is significant
-        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
-      },
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5,
       onPanResponderGrant: () => {
-        try {
-          setIsDragging(true);
-          // Safely get current values
-          const currentX = (position.x as any)._value || lastValidPosition.current.x;
-          const currentY = (position.y as any)._value || lastValidPosition.current.y;
-          
-          position.setOffset({ x: currentX, y: currentY });
-          position.setValue({ x: 0, y: 0 });
-        } catch (error) {
-          console.warn('PanResponder grant error:', error);
-          // Reset to last valid position
-          position.setValue(lastValidPosition.current);
-        }
+        position.setOffset(posRef.current);
+        position.setValue({ x: 0, y: 0 });
       },
-      onPanResponderMove: (_, gestureState) => {
-        try {
-          // Manual position update instead of Animated.event to prevent crashes
-          position.setValue({ x: gestureState.dx, y: gestureState.dy });
-        } catch (error) {
-          console.warn('PanResponder move error:', error);
-        }
-      },
+      onPanResponderMove: Animated.event(
+        [null, { dx: position.x, dy: position.y }],
+        { useNativeDriver: false }
+      ),
       onPanResponderRelease: () => {
-        try {
-          setIsDragging(false);
-          position.flattenOffset();
-          
-          let currentX = (position.x as any)._value || lastValidPosition.current.x;
-          let currentY = (position.y as any)._value || lastValidPosition.current.y;
-          
-          // Ensure values are valid numbers
-          if (isNaN(currentX)) currentX = lastValidPosition.current.x;
-          if (isNaN(currentY)) currentY = lastValidPosition.current.y;
-          
-          const widgetWidth = isMinimized ? SCOREBOARD_WIDTH_MINIMIZED : SCOREBOARD_WIDTH;
-          const widgetHeight = isMinimized ? 80 : 280;
-          
-          // Clamp to screen bounds with safe margins
-          if (currentX < 10) currentX = 10;
-          if (currentX > SCREEN_WIDTH - widgetWidth - 10) currentX = SCREEN_WIDTH - widgetWidth - 10;
-          if (currentY < 60) currentY = 60;
-          if (currentY > SCREEN_HEIGHT - widgetHeight - 120) currentY = SCREEN_HEIGHT - widgetHeight - 120;
-          
-          // Update last valid position
-          lastValidPosition.current = { x: currentX, y: currentY };
-          
-          Animated.spring(position, {
-            toValue: { x: currentX, y: currentY },
-            useNativeDriver: false,
-            friction: 7,
-            tension: 40,
-          }).start();
-        } catch (error) {
-          console.warn('PanResponder release error:', error);
-          // Reset to last valid position on error
-          position.setValue(lastValidPosition.current);
-        }
+        position.flattenOffset();
+        // Clamp to screen bounds
+        let { x, y } = posRef.current;
+        const w = SCOREBOARD_WIDTH;
+        const h = 280;
+        x = Math.max(5, Math.min(SCREEN_WIDTH - w - 5, x));
+        y = Math.max(50, Math.min(SCREEN_HEIGHT - h - 100, y));
+        Animated.spring(position, {
+          toValue: { x, y },
+          useNativeDriver: false,
+          friction: 7,
+        }).start();
       },
       onPanResponderTerminate: () => {
-        setIsDragging(false);
-        // Reset to last valid position on terminate
-        position.setValue(lastValidPosition.current);
+        position.flattenOffset();
       },
     })
   ).current;
 
+  // Persistent Notification Overlay (shows score in notification bar for other apps)
+  const enableNotifOverlay = async () => {
+    try {
+      const team1 = match.teams[0];
+      const team2 = match.teams[1];
+      const t1Score = team1?.runs !== undefined ? `${team1.runs}/${team1.wickets || 0}` : '-';
+      const t2Score = team2?.runs !== undefined ? `${team2.runs}/${team2.wickets || 0}` : '-';
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `${team1?.shortName || 'TM1'} ${t1Score} vs ${team2?.shortName || 'TM2'} ${t2Score}`,
+          body: match.statusText || 'Live Score',
+          data: { matchId: match.matchId, type: 'overlay' },
+          sticky: true,
+        },
+        trigger: null,
+        identifier: `overlay-${match.matchId}`,
+      });
+      setNotifOverlayActive(true);
+    } catch (err) {
+      console.warn('Notification overlay failed:', err);
+    }
+  };
+
+  const disableNotifOverlay = async () => {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(`overlay-${match.matchId}`);
+      setNotifOverlayActive(false);
+    } catch (err) {
+      console.warn('Cancel overlay failed:', err);
+    }
+  };
+
+  // Update notification overlay when score changes
+  useEffect(() => {
+    if (notifOverlayActive && visible) {
+      enableNotifOverlay();
+    }
+  }, [match.teams[0]?.runs, match.teams[1]?.runs]);
+
   const speakCommentary = async () => {
     if (!match.commentary || match.commentary.length === 0) return;
-    
     setIsSpeaking(true);
-    
-    const speakNext = async (index: number) => {
-      if (index >= match.commentary!.length || !isSpeaking) {
+
+    const speakNext = (index: number) => {
+      if (index >= (match.commentary?.length || 0)) {
         setIsSpeaking(false);
         return;
       }
-      
-      const commentary = match.commentary![index];
-      const text = `Over ${commentary.over}. ${commentary.english}`;
-      
-      setCurrentCommentaryIndex(index);
-      
+      const comm = match.commentary![index];
+      const text = `Over ${comm.over}. ${comm.english}`;
+      setCurrentCommIdx(index);
       try {
-        await Speech.speak(text, {
+        Speech.speak(text, {
           language: 'en-US',
           pitch: 0.9,
           rate: 0.95,
-          onDone: () => {
-            setTimeout(() => {
-              if (isSpeaking) {
-                speakNext(index + 1);
-              }
-            }, 500);
-          },
-          onError: (error) => {
-            console.error('Speech error:', error);
-            setIsSpeaking(false);
-          },
+          onDone: () => setTimeout(() => speakNext(index + 1), 500),
+          onError: () => setIsSpeaking(false),
         });
-      } catch (error) {
-        console.error('Speech error:', error);
+      } catch {
         setIsSpeaking(false);
       }
     };
-    
     speakNext(0);
   };
 
-  const stopSpeaking = async () => {
+  const stopSpeaking = () => {
     setIsSpeaking(false);
-    try {
-      await Speech.stop();
-    } catch (error) {
-      console.error('Error stopping speech:', error);
-    }
-  };
-
-  const toggleSpeaking = () => {
-    if (isSpeaking) {
-      stopSpeaking();
-    } else {
-      speakCommentary();
-    }
+    try { Speech.stop(); } catch {}
   };
 
   if (!visible || !isPro) return null;
@@ -205,7 +191,7 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
     <Animated.View
       style={[
         styles.container,
-        isMinimized ? styles.containerMinimized : null,
+        isMinimized && styles.containerMin,
         {
           transform: [
             { translateX: position.x },
@@ -216,93 +202,102 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
       ]}
       {...panResponder.panHandlers}
     >
-      {/* Header with drag handle and controls */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.dragHandle}>
           <View style={styles.dragLine} />
         </View>
         <View style={styles.controls}>
+          {/* Notification Overlay Toggle */}
           <TouchableOpacity
-            style={styles.controlButton}
-            onPress={() => setIsMinimized(!isMinimized)}
+            style={styles.ctrlBtn}
+            onPress={notifOverlayActive ? disableNotifOverlay : enableNotifOverlay}
+            data-testid="notif-overlay-toggle"
           >
             <Ionicons
-              name={isMinimized ? 'expand' : 'contract'}
-              size={18}
-              color="#FFF"
+              name={notifOverlayActive ? 'notifications' : 'notifications-outline'}
+              size={16}
+              color={notifOverlayActive ? '#4CAF50' : '#FFF'}
             />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.controlButton} onPress={onClose}>
-            <Ionicons name="close" size={18} color="#FFF" />
+          <TouchableOpacity
+            style={styles.ctrlBtn}
+            onPress={() => setIsMinimized(!isMinimized)}
+          >
+            <Ionicons name={isMinimized ? 'expand' : 'contract'} size={16} color="#FFF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.ctrlBtn} onPress={onClose}>
+            <Ionicons name="close" size={16} color="#FFF" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Live indicator */}
+      {/* Live badge */}
       {match.status === 'live' && (
-        <View style={styles.liveIndicator}>
+        <View style={styles.liveBadge}>
           <View style={styles.liveDot} />
           <Text style={styles.liveText}>LIVE</Text>
         </View>
       )}
 
-      {/* Score display */}
-      <View style={styles.scoreContainer}>
-        {/* Team 1 - Always visible */}
-        <View style={styles.teamScore}>
+      {/* Scores */}
+      <View style={styles.scores}>
+        <View style={styles.teamRow}>
           <Text style={styles.teamName} numberOfLines={1}>{team1?.shortName || 'TM1'}</Text>
           <Text style={styles.score}>
             {team1?.runs !== undefined ? `${team1.runs}/${team1.wickets || 0}` : '-'}
           </Text>
-          <Text style={styles.overs}>
-            {team1?.overs ? `(${team1.overs} ov)` : ''}
-          </Text>
+          <Text style={styles.overs}>{team1?.overs ? `(${team1.overs})` : ''}</Text>
         </View>
-        
-        {/* Team 2 - Always visible (even minimized) */}
         {team2 && (
-          <View style={styles.teamScore}>
+          <View style={styles.teamRow}>
             <Text style={styles.teamName} numberOfLines={1}>{team2?.shortName || 'TM2'}</Text>
             <Text style={styles.score}>
               {team2?.runs !== undefined ? `${team2.runs}/${team2.wickets || 0}` : '-'}
             </Text>
-            <Text style={styles.overs}>
-              {team2?.overs ? `(${team2.overs} ov)` : ''}
-            </Text>
+            <Text style={styles.overs}>{team2?.overs ? `(${team2.overs})` : ''}</Text>
           </View>
         )}
       </View>
 
-      {/* Status text */}
-      {!isMinimized && match.result && (
-        <Text style={styles.statusText} numberOfLines={2}>{match.result}</Text>
+      {/* Status */}
+      {!isMinimized && match.statusText && (
+        <Text style={styles.status} numberOfLines={2}>{match.statusText}</Text>
       )}
 
-      {/* Voice commentary controls - only in expanded mode */}
+      {/* Notification overlay info */}
+      {!isMinimized && notifOverlayActive && (
+        <View style={styles.overlayInfo}>
+          <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+          <Text style={styles.overlayText}>Score visible in notification bar</Text>
+        </View>
+      )}
+
+      {/* Voice controls */}
       {!isMinimized && (
-        <View style={styles.voiceControls}>
+        <View style={styles.voiceRow}>
           <TouchableOpacity
-            style={[styles.voiceButton, isSpeaking && styles.voiceButtonActive]}
-            onPress={toggleSpeaking}
+            style={[styles.voiceBtn, isSpeaking && styles.voiceBtnActive]}
+            onPress={isSpeaking ? stopSpeaking : speakCommentary}
           >
             <Ionicons
               name={isSpeaking ? 'pause' : 'volume-high'}
-              size={20}
+              size={18}
               color={isSpeaking ? '#FFF' : '#4CAF50'}
             />
-            <Text style={[styles.voiceButtonText, isSpeaking && styles.voiceButtonTextActive]}>
+            <Text style={[styles.voiceTxt, isSpeaking && styles.voiceTxtActive]}>
               {isSpeaking ? 'Pause' : 'Voice'}
             </Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Current commentary being spoken */}
-      {!isMinimized && isSpeaking && match.commentary && match.commentary[currentCommentaryIndex] && (
-        <View style={styles.speakingIndicator}>
-          <Ionicons name="mic" size={14} color="#4CAF50" />
-          <Text style={styles.speakingText} numberOfLines={2}>
-            {match.commentary[currentCommentaryIndex].over}: {match.commentary[currentCommentaryIndex].english}
+      {/* Speaking indicator */}
+      {!isMinimized && isSpeaking && match.commentary?.[currentCommIdx] && (
+        <View style={styles.speakRow}>
+          <Ionicons name="mic" size={12} color="#4CAF50" />
+          <Text style={styles.speakTxt} numberOfLines={2}>
+            {match.commentary[currentCommIdx].over}: {match.commentary[currentCommIdx].english}
           </Text>
         </View>
       )}
@@ -313,157 +308,111 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    backgroundColor: 'rgba(20, 20, 20, 0.98)',
-    borderRadius: 20,
-    padding: 18,
+    backgroundColor: 'rgba(20, 20, 20, 0.97)',
+    borderRadius: 18,
+    padding: 16,
     minWidth: SCOREBOARD_WIDTH,
-    maxWidth: SCOREBOARD_WIDTH + 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
+    maxWidth: SCOREBOARD_WIDTH + 10,
     elevation: 20,
     zIndex: 9999,
     borderWidth: 2,
     borderColor: 'rgba(76, 175, 80, 0.5)',
   },
-  containerMinimized: {
-    minWidth: SCOREBOARD_WIDTH_MINIMIZED,
-    maxWidth: SCOREBOARD_WIDTH_MINIMIZED + 20,
-    padding: 14,
+  containerMin: {
+    minWidth: SCOREBOARD_WIDTH_MIN,
+    maxWidth: SCOREBOARD_WIDTH_MIN + 10,
+    padding: 12,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
-  dragHandle: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  dragLine: {
-    width: 50,
-    height: 5,
-    backgroundColor: '#777',
-    borderRadius: 3,
-  },
-  controls: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  controlButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  dragHandle: { flex: 1, alignItems: 'center', paddingVertical: 5 },
+  dragLine: { width: 45, height: 4, backgroundColor: '#777', borderRadius: 2 },
+  controls: { flexDirection: 'row', gap: 8 },
+  ctrlBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  liveIndicator: {
+  liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
     backgroundColor: '#FF4444',
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 14,
-    marginBottom: 14,
-    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 12,
+    gap: 5,
   },
-  liveDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#FFF',
-  },
-  liveText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: 'bold',
-    letterSpacing: 1.5,
-  },
-  scoreContainer: {
-    gap: 14,
-  },
-  teamScore: {
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFF' },
+  liveText: { color: '#FFF', fontSize: 12, fontWeight: 'bold', letterSpacing: 1 },
+  scores: { gap: 10 },
+  teamRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 12,
   },
-  teamName: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: '700',
-    minWidth: 60,
-  },
-  score: {
-    color: '#4CAF50',
-    fontSize: 28,
-    fontWeight: 'bold',
-    flex: 1,
-    textAlign: 'right',
-  },
-  overs: {
-    color: '#CCC',
-    fontSize: 14,
-    minWidth: 65,
-    textAlign: 'right',
-  },
-  statusText: {
+  teamName: { color: '#FFF', fontSize: 18, fontWeight: '700', minWidth: 60 },
+  score: { color: '#4CAF50', fontSize: 28, fontWeight: 'bold', flex: 1, textAlign: 'right' },
+  overs: { color: '#CCC', fontSize: 14, minWidth: 58, textAlign: 'right' },
+  status: {
     color: '#FFD700',
-    fontSize: 13,
-    marginTop: 12,
+    fontSize: 12,
+    marginTop: 10,
     textAlign: 'center',
     fontStyle: 'italic',
-    paddingHorizontal: 8,
   },
-  voiceControls: {
-    marginTop: 16,
+  overlayInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    backgroundColor: 'rgba(76,175,80,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  overlayText: { color: '#4CAF50', fontSize: 11 },
+  voiceRow: {
+    marginTop: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.15)',
-    paddingTop: 14,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    paddingTop: 12,
   },
-  voiceButton: {
+  voiceBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(76, 175, 80, 0.25)',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 28,
-    gap: 10,
+    backgroundColor: 'rgba(76,175,80,0.2)',
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 24,
+    gap: 8,
   },
-  voiceButtonActive: {
-    backgroundColor: '#4CAF50',
-  },
-  voiceButtonText: {
-    color: '#4CAF50',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  voiceButtonTextActive: {
-    color: '#FFF',
-  },
-  speakingIndicator: {
+  voiceBtnActive: { backgroundColor: '#4CAF50' },
+  voiceTxt: { color: '#4CAF50', fontSize: 15, fontWeight: '600' },
+  voiceTxtActive: { color: '#FFF' },
+  speakRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    gap: 8,
-    paddingHorizontal: 6,
+    marginTop: 8,
+    gap: 6,
+    paddingHorizontal: 4,
   },
-  speakingText: {
-    color: '#CCC',
-    fontSize: 13,
-    flex: 1,
-    lineHeight: 18,
-  },
+  speakTxt: { color: '#CCC', fontSize: 12, flex: 1, lineHeight: 16 },
 });
 
 export default FloatingScoreboard;

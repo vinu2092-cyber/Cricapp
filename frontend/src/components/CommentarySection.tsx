@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Alert,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
@@ -15,18 +17,20 @@ import { useAdMob } from '../context/AdMobContext';
 
 interface CommentarySectionProps {
   commentary: Commentary[];
+  matchId?: string;
   isLive?: boolean;
 }
 
-const CommentarySection: React.FC<CommentarySectionProps> = ({ 
-  commentary, 
-  isLive = false 
+const CommentarySection: React.FC<CommentarySectionProps> = ({
+  commentary,
+  matchId,
+  isLive = false,
 }) => {
   const [language, setLanguage] = useState<Language>('english');
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const [displayCount, setDisplayCount] = useState(10);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  
+
   const { isPro } = usePro();
   const { BannerAdComponent } = useAdMob();
 
@@ -34,7 +38,6 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     try {
       Speech.stop();
       setSpeakingIndex(index);
-      
       Speech.speak(text, {
         language: 'en-IN',
         pitch: 1.0,
@@ -43,18 +46,38 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         onStopped: () => setSpeakingIndex(null),
         onError: () => setSpeakingIndex(null),
       });
-    } catch (error) {
-      console.error('Speech error:', error);
+    } catch {
       setSpeakingIndex(null);
     }
   };
 
   const handleLoadMore = () => {
-    setIsLoadingMore(true);
-    setTimeout(() => {
-      setDisplayCount(prev => Math.min(prev + 10, commentary.length));
-      setIsLoadingMore(false);
-    }, 300);
+    const remaining = commentary.length - displayCount;
+    if (remaining > 0) {
+      // Still have local items to show
+      setIsLoadingMore(true);
+      setTimeout(() => {
+        setDisplayCount((prev) => Math.min(prev + 10, commentary.length));
+        setIsLoadingMore(false);
+      }, 300);
+    }
+  };
+
+  // Open match details on external cricket website (user permission first)
+  const handleViewFullDetails = () => {
+    if (!matchId) return;
+    const url = `https://www.cricbuzz.com/live-cricket-scores/${matchId}`;
+    Alert.alert(
+      'View Full Match Details',
+      'Open full ball-by-ball coverage on the web for this match? This will open in your browser.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Open',
+          onPress: () => Linking.openURL(url).catch(() => {}),
+        },
+      ]
+    );
   };
 
   const getEventColor = (event?: string) => {
@@ -67,7 +90,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     }
   };
 
-  const getEventIcon = (event?: string) => {
+  const getEventIcon = (event?: string): string => {
     switch (event) {
       case 'wicket': return 'alert-circle';
       case 'six': return 'star';
@@ -79,16 +102,16 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
   const getEventLabel = (event?: string) => {
     switch (event) {
-      case 'wicket': return language === 'english' ? 'WICKET' : 'विकेट';
-      case 'six': return language === 'english' ? 'SIX' : 'छक्का';
-      case 'four': return language === 'english' ? 'FOUR' : 'चौका';
-      case 'dot': return language === 'english' ? 'DOT' : 'डॉट';
+      case 'wicket': return language === 'english' ? 'WICKET' : '\u0935\u093F\u0915\u0947\u091F';
+      case 'six': return language === 'english' ? 'SIX' : '\u091B\u0915\u094D\u0915\u093E';
+      case 'four': return language === 'english' ? 'FOUR' : '\u091A\u094C\u0915\u093E';
+      case 'dot': return language === 'english' ? 'DOT' : '\u0921\u0949\u091F';
       default: return '';
     }
   };
 
   const displayedCommentary = commentary.slice(0, displayCount);
-  const hasMore = displayCount < commentary.length;
+  const hasMoreLocal = displayCount < commentary.length;
 
   return (
     <View style={styles.container}>
@@ -96,32 +119,22 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         <View style={styles.titleContainer}>
           <Ionicons name="chatbubbles" size={20} color="#4CAF50" />
           <Text style={styles.title}>
-            {language === 'english' ? 'Ball by Ball Commentary' : 'गेंद दर गेंद कमेंट्री'}
+            {language === 'english' ? 'Ball by Ball Commentary' : '\u0917\u0947\u0902\u0926 \u0926\u0930 \u0917\u0947\u0902\u0926 \u0915\u092E\u0947\u0902\u091F\u094D\u0930\u0940'}
           </Text>
         </View>
-        
+
         <View style={styles.languageToggle}>
           <TouchableOpacity
-            style={[
-              styles.langButton,
-              language === 'english' && styles.langButtonActive,
-            ]}
+            style={[styles.langButton, language === 'english' && styles.langButtonActive]}
             onPress={() => setLanguage('english')}
           >
-            <Text style={[styles.langText, language === 'english' && styles.langTextActive]}>
-              EN
-            </Text>
+            <Text style={[styles.langText, language === 'english' && styles.langTextActive]}>EN</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.langButton,
-              language === 'hindi' && styles.langButtonActive,
-            ]}
+            style={[styles.langButton, language === 'hindi' && styles.langButtonActive]}
             onPress={() => setLanguage('hindi')}
           >
-            <Text style={[styles.langText, language === 'hindi' && styles.langTextActive]}>
-              हि
-            </Text>
+            <Text style={[styles.langText, language === 'hindi' && styles.langTextActive]}>{'\u0939\u093F'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -129,14 +142,14 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       <ScrollView style={styles.commentaryList} nestedScrollEnabled>
         {displayedCommentary.map((item, index) => {
           const showBanner = !isPro && (index + 1) % 6 === 0;
-          
+
           return (
             <View key={index}>
               <View style={styles.commentaryItem}>
                 <View style={styles.overBall}>
                   <Text style={styles.overText}>{item.over}</Text>
                 </View>
-                
+
                 <View style={styles.commentaryContent}>
                   {item.event && item.event !== 'normal' && (
                     <View style={[styles.eventBadge, { backgroundColor: getEventColor(item.event) }]}>
@@ -145,13 +158,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                     </View>
                   )}
                   <Text style={styles.commentaryText}>
-                    {language === 'english' ? item.english : item.hindi}
+                    {language === 'english' ? item.english : (item.hindi || item.english)}
                   </Text>
-                  {item.runs !== undefined && item.runs > 0 && (
-                    <View style={styles.runsContainer}>
-                      <Text style={styles.runsText}>+{item.runs}</Text>
-                    </View>
-                  )}
                 </View>
 
                 {isPro && (
@@ -160,9 +168,9 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                     onPress={() => speakCommentary(item.english, index)}
                   >
                     <Ionicons
-                      name={speakingIndex === index ? "stop-circle" : "play-circle"}
+                      name={speakingIndex === index ? 'stop-circle' : 'play-circle'}
                       size={24}
-                      color={speakingIndex === index ? "#FF4444" : "#4CAF50"}
+                      color={speakingIndex === index ? '#FF4444' : '#4CAF50'}
                     />
                   </TouchableOpacity>
                 )}
@@ -177,12 +185,14 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           );
         })}
 
-        {hasMore && (
-          <View style={styles.loadMoreContainer}>
+        {/* Load More OR View Full Details button */}
+        {hasMoreLocal ? (
+          <View style={styles.actionContainer}>
             <TouchableOpacity
               style={styles.loadMoreButton}
               onPress={handleLoadMore}
               disabled={isLoadingMore}
+              data-testid="load-more-commentary"
             >
               {isLoadingMore ? (
                 <ActivityIndicator color="#4CAF50" />
@@ -190,13 +200,31 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                 <>
                   <Ionicons name="chevron-down-circle" size={20} color="#4CAF50" />
                   <Text style={styles.loadMoreText}>
-                    Load More Commentary ({commentary.length - displayCount} remaining)
+                    Load More ({commentary.length - displayCount} remaining)
                   </Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
+
+        {/* Always show "View Full Details" at the end */}
+        <View style={styles.actionContainer}>
+          <TouchableOpacity
+            style={styles.viewFullBtn}
+            onPress={handleViewFullDetails}
+            data-testid="view-full-details-btn"
+          >
+            <Ionicons name="globe-outline" size={20} color="#FFF" />
+            <Text style={styles.viewFullTxt}>View Full Match Details on Web</Text>
+            <Ionicons name="open-outline" size={16} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.infoText}>
+            {hasMoreLocal
+              ? 'Want more? Tap above to see complete ball-by-ball coverage'
+              : 'All loaded commentary shown. Tap above for full live coverage on the web'}
+          </Text>
+        </View>
 
         <View style={styles.countContainer}>
           <Text style={styles.countText}>
@@ -215,10 +243,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginVertical: 8,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
     elevation: 3,
     maxHeight: 500,
     borderWidth: 1,
@@ -233,42 +257,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.08)',
   },
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333',
-  },
+  titleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  title: { fontSize: 16, fontWeight: '700', color: '#333' },
   languageToggle: {
     flexDirection: 'row',
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
     borderRadius: 8,
     padding: 2,
   },
-  langButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  langButtonActive: {
-    backgroundColor: '#4CAF50',
-  },
-  langText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-  },
-  langTextActive: {
-    color: '#FFF',
-  },
-  commentaryList: {
-    flex: 1,
-  },
+  langButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  langButtonActive: { backgroundColor: '#4CAF50' },
+  langText: { fontSize: 12, fontWeight: '600', color: '#666' },
+  langTextActive: { color: '#FFF' },
+  commentaryList: { flex: 1 },
   commentaryItem: {
     flexDirection: 'row',
     paddingVertical: 12,
@@ -276,12 +277,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0, 0, 0, 0.05)',
     gap: 12,
   },
-  overBall: {
-    width: 50,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 4,
-  },
+  overBall: { width: 50, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 4 },
   overText: {
     fontSize: 14,
     fontWeight: '700',
@@ -291,9 +287,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 6,
   },
-  commentaryContent: {
-    flex: 1,
-  },
+  commentaryContent: { flex: 1 },
   eventBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -304,43 +298,11 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: 6,
   },
-  eventText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFF',
-    letterSpacing: 0.5,
-  },
-  commentaryText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#333',
-    marginBottom: 4,
-  },
-  runsContainer: {
-    backgroundColor: 'rgba(33, 150, 243, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginTop: 4,
-  },
-  runsText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#2196F3',
-  },
-  speakButton: {
-    padding: 4,
-    justifyContent: 'center',
-  },
-  bannerAdContainer: {
-    marginVertical: 12,
-    alignItems: 'center',
-  },
-  loadMoreContainer: {
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
+  eventText: { fontSize: 10, fontWeight: '700', color: '#FFF', letterSpacing: 0.5 },
+  commentaryText: { fontSize: 14, lineHeight: 20, color: '#333', marginBottom: 4 },
+  speakButton: { padding: 4, justifyContent: 'center' },
+  bannerAdContainer: { marginVertical: 12, alignItems: 'center' },
+  actionContainer: { paddingVertical: 12, alignItems: 'center' },
   loadMoreButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -352,20 +314,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#4CAF50',
   },
-  loadMoreText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4CAF50',
-  },
-  countContainer: {
-    paddingVertical: 12,
+  loadMoreText: { fontSize: 14, fontWeight: '600', color: '#4CAF50' },
+  viewFullBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#022d5d',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 24,
+    width: '100%',
+    justifyContent: 'center',
   },
-  countText: {
-    fontSize: 12,
-    color: '#999',
+  viewFullTxt: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  infoText: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 10,
     fontStyle: 'italic',
   },
+  countContainer: { paddingVertical: 12, alignItems: 'center' },
+  countText: { fontSize: 12, color: '#999', fontStyle: 'italic' },
 });
 
 export default CommentarySection;

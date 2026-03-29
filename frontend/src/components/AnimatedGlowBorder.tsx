@@ -1,76 +1,44 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, Animated } from 'react-native';
+import { View, StyleSheet, Animated, Platform } from 'react-native';
 
 interface AnimatedGlowBorderProps {
   children: React.ReactNode;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const BORDER_WIDTH = 6;
+const BORDER_WIDTH = 4;
 
-// Vibrant neon color palette
 const NEON_COLORS = [
-  '#FF0080', // Hot Pink
-  '#00FF00', // Neon Green
-  '#00FFFF', // Cyan
-  '#FF00FF', // Magenta
-  '#FFFF00', // Yellow
-  '#FF4500', // Orange Red
-  '#7B68EE', // Medium Slate Blue
-  '#00FF7F', // Spring Green
-  '#FF1493', // Deep Pink
-  '#1E90FF', // Dodger Blue
+  '#FF0080', '#00FF00', '#00FFFF', '#FF00FF',
+  '#FFFF00', '#FF4500', '#7B68EE', '#00FF7F',
+  '#FF1493', '#1E90FF',
 ];
 
-const getRandomColor = () => {
-  return NEON_COLORS[Math.floor(Math.random() * NEON_COLORS.length)];
-};
+const getRandomColor = () => NEON_COLORS[Math.floor(Math.random() * NEON_COLORS.length)];
 
 const AnimatedGlowBorder: React.FC<AnimatedGlowBorderProps> = ({ children }) => {
   const [currentColor, setCurrentColor] = useState(getRandomColor());
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0.5)).current;
+  // Use opacity (safe for Android) instead of shadowOpacity (causes crash)
+  const glowOpacity = useRef(new Animated.Value(0.7)).current;
 
-  // Color rotation animation
   useEffect(() => {
     const colorInterval = setInterval(() => {
       setCurrentColor(getRandomColor());
-    }, 2000);
-
+    }, 2500);
     return () => clearInterval(colorInterval);
   }, []);
 
-  // Fade animation
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(fadeAnim, {
+        Animated.timing(glowOpacity, {
           toValue: 1,
-          duration: 2000,
-          useNativeDriver: false,
+          duration: 1800,
+          useNativeDriver: true,
         }),
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
-      ])
-    ).start();
-  }, []);
-
-  // Glow pulse animation
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, {
-          toValue: 1,
-          duration: 1500,
-          useNativeDriver: false,
-        }),
-        Animated.timing(glowAnim, {
+        Animated.timing(glowOpacity, {
           toValue: 0.5,
-          duration: 1500,
-          useNativeDriver: false,
+          duration: 1800,
+          useNativeDriver: true,
         }),
       ])
     ).start();
@@ -78,58 +46,37 @@ const AnimatedGlowBorder: React.FC<AnimatedGlowBorderProps> = ({ children }) => 
 
   return (
     <View style={styles.container}>
-      {/* Top Border */}
-      <Animated.View 
+      {/* Top Border - safe: uses opacity not shadowOpacity */}
+      <Animated.View
         style={[
-          styles.borderTop, 
-          { 
-            backgroundColor: currentColor,
-            shadowColor: currentColor,
-            shadowOpacity: glowAnim,
-          }
-        ]} 
+          styles.borderTop,
+          { backgroundColor: currentColor, opacity: glowOpacity },
+        ]}
       />
-      
       {/* Right Border */}
-      <Animated.View 
+      <Animated.View
         style={[
-          styles.borderRight, 
-          { 
-            backgroundColor: currentColor,
-            shadowColor: currentColor,
-            shadowOpacity: glowAnim,
-          }
-        ]} 
+          styles.borderRight,
+          { backgroundColor: currentColor, opacity: glowOpacity },
+        ]}
       />
-      
       {/* Bottom Border */}
-      <Animated.View 
+      <Animated.View
         style={[
-          styles.borderBottom, 
-          { 
-            backgroundColor: currentColor,
-            shadowColor: currentColor,
-            shadowOpacity: glowAnim,
-          }
-        ]} 
+          styles.borderBottom,
+          { backgroundColor: currentColor, opacity: glowOpacity },
+        ]}
       />
-      
       {/* Left Border */}
-      <Animated.View 
+      <Animated.View
         style={[
-          styles.borderLeft, 
-          { 
-            backgroundColor: currentColor,
-            shadowColor: currentColor,
-            shadowOpacity: glowAnim,
-          }
-        ]} 
+          styles.borderLeft,
+          { backgroundColor: currentColor, opacity: glowOpacity },
+        ]}
       />
 
       {/* Main Content */}
-      <View style={styles.content}>
-        {children}
-      </View>
+      <View style={styles.content}>{children}</View>
     </View>
   );
 };
@@ -146,7 +93,7 @@ const styles = StyleSheet.create({
     marginLeft: BORDER_WIDTH,
     marginRight: BORDER_WIDTH,
     overflow: 'hidden',
-    borderRadius: 8,
+    borderRadius: 4,
   },
   borderTop: {
     position: 'absolute',
@@ -155,9 +102,11 @@ const styles = StyleSheet.create({
     right: 0,
     height: BORDER_WIDTH,
     zIndex: 1000,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 10,
+    ...(Platform.OS === 'android' ? { elevation: 4 } : {
+      shadowOffset: { width: 0, height: 4 },
+      shadowRadius: 8,
+      shadowOpacity: 0.6,
+    }),
   },
   borderRight: {
     position: 'absolute',
@@ -166,9 +115,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: BORDER_WIDTH,
     zIndex: 1000,
-    shadowOffset: { width: -4, height: 0 },
-    shadowRadius: 12,
-    elevation: 10,
+    ...(Platform.OS === 'android' ? { elevation: 4 } : {
+      shadowOffset: { width: -4, height: 0 },
+      shadowRadius: 8,
+      shadowOpacity: 0.6,
+    }),
   },
   borderBottom: {
     position: 'absolute',
@@ -177,9 +128,11 @@ const styles = StyleSheet.create({
     right: 0,
     height: BORDER_WIDTH,
     zIndex: 1000,
-    shadowOffset: { width: 0, height: -4 },
-    shadowRadius: 12,
-    elevation: 10,
+    ...(Platform.OS === 'android' ? { elevation: 4 } : {
+      shadowOffset: { width: 0, height: -4 },
+      shadowRadius: 8,
+      shadowOpacity: 0.6,
+    }),
   },
   borderLeft: {
     position: 'absolute',
@@ -188,9 +141,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: BORDER_WIDTH,
     zIndex: 1000,
-    shadowOffset: { width: 4, height: 0 },
-    shadowRadius: 12,
-    elevation: 10,
+    ...(Platform.OS === 'android' ? { elevation: 4 } : {
+      shadowOffset: { width: 4, height: 0 },
+      shadowRadius: 8,
+      shadowOpacity: 0.6,
+    }),
   },
 });
 

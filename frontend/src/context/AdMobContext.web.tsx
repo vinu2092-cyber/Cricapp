@@ -1,19 +1,12 @@
-/**
- * AdMobContext.web.tsx - Web Mock for AdMob 
- * Web preview can't show real ads, this provides mock functionality
- */
-
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { View, StyleSheet } from 'react-native';
 
-export const ADMOB_CONFIG = {
-  appId: 'ca-app-pub-9675798593675825~2399929714',
-  appOpenAdId: 'ca-app-pub-9675798593675825/4826782503',
-  interstitialAdId: 'ca-app-pub-9675798593675825/8438724452',
-  bannerAdId: 'ca-app-pub-9675798593675825/8616886104',
-  rewardedAdId: 'ca-app-pub-9675798593675825/6702740458',
-  testDeviceId: '553c7721-4821-461b-9f62-8584b1e60745',
-};
+/**
+ * AdMobContext.web.tsx - Web Platform Stub for AdMob
+ * Web platform cannot display native ads. This provides a no-op implementation
+ * so the app runs without errors on web during development.
+ * Real ads only work in native EAS builds.
+ */
 
 interface AdMobContextType {
   isAdMobInitialized: boolean;
@@ -26,48 +19,41 @@ interface AdMobContextType {
   BannerAdComponent: React.FC<{ size?: string }>;
 }
 
+export type { AdMobContextType };
+
 const AdMobContext = createContext<AdMobContextType | undefined>(undefined);
 
 export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isAdMobInitialized] = useState(true);
-  const [isPro, setIsPro] = useState(false);
+  const [isPro] = useState(false);
   const [clickCount, setClickCount] = useState(0);
 
-  const trackClick = () => {
-    setClickCount(c => c + 1);
-  };
-
-  const showAppOpenAd = async (): Promise<void> => {
-    console.log('[Web Mock] App Open Ad');
-  };
-
-  const showInterstitialAd = async (): Promise<boolean> => {
-    console.log('[Web Mock] Interstitial Ad');
-    return true;
-  };
-
+  const showAppOpenAd = async (): Promise<void> => {};
+  const showInterstitialAd = async (): Promise<boolean> => false;
   const showRewardedAd = async (): Promise<boolean> => {
-    console.log('[Web Mock] Rewarded Ad - simulating...');
-    // Simulate a short delay like watching an ad
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return true;
+    // Simulate ad completion for web dev testing
+    return new Promise((resolve) => setTimeout(() => resolve(true), 500));
   };
+
+  const trackClick = () => setClickCount((p) => p + 1);
 
   const BannerAdComponent: React.FC<{ size?: string }> = () => (
-    <View style={styles.mockBanner} />
+    <View style={styles.adStub} />
   );
 
   return (
-    <AdMobContext.Provider value={{
-      isAdMobInitialized,
-      isPro,
-      trackClick,
-      clickCount,
-      showAppOpenAd,
-      showInterstitialAd,
-      showRewardedAd,
-      BannerAdComponent,
-    }}>
+    <AdMobContext.Provider
+      value={{
+        isAdMobInitialized,
+        isPro,
+        trackClick,
+        clickCount,
+        showAppOpenAd,
+        showInterstitialAd,
+        showRewardedAd,
+        BannerAdComponent,
+      }}
+    >
       {children}
     </AdMobContext.Provider>
   );
@@ -75,14 +61,12 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
 export const useAdMob = (): AdMobContextType => {
   const context = useContext(AdMobContext);
-  if (!context) {
-    throw new Error('useAdMob must be used within AdMobProvider');
-  }
+  if (!context) throw new Error('useAdMob must be used within AdMobProvider');
   return context;
 };
 
 const styles = StyleSheet.create({
-  mockBanner: { height: 0, width: '100%' },
+  adStub: { height: 0, width: '100%' },
 });
 
 export default AdMobProvider;
