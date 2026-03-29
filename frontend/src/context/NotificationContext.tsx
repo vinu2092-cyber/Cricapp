@@ -12,7 +12,30 @@ import {
 const TRACKED_MATCHES_KEY = 'cricapp_tracked_matches';
 const POLL_INTERVAL_ACTIVE = 45000;    // 45s when app is active
 const POLL_INTERVAL_BACKGROUND = 90000; // 90s when app is in background
-const BACKEND_URL = 'https://scoreboard-pro-21.preview.emergentagent.com';
+
+// Use same backend URL strategy as api.ts
+const getBackendUrl = (): string => {
+  try {
+    const Constants = require('expo-constants').default;
+    return Constants.expoConfig?.extra?.backendUrl || 'https://scoreboard-pro-21.preview.emergentagent.com';
+  } catch {
+    return 'https://scoreboard-pro-21.preview.emergentagent.com';
+  }
+};
+
+// Direct RapidAPI fallback keys + hosts (same as api.ts)
+const RAPIDAPI_KEYS = [
+  "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",
+  "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
+  "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
+  "59b9249be3mshcab753fe794baa3p14e78cjsne1da55eef3aa",
+  "c651c7e717msh7d7c4d05cae7b6dp17500bjsn1e00d9cf8d61",
+];
+const RAPIDAPI_HOSTS = [
+  "cricbuzz-cricket.p.rapidapi.com",
+  "cricbuzz.p.rapidapi.com",
+];
+let notifKeyIndex = 0;
 
 interface TrackedMatch {
   matchId: string;
@@ -66,18 +89,81 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     AsyncStorage.setItem(TRACKED_MATCHES_KEY, JSON.stringify(trackedMatches)).catch(() => {});
   }, [trackedMatches]);
 
-  // Poll for match updates
+  // Poll for match updates - tries backend proxy then direct API
   const pollMatchUpdates = useCallback(async () => {
     const activeMatches = trackedMatches.filter((m) => m.enabled);
     if (activeMatches.length === 0) return;
 
     for (const tracked of activeMatches) {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/cricket/match/${tracked.matchId}/events?lastScore=${encodeURIComponent(tracked.lastScore || '')}&lastWickets=${tracked.lastWickets || 0}&lastOvers=${encodeURIComponent(tracked.lastOvers || '')}`);
-        if (!res.ok) continue;
-        const data = await res.json();
+        let data: any = null;
+        
+        // Strategy 1: Backend proxy
+        try {
+          const backendUrl = getBackendUrl();
+          const res = await fetch(`${backendUrl}/api/cricket/match/${tracked.matchId}/events?lastScore=${encodeURIComponent(tracked.lastScore || '')}&lastWickets=${tracked.lastWickets || 0}&lastOvers=${encodeURIComponent(tracked.lastOvers || '')}`, { signal: AbortSignal.timeout(8000) });
+          if (res.ok) {
+            data = await res.json();
+          }
+        } catch (backendErr) {
+          // Backend down, try direct API
+        }
+        
+        // Strategy 2: Direct API fallback - fetch commentary and detect events
+        if (!data) {
+          try {
+            const key = RAPIDAPI_KEYS[notifKeyIndex % RAPIDAPI_KEYS.length];
+            const host = RAPIDAPI_HOSTS[notifKeyIndex % 2 === 0 ? 0 : 1];
+            notifKeyIndex++;
+            
+            const commRes = await fetch(`https://${host}/mcenter/v1/${tracked.matchId}/comm`, {
+              headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': host },
+              signal: AbortSignal.timeout(10000),
+            });
+            if (commRes.ok) {
+              const commData = await commRes.json();
+              const ms = commData.miniscore || {};
+              const inningScores = ms.inningsscores?.inningsscore || [];
+              
+              // Detect events by comparing scores
+              const events: any[] = [];
+              for (const inn of inningScores) {
+                const shortName = inn.batteamshortname;
+                const currentScore = `${inn.runs}/${inn.wickets}`;
+                
+                if (shortName === tracked.team1Short || shortName === tracked.team2Short) {
+                  if (tracked.lastScore && tracked.lastScore !== currentScore) {
+                    // Score changed - detect what happened
+                    const oldWickets = tracked.lastWickets || 0;
+                    const newWickets = inn.wickets || 0;
+                    
+                    if (newWickets > oldWickets) {
+                      events.push({ type: 'wicket', message: `${shortName}: WICKET! Score: ${currentScore}`, score: currentScore });
+                    } else {
+                      events.push({ type: 'four', message: `${shortName}: Score update: ${currentScore} (${inn.overs} ov)`, score: currentScore });
+                    }
+                  }
+                }
+              }
+              
+              // Build data in same format as backend
+              const currentBatScore = inningScores[0];
+              data = {
+                events,
+                currentScore: currentBatScore ? {
+                  score: `${currentBatScore.runs}/${currentBatScore.wickets}`,
+                  wickets: currentBatScore.wickets,
+                  overs: String(currentBatScore.overs),
+                } : null,
+              };
+            }
+          } catch (directErr) {
+            // Both failed, skip this match
+            continue;
+          }
+        }
 
-        if (data.events && data.events.length > 0) {
+        if (data?.events && data.events.length > 0) {
           for (const event of data.events) {
             await sendMatchAlert({
               matchId: tracked.matchId,
@@ -92,7 +178,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
 
         // Update tracked state with latest score
-        if (data.currentScore) {
+        if (data?.currentScore) {
           setTrackedMatches((prev) =>
             prev.map((m) =>
               m.matchId === tracked.matchId
