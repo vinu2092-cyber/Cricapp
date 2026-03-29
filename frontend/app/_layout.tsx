@@ -1,5 +1,4 @@
-import React, { useEffect, useState, ErrorInfo } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, ErrorInfo } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as ExpoSplashScreen from 'expo-splash-screen';
@@ -7,13 +6,11 @@ import { ProProvider } from '../src/context/ProContext';
 import { AdMobProvider, useAdMob } from '../src/context/AdMobContext';
 import { NotificationProvider } from '../src/context/NotificationContext';
 import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder';
-import SplashScreen from '../src/components/SplashScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
 
-// Keep Expo native splash visible until we're ready
+// Hide native splash when ready
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
 
-// Error Boundary to prevent full app crash
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; error: Error | null }
@@ -28,7 +25,7 @@ class AppErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('App Error Boundary caught:', error, info);
+    console.error('App Error Boundary:', error, info);
   }
 
   render() {
@@ -43,11 +40,12 @@ class AppErrorBoundary extends React.Component<
   }
 }
 
-// Component to handle App Open Ad on launch
 function AppOpenAdHandler({ children }: { children: React.ReactNode }) {
   const { showAppOpenAd, isAdMobInitialized } = useAdMob();
 
   useEffect(() => {
+    // Hide splash + show App Open Ad
+    ExpoSplashScreen.hideAsync().catch(() => {});
     if (isAdMobInitialized) {
       showAppOpenAd().catch(() => {});
     }
@@ -57,33 +55,22 @@ function AppOpenAdHandler({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  const [showSplash, setShowSplash] = useState(true);
-
-  const handleSplashFinish = () => {
-    setShowSplash(false);
-    ExpoSplashScreen.hideAsync().catch(() => {});
-  };
-
   return (
     <AppErrorBoundary>
       <ProProvider>
         <AdMobProvider>
           <NotificationProvider>
             <StatusBar style="light" translucent />
-            {showSplash ? (
-              <SplashScreen onFinish={handleSplashFinish} />
-            ) : (
-              <AppOpenAdHandler>
-                <AnimatedGlowBorder>
-                  <Stack
-                    screenOptions={{
-                      headerShown: false,
-                      animation: 'slide_from_right',
-                    }}
-                  />
-                </AnimatedGlowBorder>
-              </AppOpenAdHandler>
-            )}
+            <AppOpenAdHandler>
+              <AnimatedGlowBorder>
+                <Stack
+                  screenOptions={{
+                    headerShown: false,
+                    animation: 'slide_from_right',
+                  }}
+                />
+              </AnimatedGlowBorder>
+            </AppOpenAdHandler>
           </NotificationProvider>
         </AdMobProvider>
       </ProProvider>
