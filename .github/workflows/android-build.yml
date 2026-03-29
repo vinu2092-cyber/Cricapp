@@ -38,8 +38,7 @@ jobs:
       - name: Install dependencies
         working-directory: ./frontend
         run: |
-          npm install -g yarn
-          yarn install --frozen-lockfile
+          npm install --legacy-peer-deps
           
       - name: CRITICAL - Hard Clean Native Folder
         working-directory: ./frontend
