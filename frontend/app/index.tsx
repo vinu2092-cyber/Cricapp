@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
 import { Match, Team } from '../src/types/match';
 import MatchCard from '../src/components/MatchCard';
@@ -20,17 +19,19 @@ import Header from '../src/components/Header';
 import Footer from '../src/components/Footer';
 import LoadingScreen from '../src/components/LoadingScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
-import { AdMobProvider, useAdMob } from '../src/context/AdMobContext';
-import { ProProvider, usePro } from '../src/context/ProContext';
-import { getBackendUrl } from '../src/services/api';
+import { useAdMob } from '../src/context/AdMobContext';
+import { usePro } from '../src/context/ProContext';
+import { 
+  fetchLiveMatches, 
+  fetchRecentMatches, 
+  fetchUpcomingMatches 
+} from '../src/services/api';
 
 type TabType = 'live' | 'recent' | 'upcoming';
 type CategoryType = 'all' | 'international' | 'league' | 'domestic';
 
-const BACKEND_URL = getBackendUrl();
-
-// Auto-refresh reduced to 30 seconds
-const AUTO_REFRESH_INTERVAL = 30000;
+// Auto-refresh reduced to 60 seconds
+const AUTO_REFRESH_INTERVAL = 60000;
 
 export default function Index() {
   const router = useRouter();
@@ -46,62 +47,35 @@ export default function Index() {
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFetchTime = useRef<{ [key: string]: number }>({});
   
-  const CACHE_DURATION = 30000;
+  const CACHE_DURATION = 180000; // 3 minutes
 
-  // Fetch matches from backend
+  // Fetch matches using direct API
   const fetchMatches = async (tab: TabType, forceRefresh = false) => {
     try {
-      const cacheKey = `matches_${tab}`;
-      const now = Date.now();
-
-      // Check cache if not force refreshing
-      if (!forceRefresh && lastFetchTime.current[cacheKey]) {
-        const timeSinceLastFetch = now - lastFetchTime.current[cacheKey];
-        if (timeSinceLastFetch < CACHE_DURATION) {
-          console.log(`Using cached data for ${tab} (${Math.round(timeSinceLastFetch / 1000)}s old)`);
-          
-          const cachedData = await AsyncStorage.getItem(cacheKey);
-          if (cachedData) {
-            const parsedMatches = JSON.parse(cachedData);
-            setMatches(parsedMatches);
-            return parsedMatches;
-          }
-        }
-      }
-
-      const endpoint = `${BACKEND_URL}/api/cricket/matches/${tab}`;
-      console.log(`Fetching ${tab} matches from:`, endpoint);
+      let fetchedMatches: Match[] = [];
       
-      const response = await axios.get(endpoint, {
-        timeout: 15000,
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-
-      if (response.data && response.data.typeMatches) {
-        const allMatches = extractMatches(response.data.typeMatches, tab);
-        setMatches(allMatches);
-        
-        // Cache the data
-        await AsyncStorage.setItem(cacheKey, JSON.stringify(allMatches));
-        lastFetchTime.current[cacheKey] = now;
-        
-        return allMatches;
+      switch (tab) {
+        case 'live':
+          fetchedMatches = await fetchLiveMatches();
+          break;
+        case 'recent':
+          fetchedMatches = await fetchRecentMatches();
+          break;
+        case 'upcoming':
+          fetchedMatches = await fetchUpcomingMatches();
+          break;
       }
+      
+      // Add category to matches
+      const matchesWithCategory = fetchedMatches.map(match => ({
+        ...match,
+        category: categorizeMatch(match.matchFormat || 'T20', match.seriesName || ''),
+      }));
+      
+      setMatches(matchesWithCategory);
+      return matchesWithCategory;
     } catch (err) {
       console.error('Error fetching matches:', err);
-      
-      // Try to use stale cache on error
-      const cacheKey = `matches_${tab}`;
-      const cachedData = await AsyncStorage.getItem(cacheKey);
-      if (cachedData) {
-        console.log('Using stale cache due to error');
-        const parsedMatches = JSON.parse(cachedData);
-        setMatches(parsedMatches);
-        return parsedMatches;
-      }
-      
       throw err;
     }
   };
@@ -184,94 +158,6 @@ export default function Index() {
     }
     if (lowerMatchType === 'international') return 'International';
     return 'Domestic';
-  };
-
-  // Extract matches from Cricbuzz API response - produces proper Match objects
-  const extractMatches = (typeMatches: any[], tab: TabType): Match[] => {
-    const allMatches: Match[] = [];
-
-    typeMatches.forEach((typeMatch) => {
-      const matchType = typeMatch.matchType;
-      typeMatch.seriesMatches?.forEach((seriesMatch: any) => {
-        const seriesAdWrapper = seriesMatch.seriesAdWrapper;
-        if (!seriesAdWrapper || !seriesAdWrapper.matches) return;
-        
-        const seriesName = seriesAdWrapper.seriesName || '';
-
-        seriesAdWrapper.matches.forEach((match: any) => {
-          const matchInfo = match.matchInfo;
-          const matchScore = match.matchScore;
-          if (!matchInfo) return;
-
-          const status = determineMatchStatus(matchInfo.state || '');
-          const category = categorizeMatch(matchType, seriesName);
-
-          // Build teams array matching Team interface
-          const teams: Team[] = [];
-          
-          // Team 1
-          const team1Score = matchScore?.team1Score?.inngs1;
-          teams.push({
-            name: matchInfo.team1?.teamName || 'Team 1',
-            shortName: matchInfo.team1?.teamSName || 'TM1',
-            runs: team1Score?.runs,
-            wickets: team1Score?.wickets,
-            overs: team1Score?.overs?.toString(),
-          });
-
-          // Team 2
-          const team2Score = matchScore?.team2Score?.inngs1;
-          teams.push({
-            name: matchInfo.team2?.teamName || 'Team 2',
-            shortName: matchInfo.team2?.teamSName || 'TM2',
-            runs: team2Score?.runs,
-            wickets: team2Score?.wickets,
-            overs: team2Score?.overs?.toString(),
-          });
-
-          // Result text
-          let result: string | undefined;
-          if (status === 'recent' && matchInfo.status) {
-            result = matchInfo.status;
-          } else if (status === 'live' && matchInfo.status) {
-            result = matchInfo.status;
-          }
-
-          // Start time for upcoming
-          let startTime: string | undefined;
-          if (matchInfo.startDate) {
-            try {
-              const date = new Date(parseInt(matchInfo.startDate));
-              startTime = date.toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              });
-            } catch (e) {}
-          }
-
-          const venue = matchInfo.venueInfo 
-            ? `${matchInfo.venueInfo.ground || ''}, ${matchInfo.venueInfo.city || ''}`
-            : 'TBD';
-
-          allMatches.push({
-            matchId: matchInfo.matchId.toString(),
-            status,
-            series: seriesName,
-            matchType: matchInfo.matchFormat?.toUpperCase() || 'T20',
-            venue,
-            teams,
-            result,
-            startTime,
-            category,
-            timestamp: matchInfo.startDate ? parseInt(matchInfo.startDate) : undefined,
-          });
-        });
-      });
-    });
-
-    return allMatches;
   };
 
   // Handle pull to refresh

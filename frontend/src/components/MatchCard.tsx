@@ -31,7 +31,8 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
     }
   };
 
-  const formatSeries = (series: string) => {
+  const formatSeries = (series?: string) => {
+    if (!series) return 'Cricket Match';
     // Extract match info like "IND VS NZ - 3RD ODI 2025"
     const parts = series.split(', ');
     if (parts.length >= 2) {
@@ -48,7 +49,7 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
     >
       <View style={styles.cardHeader}>
         <Text style={styles.matchTitle} numberOfLines={1}>
-          {formatSeries(match.series)}
+          {formatSeries(match.series || match.seriesName)}
         </Text>
         {getStatusBadge()}
       </View>

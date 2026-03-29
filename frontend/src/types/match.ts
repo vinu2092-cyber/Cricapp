@@ -3,30 +3,40 @@ export interface Team {
   shortName: string;
   runs?: number;
   wickets?: number;
-  overs?: string;
+  overs?: string | number;
+  flag?: string;
 }
 
 export interface Commentary {
+  id?: string;
   over: string;
   ball: number;
   english: string;
   hindi: string;
   runs?: number;
   event?: 'wicket' | 'four' | 'six' | 'dot' | 'normal';
+  timestamp?: number;
 }
 
 export interface Match {
   matchId: string;
   status: 'live' | 'recent' | 'upcoming';
-  series: string;
-  matchType: string;
-  venue: string;
+  series?: string;
+  seriesName?: string;
+  matchType?: string;
+  matchFormat?: string;
+  matchDesc?: string;
+  venue?: string;
+  city?: string;
   teams: Team[];
   result?: string;
+  statusText?: string;
   startTime?: string;
+  startDate?: string;
   commentary?: Commentary[];
-  category?: string; // International, League, Domestic, Women
-  timestamp?: number; // For sorting
+  category?: string;
+  timestamp?: number;
+  battingTeamId?: string;
 }
 
 export type MatchStatus = 'live' | 'recent' | 'upcoming';

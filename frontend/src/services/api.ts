@@ -7,6 +7,11 @@ import Constants from 'expo-constants';
 // DIRECT RAPIDAPI CONFIGURATION (Production APK)
 // ============================================
 
+// Backward compatibility - getBackendUrl for legacy code
+export const getBackendUrl = () => {
+  return RAPIDAPI_BASE;
+};
+
 // RapidAPI Keys with rotation
 const RAPIDAPI_KEYS = [
   "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",
@@ -220,11 +225,14 @@ const transformToMatch = (cricMatch: CricbuzzMatch): Match => {
 
   return {
     matchId: String(matchInfo.matchId),
+    series: matchInfo.seriesName,
     seriesName: matchInfo.seriesName,
     matchDesc: matchInfo.matchDesc,
+    matchType: matchInfo.matchFormat?.toUpperCase() || 'T20',
     matchFormat: matchInfo.matchFormat,
     status: transformMatchState(matchInfo.state),
     statusText: matchInfo.status || matchInfo.stateTitle,
+    result: matchInfo.status,
     venue: matchInfo.venueInfo?.ground || 'TBD',
     city: matchInfo.venueInfo?.city || '',
     startDate: matchInfo.startDate,
