@@ -144,7 +144,12 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
       <ScrollView style={styles.commentaryList} nestedScrollEnabled>
         {displayedCommentary.map((item, index) => {
-          const showBanner = !isPro && (index + 1) % 6 === 0;
+          // Banner ads at over start (.1) and end (.6) - non-pro only
+          const overStr = String(item.over || '');
+          const overDecimal = overStr.split('.')[1] || '';
+          const isOverStart = overDecimal === '1';
+          const isOverEnd = overDecimal === '6';
+          const showBanner = !isPro && (isOverStart || isOverEnd);
 
           return (
             <View key={index}>

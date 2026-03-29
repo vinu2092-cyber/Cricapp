@@ -48,7 +48,7 @@ export default function Index() {
 
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch matches using direct API
+  // Fetch matches using direct API - keeps old data if fetch fails
   const fetchMatches = async (tab: TabType) => {
     try {
       let fetchedMatches: Match[] = [];
@@ -70,10 +70,14 @@ export default function Index() {
         category: categorizeMatch(match.matchFormat || match.matchType || 'T20', match.seriesName || match.series || ''),
       }));
       
-      setMatches(matchesWithCategory);
+      // Only update if we got data - prevents matches disappearing
+      if (matchesWithCategory.length > 0) {
+        setMatches(matchesWithCategory);
+      }
       return matchesWithCategory;
     } catch (err) {
       console.error('Error fetching matches:', err);
+      // Don't clear existing matches on error
       throw err;
     }
   };
@@ -83,12 +87,13 @@ export default function Index() {
     const lowerMatchType = matchType.toLowerCase();
     const lowerSeriesName = seriesName.toLowerCase();
     
-    if (lowerMatchType === 'women') return 'Women';
-    if (lowerMatchType === 'league' || 
-        lowerSeriesName.includes('ipl') || 
-        lowerSeriesName.includes('bbl') || 
-        lowerSeriesName.includes('psl') ||
-        lowerSeriesName.includes('cpl')) {
+    if (lowerSeriesName.includes('women') || lowerMatchType === 'women') return 'Women';
+    if (lowerMatchType === 'league' || lowerMatchType === 't20' ||
+        lowerSeriesName.includes('ipl') || lowerSeriesName.includes('indian premier') ||
+        lowerSeriesName.includes('bbl') || lowerSeriesName.includes('psl') ||
+        lowerSeriesName.includes('cpl') || lowerSeriesName.includes('sa20') ||
+        lowerSeriesName.includes('bpl') || lowerSeriesName.includes('hundred') ||
+        lowerSeriesName.includes('premier league') || lowerSeriesName.includes('super league')) {
       return 'League';
     }
     if (lowerMatchType === 'international' || lowerMatchType === 'test' || lowerMatchType === 'odi') return 'International';

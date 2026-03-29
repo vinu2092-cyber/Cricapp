@@ -16,6 +16,7 @@ interface AdMobContextType {
   showAppOpenAd: () => Promise<void>;
   showInterstitialAd: () => Promise<boolean>;
   showRewardedAd: () => Promise<boolean>;
+  isRewardedAdReady: boolean;
   BannerAdComponent: React.FC<{ size?: string }>;
 }
 
@@ -51,6 +52,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         showAppOpenAd,
         showInterstitialAd,
         showRewardedAd,
+        isRewardedAdReady: true,
         BannerAdComponent,
       }}
     >

@@ -83,14 +83,47 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
         ))}
       </View>
 
-      {match.result && (
+      {match.statusText && (
         <Text style={styles.result} numberOfLines={2}>
-          {match.result}
+          {match.statusText}
         </Text>
       )}
 
-      {match.startTime && (
-        <Text style={styles.startTime}>{match.startTime}</Text>
+      {/* Upcoming match details: date, time, venue */}
+      {match.status === 'upcoming' && (
+        <View style={styles.upcomingDetails}>
+          {match.matchDesc ? (
+            <Text style={styles.matchDesc}>{match.matchDesc}</Text>
+          ) : null}
+          {match.startTime ? (
+            <View style={styles.detailRow}>
+              <Ionicons name="calendar-outline" size={14} color="#2196F3" />
+              <Text style={styles.detailText}>{match.startTime}</Text>
+            </View>
+          ) : null}
+          {(match.venue || match.city) ? (
+            <View style={styles.detailRow}>
+              <Ionicons name="location-outline" size={14} color="#FF9800" />
+              <Text style={styles.detailText}>
+                {[match.venue, match.city].filter(Boolean).join(', ')}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+
+      {/* Recent match result text */}
+      {match.status === 'recent' && match.statusText && (
+        <Text style={styles.resultStatus} numberOfLines={2}>
+          {match.statusText}
+        </Text>
+      )}
+
+      {/* Live match status */}
+      {match.status === 'live' && match.statusText && (
+        <Text style={styles.liveStatus} numberOfLines={1}>
+          {match.statusText}
+        </Text>
       )}
 
       <View style={styles.cardFooter}>
@@ -216,6 +249,41 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontWeight: '500',
     marginTop: 4,
+  },
+  resultStatus: {
+    fontSize: 13,
+    color: '#4CAF50',
+    fontWeight: '500',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  liveStatus: {
+    fontSize: 12,
+    color: '#FF4444',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  upcomingDetails: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.08)',
+    gap: 6,
+  },
+  matchDesc: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  detailText: {
+    fontSize: 12,
+    color: '#666',
+    flex: 1,
   },
   startTime: {
     fontSize: 13,
