@@ -143,6 +143,16 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       </View>
 
       <ScrollView style={styles.commentaryList} nestedScrollEnabled>
+        {/* Debug: Show if no commentary available */}
+        {displayedCommentary.length === 0 && (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Ionicons name="chatbox-outline" size={40} color="#999" />
+            <Text style={{ color: '#666', fontSize: 14, marginTop: 10, textAlign: 'center' }}>
+              No ball-by-ball commentary available yet.{'\n'}Commentary will appear as the match progresses.
+            </Text>
+          </View>
+        )}
+        
         {displayedCommentary.map((item, index) => {
           // Banner ads at over start (.1) and end (.6) - non-pro only
           const overStr = String(item.over || '');
@@ -252,7 +262,7 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     padding: 16,
     elevation: 3,
-    maxHeight: 500,
+    minHeight: 200,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.4)',
   },
