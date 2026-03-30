@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import mobileAds, {
   BannerAd,
   BannerAdSize,
@@ -23,27 +24,54 @@ const AD_IDS = {
 interface AdMobContextType {
   isAdMobInitialized: boolean;
   isPro: boolean;
+  setIsPro: (value: boolean) => void;
+  adCount: number;
+  setAdCount: React.Dispatch<React.SetStateAction<number>>;
   trackClick: () => void;
   showAppOpenAd: () => Promise<void>;
   showInterstitialAd: () => Promise<boolean>;
   showRewardedAd: () => Promise<boolean>;
   isRewardedAdReady: boolean;
   BannerAdComponent: React.FC;
+  handleUnlockClick: () => void;
 }
 
 const AdMobContext = createContext<AdMobContextType | undefined>(undefined);
 
 export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { isPro } = usePro();
+  const { isPro: globalIsPro, setProFromAdMob } = usePro();
   const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
   const [isRewardedAdReady, setIsRewardedAdReady] = useState(false);
   const [clicks, setClicks] = useState(0);
   const [clickTarget] = useState(Math.floor(Math.random() * 6) + 10);
+  const [adCount, setAdCount] = useState(0);
+  const [isPro, setIsPro] = useState(false);
 
   const rewardedRef = useRef<RewardedAd | null>(null);
   const loadingRef = useRef(false);
   const retryRef = useRef(0);
   const unsubsRef = useRef<(() => void)[]>([]);
+
+  // Check Pro expiry on mount
+  useEffect(() => {
+    const checkProExpiry = async () => {
+      try {
+        const expiry = await AsyncStorage.getItem('pro_expiry');
+        if (expiry) {
+          const expiryTime = parseInt(expiry, 10);
+          if (Date.now() < expiryTime) {
+            setIsPro(true);
+            setProFromAdMob(true);
+          } else {
+            await AsyncStorage.removeItem('pro_expiry');
+            setIsPro(false);
+            setProFromAdMob(false);
+          }
+        }
+      } catch {}
+    };
+    checkProExpiry();
+  }, []);
 
   // Cleanup event listeners
   const cleanupListeners = () => {
@@ -94,6 +122,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, []);
 
+  // Load rewarded ad on mount + EARNED_REWARD listener with counter
   useEffect(() => {
     mobileAds()
       .initialize()
@@ -110,6 +139,15 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     return cleanupListeners;
   }, [loadRewardedAd]);
+
+  // handleUnlockClick - force load if not ready
+  const handleUnlockClick = useCallback(() => {
+    if (rewardedRef.current && isRewardedAdReady) {
+      rewardedRef.current.show();
+    } else {
+      loadRewardedAd(); // Force load if not ready
+    }
+  }, [isRewardedAdReady, loadRewardedAd]);
 
   const showAppOpenAd = async (): Promise<void> => {
     return new Promise((resolve) => {
@@ -153,6 +191,19 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const u1 = ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
           console.log('[AdMob] Reward EARNED');
           rewarded = true;
+          
+          // Increment ad count and check for Pro unlock
+          setAdCount((prev) => {
+            const newCount = prev + 1;
+            if (newCount >= 3) {
+              setIsPro(true);
+              setProFromAdMob(true);
+              AsyncStorage.setItem('pro_expiry', (Date.now() + 30 * 60 * 1000).toString());
+              return 0; // reset counter
+            }
+            return newCount;
+          });
+          loadRewardedAd(); // Load next ad immediately
         });
 
         const u2 = ad.addAdEventListener(AdEventType.CLOSED, () => {
@@ -207,9 +258,9 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   return (
     <AdMobContext.Provider value={{
-      isAdMobInitialized, isPro, trackClick,
+      isAdMobInitialized, isPro: isPro || globalIsPro, setIsPro, adCount, setAdCount, trackClick,
       showAppOpenAd, showInterstitialAd, showRewardedAd, isRewardedAdReady,
-      BannerAdComponent,
+      BannerAdComponent, handleUnlockClick,
     }}>
       {children}
     </AdMobContext.Provider>

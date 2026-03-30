@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Dimensions, Modal, Alert
+  ActivityIndicator, Dimensions, Modal, Alert, FlatList
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -264,6 +264,18 @@ export default function MatchDetail() {
             commentary={match.commentary}
             matchId={id}
             isLive={match.status === 'live'}
+          />
+        ) : (match as any)?.commentaryList && (match as any).commentaryList.length > 0 ? (
+          <FlatList
+            data={(match as any).commentaryList}
+            keyExtractor={(item, index) => index.toString()}
+            scrollEnabled={false}
+            renderItem={({ item }) => (
+              <View style={{ padding: 10, borderBottomWidth: 1, borderColor: '#333' }}>
+                <Text style={{ color: '#aaa', fontSize: 12, fontWeight: 'bold' }}>Over: {item.overSeparator?.overNum || '-'}</Text>
+                <Text style={{ color: '#fff', fontSize: 14 }}>{item.commText}</Text>
+              </View>
+            )}
           />
         ) : (
           <View style={styles.noComm}>
