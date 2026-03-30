@@ -12,11 +12,12 @@ interface AdMobContextType {
   isAdMobInitialized: boolean;
   isPro: boolean;
   trackClick: () => void;
-  clickCount: number;
   showAppOpenAd: () => Promise<void>;
   showInterstitialAd: () => Promise<boolean>;
   showRewardedAd: () => Promise<boolean>;
   isRewardedAdReady: boolean;
+  isRewardedAdLoading: boolean;
+  adsWatchedCount: number;
   BannerAdComponent: React.FC<{ size?: string }>;
 }
 
@@ -27,16 +28,21 @@ const AdMobContext = createContext<AdMobContextType | undefined>(undefined);
 export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isAdMobInitialized] = useState(true);
   const [isPro] = useState(false);
-  const [clickCount, setClickCount] = useState(0);
+  const [adsWatchedCount, setAdsWatchedCount] = useState(0);
 
   const showAppOpenAd = async (): Promise<void> => {};
   const showInterstitialAd = async (): Promise<boolean> => false;
   const showRewardedAd = async (): Promise<boolean> => {
     // Simulate ad completion for web dev testing
-    return new Promise((resolve) => setTimeout(() => resolve(true), 500));
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        setAdsWatchedCount(prev => (prev + 1) % 4);
+        resolve(true);
+      }, 500);
+    });
   };
 
-  const trackClick = () => setClickCount((p) => p + 1);
+  const trackClick = () => {};
 
   const BannerAdComponent: React.FC<{ size?: string }> = () => (
     <View style={styles.adStub} />
@@ -48,11 +54,12 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         isAdMobInitialized,
         isPro,
         trackClick,
-        clickCount,
         showAppOpenAd,
         showInterstitialAd,
         showRewardedAd,
         isRewardedAdReady: true,
+        isRewardedAdLoading: false,
+        adsWatchedCount,
         BannerAdComponent,
       }}
     >
