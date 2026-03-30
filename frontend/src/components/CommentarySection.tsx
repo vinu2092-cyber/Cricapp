@@ -186,7 +186,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
               {showBanner && (
                 <View style={styles.bannerAdContainer}>
-                  <BannerAdComponent size="BANNER" />
+                  <BannerAdComponent />
                 </View>
               )}
             </View>

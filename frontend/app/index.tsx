@@ -9,6 +9,7 @@ import {
   ImageBackground,
   Modal,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,7 +28,7 @@ import {
 } from '../src/services/api';
 
 type TabType = 'live' | 'recent' | 'upcoming';
-type CategoryType = 'all' | 'international' | 'league' | 'domestic';
+type CategoryType = 'all' | 'international' | 'league' | 'domestic' | 'women';
 
 const AUTO_REFRESH_INTERVAL = 60000;
 
@@ -38,7 +39,6 @@ export default function Index() {
   
   const [activeTab, setActiveTab] = useState<TabType>('live');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all');
-  const [matches, setMatches] = useState<Match[]>([]);
   const [filteredMatches, setFilteredMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -47,9 +47,12 @@ export default function Index() {
   const [localAdsWatched, setLocalAdsWatched] = useState(0);
 
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // In-memory cache per tab so switching doesn't trigger loading spinner
+  const tabCacheRef = useRef<Record<TabType, Match[]>>({ live: [], recent: [], upcoming: [] });
 
-  // Fetch matches using direct API - keeps old data if fetch fails
-  const fetchMatches = async (tab: TabType) => {
+  // Fetch matches - returns cached data instantly if available, then refreshes in background
+  const fetchMatches = async (tab: TabType, forceRefresh = false) => {
     try {
       let fetchedMatches: Match[] = [];
       
@@ -65,19 +68,19 @@ export default function Index() {
           break;
       }
       
+      // API already provides category from typeMatches - just normalize
       const matchesWithCategory = fetchedMatches.map(match => ({
         ...match,
-        category: categorizeMatch(match.matchFormat || match.matchType || 'T20', match.seriesName || match.series || ''),
+        category: match.category || categorizeMatch(match.matchFormat || match.matchType || 'T20', match.seriesName || match.series || ''),
       }));
       
-      // Only update if we got data - prevents matches disappearing
+      // Save to in-memory cache
       if (matchesWithCategory.length > 0) {
-        setMatches(matchesWithCategory);
+        tabCacheRef.current[tab] = matchesWithCategory;
       }
       return matchesWithCategory;
     } catch (err) {
       console.error('Error fetching matches:', err);
-      // Don't clear existing matches on error
       throw err;
     }
   };
@@ -104,7 +107,9 @@ export default function Index() {
   useEffect(() => {
     if (activeTab === 'live') {
       autoRefreshRef.current = setInterval(() => {
-        fetchMatches('live').catch(console.error);
+        fetchMatches('live').then(data => {
+          if (activeTab === 'live') applyCategory(data, selectedCategory);
+        }).catch(console.error);
       }, AUTO_REFRESH_INTERVAL);
 
       return () => {
@@ -120,13 +125,35 @@ export default function Index() {
     }
   }, [activeTab]);
 
-  // Initial load and tab changes
+  // Apply category filter
+  const applyCategory = (matches: Match[], category: CategoryType) => {
+    if (category === 'all') {
+      setFilteredMatches(matches);
+    } else {
+      setFilteredMatches(matches.filter(m => m.category?.toLowerCase() === category));
+    }
+  };
+
+  // Initial load and tab changes - show cached data instantly, refresh in background
   useEffect(() => {
     const loadMatches = async () => {
+      // If we have cached data for this tab, show it immediately (no loading spinner)
+      const cached = tabCacheRef.current[activeTab];
+      if (cached.length > 0) {
+        applyCategory(cached, selectedCategory);
+        // Background refresh
+        fetchMatches(activeTab).then(data => {
+          if (data.length > 0) applyCategory(data, selectedCategory);
+        }).catch(console.error);
+        return;
+      }
+      
+      // First load - show spinner
       try {
         setLoading(true);
         setError(null);
-        await fetchMatches(activeTab);
+        const data = await fetchMatches(activeTab);
+        applyCategory(data, selectedCategory);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load matches');
       } finally {
@@ -137,22 +164,17 @@ export default function Index() {
     loadMatches();
   }, [activeTab]);
 
-  // Filter matches by category
+  // Re-filter when category changes
   useEffect(() => {
-    if (selectedCategory === 'all') {
-      setFilteredMatches(matches);
-    } else {
-      const filtered = matches.filter(
-        (match) => match.category?.toLowerCase() === selectedCategory
-      );
-      setFilteredMatches(filtered);
-    }
-  }, [matches, selectedCategory]);
+    const cached = tabCacheRef.current[activeTab];
+    applyCategory(cached, selectedCategory);
+  }, [selectedCategory]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetchMatches(activeTab);
+      const data = await fetchMatches(activeTab, true);
+      applyCategory(data, selectedCategory);
     } catch (err) {
       console.error('Refresh error:', err);
     } finally {
@@ -163,7 +185,8 @@ export default function Index() {
   const handleRetry = () => {
     setLoading(true);
     setError(null);
-    fetchMatches(activeTab)
+    fetchMatches(activeTab, true)
+      .then(data => applyCategory(data, selectedCategory))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
   };
@@ -201,8 +224,8 @@ export default function Index() {
       </View>
 
       {/* Category Filter */}
-      <View style={styles.categoryFilter}>
-        {(['all', 'international', 'league', 'domestic'] as CategoryType[]).map((category) => (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFilter} contentContainerStyle={styles.categoryFilterContent}>
+        {(['all', 'international', 'league', 'domestic', 'women'] as CategoryType[]).map((category) => (
           <TouchableOpacity
             key={category}
             style={[styles.categoryChip, selectedCategory === category && styles.activeCategoryChip]}
@@ -213,7 +236,7 @@ export default function Index() {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Auto-refresh indicator */}
       {activeTab === 'live' && (
@@ -391,11 +414,15 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
   },
   categoryFilter: {
-    flexDirection: 'row',
-    padding: 12,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+    maxHeight: 52,
+  },
+  categoryFilterContent: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 8,
   },
   categoryChip: {
     paddingHorizontal: 16,

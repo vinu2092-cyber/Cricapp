@@ -10,8 +10,11 @@ export interface Commentary {
   id: string;
   over: string;
   english: string;
+  hindi?: string;
   event?: 'wicket' | 'four' | 'six' | 'dot' | 'wide' | 'normal';
 }
+
+export type Language = 'english' | 'hindi';
 
 export interface Match {
   matchId: string;

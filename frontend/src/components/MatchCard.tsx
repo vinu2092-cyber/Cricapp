@@ -83,12 +83,6 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
         ))}
       </View>
 
-      {match.statusText && (
-        <Text style={styles.result} numberOfLines={2}>
-          {match.statusText}
-        </Text>
-      )}
-
       {/* Upcoming match details: date, time, venue */}
       {match.status === 'upcoming' && (
         <View style={styles.upcomingDetails}>

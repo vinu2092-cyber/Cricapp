@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback } from 'react';
-import { View, StyleSheet, Alert, Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import mobileAds, {
   BannerAd,
   BannerAdSize,
@@ -8,79 +8,88 @@ import mobileAds, {
   AdEventType,
   RewardedAdEventType,
   AppOpenAd,
+  TestIds,
 } from 'react-native-google-mobile-ads';
 import { usePro } from './ProContext';
 
-export const ADMOB_CONFIG = {
-  appId: 'ca-app-pub-9675798593675825~2399929714',
-  appOpenAdId: 'ca-app-pub-9675798593675825/4826782503',
-  interstitialAdId: 'ca-app-pub-9675798593675825/8438724452',
-  bannerAdId: 'ca-app-pub-9675798593675825/8616886104',
-  rewardedAdId: 'ca-app-pub-9675798593675825/6702740458',
+// Production IDs
+const AD_IDS = {
+  appOpen: 'ca-app-pub-9675798593675825/4826782503',
+  interstitial: 'ca-app-pub-9675798593675825/8438724452',
+  banner: 'ca-app-pub-9675798593675825/8616886104',
+  rewarded: 'ca-app-pub-9675798593675825/6702740458',
 };
 
 interface AdMobContextType {
   isAdMobInitialized: boolean;
   isPro: boolean;
   trackClick: () => void;
-  clickCount: number;
   showAppOpenAd: () => Promise<void>;
   showInterstitialAd: () => Promise<boolean>;
   showRewardedAd: () => Promise<boolean>;
   isRewardedAdReady: boolean;
-  BannerAdComponent: React.FC<{ size?: string }>;
+  BannerAdComponent: React.FC;
 }
 
 const AdMobContext = createContext<AdMobContextType | undefined>(undefined);
 
 export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { isPro, setProFromAdMob } = usePro();
+  const { isPro } = usePro();
   const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
-  const [clickCount, setClickCount] = useState(0);
-  const [targetClicks] = useState(Math.floor(Math.random() * 6) + 10);
   const [isRewardedAdReady, setIsRewardedAdReady] = useState(false);
-  const rewardedAdRef = useRef<RewardedAd | null>(null);
-  const isLoadingRef = useRef(false);
-  const retryCountRef = useRef(0);
+  const [clicks, setClicks] = useState(0);
+  const [clickTarget] = useState(Math.floor(Math.random() * 6) + 10);
+
+  const rewardedRef = useRef<RewardedAd | null>(null);
+  const loadingRef = useRef(false);
+  const retryRef = useRef(0);
+  const unsubsRef = useRef<(() => void)[]>([]);
+
+  // Cleanup event listeners
+  const cleanupListeners = () => {
+    unsubsRef.current.forEach(u => { try { u(); } catch {} });
+    unsubsRef.current = [];
+  };
 
   const loadRewardedAd = useCallback(() => {
-    if (isLoadingRef.current) return;
-    isLoadingRef.current = true;
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setIsRewardedAdReady(false);
+    cleanupListeners();
 
     try {
-      const ad = RewardedAd.createForAdRequest(ADMOB_CONFIG.rewardedAdId, {
+      const ad = RewardedAd.createForAdRequest(AD_IDS.rewarded, {
         requestNonPersonalizedAdsOnly: true,
       });
 
-      const unsubLoaded = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
-        rewardedAdRef.current = ad;
-        isLoadingRef.current = false;
-        retryCountRef.current = 0;
+      const unsub1 = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        console.log('[AdMob] Rewarded ad LOADED');
+        rewardedRef.current = ad;
+        loadingRef.current = false;
+        retryRef.current = 0;
         setIsRewardedAdReady(true);
       });
 
-      const unsubError = ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
-        console.warn('Rewarded ad load error:', error?.message || error);
-        isLoadingRef.current = false;
+      const unsub2 = ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
+        console.warn('[AdMob] Rewarded ad error:', error?.message || error);
+        loadingRef.current = false;
         setIsRewardedAdReady(false);
 
-        // Retry with backoff
-        if (retryCountRef.current < 6) {
-          retryCountRef.current += 1;
-          const delay = Math.min(3000 * Math.pow(1.5, retryCountRef.current), 30000);
-          setTimeout(() => loadRewardedAd(), delay);
+        if (retryRef.current < 5) {
+          retryRef.current++;
+          const delay = Math.min(3000 * Math.pow(2, retryRef.current), 30000);
+          setTimeout(loadRewardedAd, delay);
         }
       });
 
+      unsubsRef.current = [unsub1, unsub2];
       ad.load();
-    } catch (error) {
-      console.warn('Failed to create rewarded ad:', error);
-      isLoadingRef.current = false;
-
-      if (retryCountRef.current < 6) {
-        retryCountRef.current += 1;
-        setTimeout(() => loadRewardedAd(), 5000);
+    } catch (err) {
+      console.warn('[AdMob] Failed to create rewarded ad:', err);
+      loadingRef.current = false;
+      if (retryRef.current < 5) {
+        retryRef.current++;
+        setTimeout(loadRewardedAd, 5000);
       }
     }
   }, []);
@@ -89,165 +98,128 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     mobileAds()
       .initialize()
       .then(() => {
+        console.log('[AdMob] SDK initialized');
         setIsAdMobInitialized(true);
         loadRewardedAd();
       })
       .catch((err) => {
-        console.warn('AdMob init failed:', err);
+        console.warn('[AdMob] SDK init failed:', err);
         setIsAdMobInitialized(true);
-        setTimeout(() => loadRewardedAd(), 2000);
+        setTimeout(loadRewardedAd, 2000);
       });
+
+    return cleanupListeners;
   }, [loadRewardedAd]);
 
   const showAppOpenAd = async (): Promise<void> => {
     return new Promise((resolve) => {
       try {
-        const appOpenAd = AppOpenAd.createForAdRequest(ADMOB_CONFIG.appOpenAdId);
-        const timeout = setTimeout(resolve, 8000);
-        appOpenAd.addAdEventListener(AdEventType.LOADED, () => appOpenAd.show());
-        appOpenAd.addAdEventListener(AdEventType.CLOSED, () => { clearTimeout(timeout); resolve(); });
-        appOpenAd.addAdEventListener(AdEventType.ERROR, () => { clearTimeout(timeout); resolve(); });
-        appOpenAd.load();
-      } catch {
-        resolve();
-      }
+        const ad = AppOpenAd.createForAdRequest(AD_IDS.appOpen);
+        const timeout = setTimeout(resolve, 6000);
+        ad.addAdEventListener(AdEventType.LOADED, () => ad.show());
+        ad.addAdEventListener(AdEventType.CLOSED, () => { clearTimeout(timeout); resolve(); });
+        ad.addAdEventListener(AdEventType.ERROR, () => { clearTimeout(timeout); resolve(); });
+        ad.load();
+      } catch { resolve(); }
     });
   };
 
-  // Rewarded ad - properly tracks earned reward before resolving
   const showRewardedAd = async (): Promise<boolean> => {
     return new Promise((resolve) => {
-      if (!rewardedAdRef.current) {
-        // Not ready - start loading and tell user to wait
+      const ad = rewardedRef.current;
+      if (!ad) {
         loadRewardedAd();
-        Alert.alert(
-          'Ad Loading',
-          'Ad is being loaded. Please try again in a few seconds.',
-          [{ text: 'OK' }]
-        );
+        Alert.alert('Loading Ad', 'Ad is being prepared. Please try again in a few seconds.');
         resolve(false);
         return;
       }
 
-      const ad = rewardedAdRef.current;
-      let userEarnedReward = false;
-      let adClosed = false;
-      let resolved = false;
-
-      const safeResolve = (value: boolean) => {
-        if (resolved) return;
-        resolved = true;
-        // Reset and pre-load next ad
-        rewardedAdRef.current = null;
+      let rewarded = false;
+      let done = false;
+      const finish = (result: boolean) => {
+        if (done) return;
+        done = true;
+        rewardedRef.current = null;
         setIsRewardedAdReady(false);
-        loadRewardedAd();
-        resolve(value);
+        // Pre-load next ad
+        setTimeout(loadRewardedAd, 500);
+        resolve(result);
       };
 
-      // Listen for reward earned (fires BEFORE close usually)
-      const unsubEarned = ad.addAdEventListener(
-        RewardedAdEventType.EARNED_REWARD,
-        () => {
-          userEarnedReward = true;
-          // If ad already closed, resolve now
-          if (adClosed) {
-            unsubEarned();
-            safeResolve(true);
-          }
-        }
-      );
-
-      // Listen for ad close
-      const unsubClosed = ad.addAdEventListener(AdEventType.CLOSED, () => {
-        adClosed = true;
-        unsubClosed();
-
-        // Give EARNED_REWARD a moment to fire if it hasn't yet
-        setTimeout(() => {
-          unsubEarned();
-          safeResolve(userEarnedReward);
-        }, 500);
-      });
-
-      // Error handling
-      const unsubError = ad.addAdEventListener(AdEventType.ERROR, () => {
-        unsubEarned();
-        unsubClosed();
-        unsubError();
-        safeResolve(false);
-      });
+      // Safety timeout: if nothing happens in 15s, assume failure
+      const safetyTimeout = setTimeout(() => finish(rewarded), 15000);
 
       try {
+        const u1 = ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+          console.log('[AdMob] Reward EARNED');
+          rewarded = true;
+        });
+
+        const u2 = ad.addAdEventListener(AdEventType.CLOSED, () => {
+          console.log('[AdMob] Ad CLOSED, rewarded=', rewarded);
+          u1(); u2();
+          clearTimeout(safetyTimeout);
+          // Delay to let EARNED_REWARD fire if it hasn't
+          setTimeout(() => finish(rewarded), 300);
+        });
+
         ad.show();
       } catch (err) {
-        console.warn('Rewarded ad show failed:', err);
-        unsubEarned();
-        unsubClosed();
-        unsubError();
-        safeResolve(false);
+        console.warn('[AdMob] show() failed:', err);
+        clearTimeout(safetyTimeout);
+        finish(false);
       }
     });
   };
 
   const showInterstitialAd = async (): Promise<boolean> => {
+    if (isPro) return false;
     return new Promise((resolve) => {
       try {
-        const interstitial = InterstitialAd.createForAdRequest(ADMOB_CONFIG.interstitialAdId);
+        const ad = InterstitialAd.createForAdRequest(AD_IDS.interstitial);
         const timeout = setTimeout(() => resolve(false), 10000);
-        interstitial.addAdEventListener(AdEventType.LOADED, () => interstitial.show());
-        interstitial.addAdEventListener(AdEventType.CLOSED, () => { clearTimeout(timeout); resolve(true); });
-        interstitial.addAdEventListener(AdEventType.ERROR, () => { clearTimeout(timeout); resolve(false); });
-        interstitial.load();
-      } catch {
-        resolve(false);
-      }
+        ad.addAdEventListener(AdEventType.LOADED, () => ad.show());
+        ad.addAdEventListener(AdEventType.CLOSED, () => { clearTimeout(timeout); resolve(true); });
+        ad.addAdEventListener(AdEventType.ERROR, () => { clearTimeout(timeout); resolve(false); });
+        ad.load();
+      } catch { resolve(false); }
     });
   };
 
   const trackClick = () => {
     if (isPro) return;
-    const newCount = clickCount + 1;
-    if (newCount >= targetClicks) {
+    const next = clicks + 1;
+    if (next >= clickTarget) {
+      setClicks(0);
       showInterstitialAd();
-      setClickCount(0);
     } else {
-      setClickCount(newCount);
+      setClicks(next);
     }
   };
 
-  const BannerAdComponent: React.FC<{ size?: string }> = ({ size }) => (
+  const BannerAdComponent: React.FC = () => (
     <BannerAd
-      unitId={ADMOB_CONFIG.bannerAdId}
-      size={size === 'LARGE_BANNER' ? BannerAdSize.LARGE_BANNER : BannerAdSize.BANNER}
+      unitId={AD_IDS.banner}
+      size={BannerAdSize.BANNER}
       requestOptions={{ requestNonPersonalizedAdsOnly: true }}
     />
   );
 
   return (
-    <AdMobContext.Provider
-      value={{
-        isAdMobInitialized,
-        isPro,
-        trackClick,
-        clickCount,
-        showAppOpenAd,
-        showInterstitialAd,
-        showRewardedAd,
-        isRewardedAdReady,
-        BannerAdComponent,
-      }}
-    >
+    <AdMobContext.Provider value={{
+      isAdMobInitialized, isPro, trackClick,
+      showAppOpenAd, showInterstitialAd, showRewardedAd, isRewardedAdReady,
+      BannerAdComponent,
+    }}>
       {children}
     </AdMobContext.Provider>
   );
 };
 
 export const useAdMob = (): AdMobContextType => {
-  const context = useContext(AdMobContext);
-  if (!context) {
-    throw new Error('useAdMob must be used within AdMobProvider');
-  }
-  return context;
+  const ctx = useContext(AdMobContext);
+  if (!ctx) throw new Error('useAdMob must be inside AdMobProvider');
+  return ctx;
 };
 
 export default AdMobProvider;
