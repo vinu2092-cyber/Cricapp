@@ -269,8 +269,19 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
       {!isMinimized && notifOverlayActive && (
         <View style={styles.overlayInfo}>
           <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
-          <Text style={styles.overlayText}>Score visible in notification bar</Text>
+          <Text style={styles.overlayText}>Score pinned to notification! You can close app now.</Text>
         </View>
+      )}
+      
+      {/* Pin to Notification Button - More visible */}
+      {!isMinimized && !notifOverlayActive && (
+        <TouchableOpacity 
+          style={styles.pinButton}
+          onPress={enableNotifOverlay}
+        >
+          <Ionicons name="push-outline" size={16} color="#FFF" />
+          <Text style={styles.pinButtonText}>Pin Score (View in Other Apps)</Text>
+        </TouchableOpacity>
       )}
 
       {/* Voice controls */}
@@ -386,6 +397,23 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   overlayText: { color: '#4CAF50', fontSize: 11 },
+  pinButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2196F3',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    gap: 8,
+    marginTop: 10,
+    alignSelf: 'center',
+  },
+  pinButtonText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   voiceRow: {
     marginTop: 14,
     borderTopWidth: 1,
