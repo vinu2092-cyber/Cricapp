@@ -291,9 +291,9 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
     }
   } catch {}
 
-  // 2. Get commentary from /mcenter/v1/{id}/comm (ONLY comm-subscribed keys)
+  // 2. Get commentary from /mcenter/v1/{id}/comm (try ALL comm keys)
   try {
-    const commData = await callApi(`/mcenter/v1/${id}/comm`, COMM_KEYS, 2);
+    const commData = await callApi(`/mcenter/v1/${id}/comm`, COMM_KEYS, COMM_KEYS.length);
     if (commData && !commData.message) {
       commentary = parseCommentary(commData, id);
 

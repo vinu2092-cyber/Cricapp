@@ -10,7 +10,7 @@ interface CricketFieldProps {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const FIELD_SIZE = Math.min(SCREEN_WIDTH - 64, 320);
+const FIELD_SIZE = Math.min(SCREEN_WIDTH - 64, 220); // Reduced from 320 to 220 (30% smaller)
 
 const CricketField: React.FC<CricketFieldProps> = ({ 
   lastCommentary, 
