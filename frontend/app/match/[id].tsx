@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import * as IntentLauncher from 'expo-intent-launcher';
 import { fetchMatchById, openCricbuzzMatch } from '../../src/services/api';
 import { Match } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
@@ -275,17 +274,8 @@ export default function MatchDetail() {
                         { text: 'Cancel', style: 'cancel' },
                         {
                           text: 'Open Settings',
-                          onPress: async () => {
-                            if (Platform.OS === 'android') {
-                              try {
-                                await IntentLauncher.startActivityAsync(
-                                  IntentLauncher.ActivityAction.MANAGE_OVERLAY_PERMISSION
-                                );
-                              } catch (e) {
-                                // Fallback to app settings
-                                Linking.openSettings();
-                              }
-                            }
+                          onPress: () => {
+                            Linking.openSettings();
                           },
                         },
                       ]
