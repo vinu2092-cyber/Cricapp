@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Dimensions, Modal, Alert
+  ActivityIndicator, Dimensions, Modal, Alert, Linking, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { fetchMatchById, openCricbuzzMatch } from '../../src/services/api';
 import { Match } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
@@ -255,13 +256,46 @@ export default function MatchDetail() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity
-                style={[styles.unlockBtn, { backgroundColor: '#4CAF50' }]}
-                onPress={() => setShowOverlay(!showOverlay)}
-              >
-                <Ionicons name={showOverlay ? 'eye' : 'eye-off'} size={14} color="#FFF" />
-                <Text style={styles.unlockTxt}>{showOverlay ? 'Overlay ON' : 'Overlay OFF'}</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.unlockBtn, { backgroundColor: showOverlay ? '#4CAF50' : '#666' }]}
+                  onPress={() => setShowOverlay(!showOverlay)}
+                >
+                  <Ionicons name={showOverlay ? 'eye' : 'eye-off'} size={14} color="#FFF" />
+                  <Text style={styles.unlockTxt}>{showOverlay ? 'Scoreboard ON' : 'Scoreboard OFF'}</Text>
+                </TouchableOpacity>
+                {/* Open Overlay Permission Settings */}
+                <TouchableOpacity
+                  style={[styles.unlockBtn, { backgroundColor: '#2196F3' }]}
+                  onPress={() => {
+                    Alert.alert(
+                      'Enable Overlay Permission',
+                      'To show live score over other apps, you need to enable "Display over other apps" permission for CricApp.\n\nClick "Open Settings" and enable the permission.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Open Settings',
+                          onPress: async () => {
+                            if (Platform.OS === 'android') {
+                              try {
+                                await IntentLauncher.startActivityAsync(
+                                  IntentLauncher.ActivityAction.MANAGE_OVERLAY_PERMISSION
+                                );
+                              } catch (e) {
+                                // Fallback to app settings
+                                Linking.openSettings();
+                              }
+                            }
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                >
+                  <Ionicons name="settings-outline" size={14} color="#FFF" />
+                  <Text style={styles.unlockTxt}>Overlay Settings</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         </View>
