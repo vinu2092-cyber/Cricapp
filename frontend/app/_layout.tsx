@@ -1,4 +1,5 @@
-import React, { useEffect, ErrorInfo } from 'react';
+import React, { useEffect, ErrorInfo, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as ExpoSplashScreen from 'expo-splash-screen';
@@ -41,15 +42,31 @@ class AppErrorBoundary extends React.Component<
 }
 
 function AppOpenAdHandler({ children }: { children: React.ReactNode }) {
-  const { showAppOpenAd, isAdMobInitialized } = useAdMob();
+  const { showAppOpenAd, isAdMobInitialized, isPro } = useAdMob();
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
-    // Hide splash + show App Open Ad
+    // Hide splash + show App Open Ad on initial load
     ExpoSplashScreen.hideAsync().catch(() => {});
-    if (isAdMobInitialized) {
+    if (isAdMobInitialized && !isPro) {
       showAppOpenAd().catch(() => {});
     }
   }, [isAdMobInitialized]);
+
+  // Target 4: Show App Open Ad when app comes to foreground (if !isPro)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App has come to the foreground
+        if (!isPro && isAdMobInitialized) {
+          showAppOpenAd().catch(() => {});
+        }
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => subscription.remove();
+  }, [isPro, isAdMobInitialized]);
 
   return <>{children}</>;
 }

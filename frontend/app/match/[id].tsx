@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
+import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { fetchMatchById, openCricbuzzMatch } from '../../src/services/api';
 import { Match } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
@@ -270,23 +271,27 @@ export default function MatchDetail() {
             data={(match as any).commentaryList}
             keyExtractor={(item, index) => index.toString()}
             scrollEnabled={false}
-            renderItem={({ item }) => (
-              <View style={{ padding: 10, borderBottomWidth: 1, borderColor: '#333' }}>
-                <Text style={{ color: '#aaa', fontSize: 12, fontWeight: 'bold' }}>Over: {item.overSeparator?.overNum || '-'}</Text>
-                <Text style={{ color: '#fff', fontSize: 14 }}>{item.commText}</Text>
+            renderItem={({ item, index }) => (
+              <View>
+                <View style={{ padding: 10, borderBottomWidth: 1, borderColor: '#333' }}>
+                  <Text style={{ color: '#aaa', fontSize: 12 }}>Over: {item.overSeparator?.overNum || '-'}</Text>
+                  <Text style={{ color: '#fff', fontSize: 14 }}>{item.commText}</Text>
+                </View>
+                {/* Inject Banner Ad every 10 commentary items for Non-Pro users */}
+                {!effectiveIsPro && index > 0 && index % 10 === 0 && (
+                  <View style={{ alignItems: 'center', marginVertical: 10 }}>
+                    <BannerAd
+                      unitId="ca-app-pub-9675798593675825/8616886104"
+                      size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+                    />
+                  </View>
+                )}
               </View>
             )}
           />
         ) : (
-          <View style={styles.noComm}>
-            <Ionicons name="chatbox-outline" size={40} color="#999" />
-            <Text style={styles.noCommText}>
-              {match.status === 'upcoming' ? 'Match has not started yet' : 'Commentary not available'}
-            </Text>
-            <TouchableOpacity style={styles.cricbuzzBtn} onPress={() => openCricbuzzMatch(id || '')}>
-              <Ionicons name="open-outline" size={16} color="#FFF" />
-              <Text style={styles.cricbuzzTxt}>View on Cricbuzz</Text>
-            </TouchableOpacity>
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: 'white', fontSize: 16 }}>Commentary Not Available</Text>
           </View>
         )}
       </ScrollView>

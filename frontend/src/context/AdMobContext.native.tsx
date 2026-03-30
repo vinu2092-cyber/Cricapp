@@ -122,12 +122,15 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, []);
 
-  // Load rewarded ad on mount + EARNED_REWARD listener with counter
+  // Initialize AdMob with test device config + load rewarded ad on mount
   useEffect(() => {
     mobileAds()
-      .initialize()
+      .setRequestConfiguration({
+        testDeviceIdentifiers: ['553c7721-4821-461b-9f62-8584b1e60745']
+      })
+      .then(() => mobileAds().initialize())
       .then(() => {
-        console.log('[AdMob] SDK initialized');
+        console.log('[AdMob] SDK initialized with test device');
         setIsAdMobInitialized(true);
         loadRewardedAd();
       })
@@ -139,6 +142,28 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     return cleanupListeners;
   }, [loadRewardedAd]);
+
+  // Target 1: EARNED_REWARD listener - increment counter, unlock Pro at 3
+  useEffect(() => {
+    if (!rewardedRef.current) return;
+    const unsubscribeEarned = rewardedRef.current.addAdEventListener(
+      RewardedAdEventType.EARNED_REWARD,
+      () => {
+        setAdCount(prev => {
+          const newCount = prev + 1;
+          if (newCount >= 3) {
+            setIsPro(true);
+            setProFromAdMob(true);
+            AsyncStorage.setItem('pro_expiry', (Date.now() + 30 * 60 * 1000).toString());
+            return 0;
+          }
+          return newCount;
+        });
+        loadRewardedAd(); // Immediately load next
+      }
+    );
+    return () => unsubscribeEarned();
+  }, [rewardedRef.current]);
 
   // handleUnlockClick - force load if not ready
   const handleUnlockClick = useCallback(() => {
@@ -237,16 +262,18 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
-  const trackClick = () => {
-    if (isPro) return;
+  // Target 2: Random 10-15 Clicks Interstitial Ad
+  const trackClick = useCallback(() => {
+    if (isPro || globalIsPro) return;
     const next = clicks + 1;
-    if (next >= clickTarget) {
+    const randomTarget = Math.floor(Math.random() * 6) + 10; // random(10, 15)
+    if (next >= randomTarget) {
       setClicks(0);
       showInterstitialAd();
     } else {
       setClicks(next);
     }
-  };
+  }, [clicks, isPro, globalIsPro]);
 
   const BannerAdComponent: React.FC = () => (
     <BannerAd
