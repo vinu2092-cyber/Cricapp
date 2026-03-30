@@ -34,8 +34,8 @@ const AUTO_REFRESH_INTERVAL = 60000;
 
 export default function Index() {
   const router = useRouter();
-  const { trackClick, showRewardedAd, adsWatchedCount, isRewardedAdReady, isRewardedAdLoading } = useAdMob();
-  const { isPro, setProFromAdMob } = usePro();
+  const { trackClick, showRewardedAd } = useAdMob();
+  const { isPro, adsWatched, setProFromAdMob } = usePro();
   
   const [activeTab, setActiveTab] = useState<TabType>('live');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all');
@@ -44,6 +44,7 @@ export default function Index() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showProModal, setShowProModal] = useState(false);
+  const [localAdsWatched, setLocalAdsWatched] = useState(0);
 
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
@@ -335,28 +336,28 @@ export default function Index() {
                 {/* Progress Bar */}
                 <View style={styles.progressContainer}>
                   <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${(adsWatchedCount / 3) * 100}%` }]} />
+                    <View style={[styles.progressFill, { width: `${(localAdsWatched / 3) * 100}%` }]} />
                   </View>
-                  <Text style={styles.progressText}>{adsWatchedCount}/3 Ads Watched</Text>
+                  <Text style={styles.progressText}>{localAdsWatched}/3 Ads Watched</Text>
                 </View>
                 
                 <TouchableOpacity
-                  style={[
-                    styles.watchAdButton,
-                    (!isRewardedAdReady && !isRewardedAdLoading) && styles.watchAdButtonDisabled
-                  ]}
+                  style={styles.watchAdButton}
                   onPress={async () => {
                     const success = await showRewardedAd();
                     if (success) {
-                      // Check if this was the 3rd ad (count will be 0 after reset in context)
-                      if (adsWatchedCount >= 2) {
+                      const next = localAdsWatched + 1;
+                      setLocalAdsWatched(next);
+                      if (next >= 3) {
+                        setProFromAdMob(true);
+                        setLocalAdsWatched(0);
                         Alert.alert(
                           'PRO Unlocked!',
                           'Voice Commentary, Floating Scoreboard, and Ad-free mode active for 30 minutes!',
                           [{ text: 'Awesome!', onPress: () => setShowProModal(false) }]
                         );
                       } else {
-                        Alert.alert('Great!', `${adsWatchedCount + 1}/3 ads watched. Keep going!`);
+                        Alert.alert('Great!', `${next}/3 ads watched. Keep going!`);
                       }
                     }
                   }}
@@ -364,17 +365,13 @@ export default function Index() {
                 >
                   <Ionicons name="play-circle" size={24} color="#FFF" />
                   <Text style={styles.watchAdText}>
-                    {isRewardedAdLoading
-                      ? 'Loading Ad...'
-                      : isRewardedAdReady
-                        ? `Watch Ad ${adsWatchedCount + 1} of 3`
-                        : 'Preparing Ad...'}
+                    Watch Ad {localAdsWatched + 1} of 3
                   </Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
                   style={styles.proModalCancelButton}
-                  onPress={() => setShowProModal(false)}
+                  onPress={() => { setShowProModal(false); setLocalAdsWatched(0); }}
                 >
                   <Text style={styles.proModalCancelText}>Maybe Later</Text>
                 </TouchableOpacity>
@@ -560,9 +557,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     elevation: 4,
-  },
-  watchAdButtonDisabled: {
-    backgroundColor: '#9E9E9E',
   },
   watchAdText: {
     color: '#FFF',
