@@ -143,13 +143,20 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       </View>
 
       <ScrollView style={styles.commentaryList} nestedScrollEnabled>
-        {/* Debug: Show if no commentary available */}
+        {/* If no commentary, show 2 banner ads */}
         {displayedCommentary.length === 0 && (
           <View style={{ padding: 20, alignItems: 'center' }}>
             <Ionicons name="chatbox-outline" size={40} color="#999" />
             <Text style={{ color: '#666', fontSize: 14, marginTop: 10, textAlign: 'center' }}>
               No ball-by-ball commentary available yet.{'\n'}Commentary will appear as the match progresses.
             </Text>
+            {/* Show 2 Banner Ads when no commentary */}
+            <View style={styles.bannerAdContainer}>
+              <BannerAdComponent />
+            </View>
+            <View style={styles.bannerAdContainer}>
+              <BannerAdComponent />
+            </View>
           </View>
         )}
         
@@ -203,25 +210,22 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           );
         })}
 
-        {/* Load More OR View Full Details button */}
+        {/* Load More - Direct to Cricbuzz */}
         {hasMoreLocal ? (
           <View style={styles.actionContainer}>
             <TouchableOpacity
               style={styles.loadMoreButton}
-              onPress={handleLoadMore}
-              disabled={isLoadingMore}
+              onPress={() => {
+                if (matchId) {
+                  Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`);
+                }
+              }}
               data-testid="load-more-commentary"
             >
-              {isLoadingMore ? (
-                <ActivityIndicator color="#4CAF50" />
-              ) : (
-                <>
-                  <Ionicons name="chevron-down-circle" size={20} color="#4CAF50" />
-                  <Text style={styles.loadMoreText}>
-                    Load More ({commentary.length - displayCount} remaining)
-                  </Text>
-                </>
-              )}
+              <Ionicons name="open-outline" size={20} color="#4CAF50" />
+              <Text style={styles.loadMoreText}>
+                Load More on Cricbuzz ({commentary.length - displayCount} remaining)
+              </Text>
             </TouchableOpacity>
           </View>
         ) : null}
