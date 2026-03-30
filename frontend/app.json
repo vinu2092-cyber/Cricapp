@@ -31,7 +31,7 @@
     },
     "splash": {
       "image": "./assets/splash_doodle.png",
-      "resizeMode": "cover",
+      "resizeMode": "contain",
       "backgroundColor": "#f5f5dc"
     },
     "android": {

@@ -59,7 +59,7 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
     if (visible) {
       Animated.spring(scale, {
         toValue: 1,
-        useNativeDriver: true,
+        useNativeDriver: false, // Changed to false to match position animations
         tension: 80,
         friction: 10,
       }).start();

@@ -121,24 +121,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           <Ionicons name="chatbubbles" size={20} color="#4CAF50" />
-          <Text style={styles.title}>
-            {language === 'english' ? 'Ball by Ball Commentary' : '\u0917\u0947\u0902\u0926 \u0926\u0930 \u0917\u0947\u0902\u0926 \u0915\u092E\u0947\u0902\u091F\u094D\u0930\u0940'}
-          </Text>
-        </View>
-
-        <View style={styles.languageToggle}>
-          <TouchableOpacity
-            style={[styles.langButton, language === 'english' && styles.langButtonActive]}
-            onPress={() => setLanguage('english')}
-          >
-            <Text style={[styles.langText, language === 'english' && styles.langTextActive]}>EN</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.langButton, language === 'hindi' && styles.langButtonActive]}
-            onPress={() => setLanguage('hindi')}
-          >
-            <Text style={[styles.langText, language === 'hindi' && styles.langTextActive]}>{'\u0939\u093F'}</Text>
-          </TouchableOpacity>
+          <Text style={styles.title}>Ball by Ball Commentary</Text>
         </View>
       </View>
 
@@ -190,12 +173,12 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         )}
         
         {displayedCommentary.map((item, index) => {
-          // Banner ads at over start (.1) and end (.6) - non-pro only
+          // Banner ads at over start (.1) and end (.6) - for ALL users
           const overStr = String(item.over || '');
           const overDecimal = overStr.split('.')[1] || '';
           const isOverStart = overDecimal === '1';
           const isOverEnd = overDecimal === '6';
-          const showBanner = !isPro && (isOverStart || isOverEnd);
+          const showBanner = isOverStart || isOverEnd;
 
           return (
             <View key={index}>
