@@ -25,7 +25,7 @@ export default function MatchDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { isPro: globalIsPro, setProFromAdMob } = usePro();
-  const { trackClick, showRewardedAd, showInterstitialAd, isRewardedAdReady, BannerAdComponent } = useAdMob();
+  const { trackClick, showRewardedAd, showInterstitialAd, isRewardedAdReady, isRewardedAdLoading, adsWatchedCount, BannerAdComponent, isPro: adMobIsPro } = useAdMob();
   const { isTracking, toggleTracking, notificationsEnabled, enableNotifications } = useNotifications();
 
   const [match, setMatch] = useState<Match | null>(null);
@@ -38,17 +38,16 @@ export default function MatchDetail() {
   const [moodEvent, setMoodEvent] = useState<'wicket' | 'four' | 'six' | 'dot' | 'wide' | 'normal' | null>(null);
   const prevCommRef = useRef<string | null>(null);
 
-  // Pro unlock states
+  // Pro unlock states - now using AdMob context's adsWatchedCount
   const [tempPro, setTempPro] = useState(false);
   const [proExpiry, setProExpiry] = useState<number | null>(null);
-  const [adsWatchedCount, setAdsWatchedCount] = useState(0);
   const [showProModal, setShowProModal] = useState(false);
 
   // Click counter for interstitial (Logic B)
   const [clicks, setClicks] = useState(0);
   const [clickTarget] = useState(Math.floor(Math.random() * 6) + 10);
 
-  const effectiveIsPro = globalIsPro || tempPro;
+  const effectiveIsPro = globalIsPro || tempPro || adMobIsPro;
 
   // 30-Min Pro Expiry (Logic D)
   useEffect(() => {
@@ -122,19 +121,14 @@ export default function MatchDetail() {
     }
   };
 
-  // Logic C: Watch 3 Rewarded Ads for Pro - FIXED: proper count tracking
+  // Logic C: Watch 3 Rewarded Ads for Pro - Now handled by AdMobContext
   const handleWatchAd = async () => {
     const success = await showRewardedAd();
     if (success) {
-      const newCount = adsWatchedCount + 1;
-      setAdsWatchedCount(newCount);
-
-      if (newCount >= 3) {
-        // All 3 ads watched - unlock Pro!
-        setTempPro(true);
-        setProExpiry(Date.now() + 30 * 60 * 1000);
-        setProFromAdMob(true);
-        setAdsWatchedCount(0);
+      // Ad count is now tracked in AdMobContext
+      // Check if Pro is unlocked (3 ads watched)
+      if (adsWatchedCount >= 2) {
+        // This was the 3rd ad - Pro will be unlocked by AdMobContext
         setShowProModal(false);
         Alert.alert(
           'Pro Unlocked!',
@@ -144,7 +138,7 @@ export default function MatchDetail() {
       } else {
         Alert.alert(
           'Ad Watched!',
-          `${newCount}/3 ads done. ${3 - newCount} more to unlock Pro!`,
+          `${adsWatchedCount + 1}/3 ads done. ${2 - adsWatchedCount} more to unlock Pro!`,
           [{ text: 'Continue' }]
         );
       }
@@ -308,14 +302,17 @@ export default function MatchDetail() {
             </View>
 
             <TouchableOpacity
-              style={[styles.watchBtn, !isRewardedAdReady && styles.watchBtnDisabled]}
+              style={[styles.watchBtn, (!isRewardedAdReady && !isRewardedAdLoading) && styles.watchBtnDisabled]}
               onPress={handleWatchAd}
+              disabled={!isRewardedAdReady && !isRewardedAdLoading}
             >
               <Ionicons name="play-circle" size={22} color="#FFF" />
               <Text style={styles.watchBtnTxt}>
-                {isRewardedAdReady
-                  ? `Watch Ad ${adsWatchedCount + 1} of 3`
-                  : 'Loading Ad...'}
+                {isRewardedAdLoading
+                  ? 'Loading Ad...'
+                  : isRewardedAdReady
+                    ? `Watch Ad ${adsWatchedCount + 1} of 3`
+                    : 'Preparing Ad...'}
               </Text>
             </TouchableOpacity>
 
