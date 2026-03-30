@@ -53,8 +53,9 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const loadRewardedAd = useCallback(() => {
     if (loadingRef.current) return;
+    if (rewardedRef.current) return; // Already have an ad ready
+    
     loadingRef.current = true;
-    setIsRewardedAdReady(false);
     cleanupListeners();
 
     try {
@@ -73,11 +74,10 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const unsub2 = ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
         console.warn('[AdMob] Rewarded ad error:', error?.message || error);
         loadingRef.current = false;
-        setIsRewardedAdReady(false);
 
-        if (retryRef.current < 5) {
+        if (retryRef.current < 3) {
           retryRef.current++;
-          const delay = Math.min(3000 * Math.pow(2, retryRef.current), 30000);
+          const delay = 5000 * retryRef.current; // 5s, 10s, 15s
           setTimeout(loadRewardedAd, delay);
         }
       });
@@ -87,10 +87,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch (err) {
       console.warn('[AdMob] Failed to create rewarded ad:', err);
       loadingRef.current = false;
-      if (retryRef.current < 5) {
-        retryRef.current++;
-        setTimeout(loadRewardedAd, 5000);
-      }
     }
   }, []);
 
