@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import mobileAds, {
   BannerAd,
   BannerAdSize,
@@ -24,54 +23,27 @@ const AD_IDS = {
 interface AdMobContextType {
   isAdMobInitialized: boolean;
   isPro: boolean;
-  setIsPro: (value: boolean) => void;
-  adCount: number;
-  setAdCount: React.Dispatch<React.SetStateAction<number>>;
   trackClick: () => void;
   showAppOpenAd: () => Promise<void>;
   showInterstitialAd: () => Promise<boolean>;
   showRewardedAd: () => Promise<boolean>;
   isRewardedAdReady: boolean;
   BannerAdComponent: React.FC;
-  handleUnlockClick: () => void;
 }
 
 const AdMobContext = createContext<AdMobContextType | undefined>(undefined);
 
 export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { isPro: globalIsPro, setProFromAdMob } = usePro();
+  const { isPro } = usePro();
   const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
   const [isRewardedAdReady, setIsRewardedAdReady] = useState(false);
   const [clicks, setClicks] = useState(0);
   const [clickTarget] = useState(Math.floor(Math.random() * 6) + 10);
-  const [adCount, setAdCount] = useState(0);
-  const [isPro, setIsPro] = useState(false);
 
   const rewardedRef = useRef<RewardedAd | null>(null);
   const loadingRef = useRef(false);
   const retryRef = useRef(0);
   const unsubsRef = useRef<(() => void)[]>([]);
-
-  // Check Pro expiry on mount
-  useEffect(() => {
-    const checkProExpiry = async () => {
-      try {
-        const expiry = await AsyncStorage.getItem('pro_expiry');
-        if (expiry) {
-          const expiryTime = parseInt(expiry, 10);
-          if (Date.now() < expiryTime) {
-            setIsPro(true);
-            setProFromAdMob(true);
-          } else {
-            await AsyncStorage.removeItem('pro_expiry');
-            setIsPro(false);
-            setProFromAdMob(false);
-          }
-        }
-      } catch {}
-    };
-    checkProExpiry();
-  }, []);
 
   // Cleanup event listeners
   const cleanupListeners = () => {
@@ -122,8 +94,8 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, []);
 
-  // Initialize AdMob with test device config + load rewarded ad on mount
   useEffect(() => {
+    // Set test device ID first, then initialize
     mobileAds()
       .setRequestConfiguration({
         testDeviceIdentifiers: ['553c7721-4821-461b-9f62-8584b1e60745']
@@ -142,37 +114,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     return cleanupListeners;
   }, [loadRewardedAd]);
-
-  // Target 1: EARNED_REWARD listener - increment counter, unlock Pro at 3
-  useEffect(() => {
-    if (!rewardedRef.current) return;
-    const unsubscribeEarned = rewardedRef.current.addAdEventListener(
-      RewardedAdEventType.EARNED_REWARD,
-      () => {
-        setAdCount(prev => {
-          const newCount = prev + 1;
-          if (newCount >= 3) {
-            setIsPro(true);
-            setProFromAdMob(true);
-            AsyncStorage.setItem('pro_expiry', (Date.now() + 30 * 60 * 1000).toString());
-            return 0;
-          }
-          return newCount;
-        });
-        loadRewardedAd(); // Immediately load next
-      }
-    );
-    return () => unsubscribeEarned();
-  }, [rewardedRef.current]);
-
-  // handleUnlockClick - force load if not ready
-  const handleUnlockClick = useCallback(() => {
-    if (rewardedRef.current && isRewardedAdReady) {
-      rewardedRef.current.show();
-    } else {
-      loadRewardedAd(); // Force load if not ready
-    }
-  }, [isRewardedAdReady, loadRewardedAd]);
 
   const showAppOpenAd = async (): Promise<void> => {
     return new Promise((resolve) => {
@@ -216,19 +157,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const u1 = ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
           console.log('[AdMob] Reward EARNED');
           rewarded = true;
-          
-          // Increment ad count and check for Pro unlock
-          setAdCount((prev) => {
-            const newCount = prev + 1;
-            if (newCount >= 3) {
-              setIsPro(true);
-              setProFromAdMob(true);
-              AsyncStorage.setItem('pro_expiry', (Date.now() + 30 * 60 * 1000).toString());
-              return 0; // reset counter
-            }
-            return newCount;
-          });
-          loadRewardedAd(); // Load next ad immediately
         });
 
         const u2 = ad.addAdEventListener(AdEventType.CLOSED, () => {
@@ -262,19 +190,16 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
-  // Target 2: Random 10-15 Clicks Interstitial Ad - FIXED: Reset counter BEFORE showing ad
-  const trackClick = useCallback(() => {
-    if (isPro || globalIsPro) return;
-    setClicks(prev => {
-      const next = prev + 1;
-      if (next >= clickTarget) {
-        // Reset counter FIRST to break any potential loop
-        setTimeout(() => showInterstitialAd(), 100);
-        return 0;
-      }
-      return next;
-    });
-  }, [isPro, globalIsPro, clickTarget]);
+  const trackClick = () => {
+    if (isPro) return;
+    const next = clicks + 1;
+    if (next >= clickTarget) {
+      setClicks(0);
+      showInterstitialAd();
+    } else {
+      setClicks(next);
+    }
+  };
 
   const BannerAdComponent: React.FC = () => (
     <BannerAd
@@ -286,9 +211,9 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   return (
     <AdMobContext.Provider value={{
-      isAdMobInitialized, isPro: isPro || globalIsPro, setIsPro, adCount, setAdCount, trackClick,
+      isAdMobInitialized, isPro, trackClick,
       showAppOpenAd, showInterstitialAd, showRewardedAd, isRewardedAdReady,
-      BannerAdComponent, handleUnlockClick,
+      BannerAdComponent,
     }}>
       {children}
     </AdMobContext.Provider>
