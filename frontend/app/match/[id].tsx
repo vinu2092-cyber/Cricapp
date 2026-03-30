@@ -259,41 +259,51 @@ export default function MatchDetail() {
           bowlingTeam={match.teams[1].shortName}
         />
 
-        {/* Commentary */}
-        {match.commentary && match.commentary.length > 0 ? (
-          <CommentarySection
-            commentary={match.commentary}
-            matchId={id}
-            isLive={match.status === 'live'}
-          />
-        ) : (match as any)?.commentaryList && (match as any).commentaryList.length > 0 ? (
-          <FlatList
-            data={(match as any).commentaryList}
-            keyExtractor={(item, index) => index.toString()}
-            scrollEnabled={false}
-            renderItem={({ item, index }) => (
-              <View>
-                <View style={{ padding: 10, borderBottomWidth: 1, borderColor: '#333' }}>
-                  <Text style={{ color: '#aaa', fontSize: 12 }}>Over: {item.overSeparator?.overNum || '-'}</Text>
-                  <Text style={{ color: '#fff', fontSize: 14 }}>{item.commText}</Text>
-                </View>
-                {/* Inject Banner Ad every 10 commentary items for Non-Pro users */}
-                {!effectiveIsPro && index > 0 && index % 10 === 0 && (
-                  <View style={{ alignItems: 'center', marginVertical: 10 }}>
-                    <BannerAd
-                      unitId="ca-app-pub-9675798593675825/8616886104"
-                      size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-                    />
+        {/* Commentary - Safe array mapping */}
+        {(() => {
+          const commData = Array.isArray((match as any)?.commentaryList) ? (match as any).commentaryList : [];
+          
+          if (match.commentary && match.commentary.length > 0) {
+            return (
+              <CommentarySection
+                commentary={match.commentary}
+                matchId={id}
+                isLive={match.status === 'live'}
+              />
+            );
+          } else if (commData.length > 0) {
+            return (
+              <FlatList
+                data={commData}
+                keyExtractor={(item, index) => index.toString()}
+                scrollEnabled={false}
+                renderItem={({ item, index }) => (
+                  <View>
+                    <View style={{ padding: 10, borderBottomWidth: 1, borderColor: '#333' }}>
+                      <Text style={{ color: '#aaa', fontSize: 12 }}>Over: {item.overSeparator?.overNum || '-'}</Text>
+                      <Text style={{ color: '#fff', fontSize: 14 }}>{item.commText}</Text>
+                    </View>
+                    {/* Inject Banner Ad every 10 commentary items for Non-Pro users */}
+                    {!effectiveIsPro && index > 0 && index % 10 === 0 && (
+                      <View style={{ alignItems: 'center', marginVertical: 10 }}>
+                        <BannerAd
+                          unitId="ca-app-pub-9675798593675825/8616886104"
+                          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+                        />
+                      </View>
+                    )}
                   </View>
                 )}
+              />
+            );
+          } else {
+            return (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Text style={{ color: 'white', fontSize: 16 }}>Commentary Not Available</Text>
               </View>
-            )}
-          />
-        ) : (
-          <View style={{ padding: 20, alignItems: 'center' }}>
-            <Text style={{ color: 'white', fontSize: 16 }}>Commentary Not Available</Text>
-          </View>
-        )}
+            );
+          }
+        })()}
       </ScrollView>
 
       {/* Pro Modal - 3 Rewarded Ads */}

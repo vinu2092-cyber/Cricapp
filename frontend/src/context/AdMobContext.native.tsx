@@ -262,18 +262,19 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
-  // Target 2: Random 10-15 Clicks Interstitial Ad
+  // Target 2: Random 10-15 Clicks Interstitial Ad - FIXED: Reset counter BEFORE showing ad
   const trackClick = useCallback(() => {
     if (isPro || globalIsPro) return;
-    const next = clicks + 1;
-    const randomTarget = Math.floor(Math.random() * 6) + 10; // random(10, 15)
-    if (next >= randomTarget) {
-      setClicks(0);
-      showInterstitialAd();
-    } else {
-      setClicks(next);
-    }
-  }, [clicks, isPro, globalIsPro]);
+    setClicks(prev => {
+      const next = prev + 1;
+      if (next >= clickTarget) {
+        // Reset counter FIRST to break any potential loop
+        setTimeout(() => showInterstitialAd(), 100);
+        return 0;
+      }
+      return next;
+    });
+  }, [isPro, globalIsPro, clickTarget]);
 
   const BannerAdComponent: React.FC = () => (
     <BannerAd
