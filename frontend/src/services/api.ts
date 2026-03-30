@@ -362,9 +362,20 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
 }
 
 // ============ DEEP LINK ============
+import { Alert } from 'react-native';
 
-export const openCricbuzzMatch = async (matchId: string) => {
-  try {
-    await Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`);
-  } catch {}
+export const openCricbuzzMatch = (matchId: string) => {
+  Alert.alert(
+    'External Link',
+    'You will be redirected to Cricbuzz website. Do you want to continue?',
+    [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes',
+        onPress: () => {
+          Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`).catch(() => {});
+        },
+      },
+    ]
+  );
 };

@@ -143,17 +143,46 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       </View>
 
       <ScrollView style={styles.commentaryList} nestedScrollEnabled>
-        {/* If no commentary, show 2 banner ads */}
+        {/* If no commentary, show 2 banner ads with Cricbuzz button in middle */}
         {displayedCommentary.length === 0 && (
           <View style={{ padding: 20, alignItems: 'center' }}>
             <Ionicons name="chatbox-outline" size={40} color="#999" />
             <Text style={{ color: '#666', fontSize: 14, marginTop: 10, textAlign: 'center' }}>
               No ball-by-ball commentary available yet.{'\n'}Commentary will appear as the match progresses.
             </Text>
-            {/* Show 2 Banner Ads when no commentary */}
+            {/* Banner Ad 1 */}
             <View style={styles.bannerAdContainer}>
               <BannerAdComponent />
             </View>
+            {/* Cricbuzz External Link Button */}
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#022d5d',
+                paddingVertical: 14,
+                paddingHorizontal: 24,
+                borderRadius: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                marginVertical: 12,
+              }}
+              onPress={() => {
+                if (matchId) {
+                  Alert.alert(
+                    'External Link',
+                    'You will be redirected to Cricbuzz website for live commentary. Do you want to continue?',
+                    [
+                      { text: 'No', style: 'cancel' },
+                      { text: 'Yes', onPress: () => Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`) },
+                    ]
+                  );
+                }
+              }}
+            >
+              <Ionicons name="globe-outline" size={20} color="#FFF" />
+              <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>View Live Commentary on Cricbuzz</Text>
+            </TouchableOpacity>
+            {/* Banner Ad 2 */}
             <View style={styles.bannerAdContainer}>
               <BannerAdComponent />
             </View>
@@ -210,14 +239,21 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           );
         })}
 
-        {/* Load More - Direct to Cricbuzz */}
+        {/* Load More - Direct to Cricbuzz with confirmation */}
         {hasMoreLocal ? (
           <View style={styles.actionContainer}>
             <TouchableOpacity
               style={styles.loadMoreButton}
               onPress={() => {
                 if (matchId) {
-                  Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`);
+                  Alert.alert(
+                    'External Link',
+                    'You will be redirected to Cricbuzz website. Do you want to continue?',
+                    [
+                      { text: 'No', style: 'cancel' },
+                      { text: 'Yes', onPress: () => Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`) },
+                    ]
+                  );
                 }
               }}
               data-testid="load-more-commentary"
