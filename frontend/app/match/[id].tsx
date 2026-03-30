@@ -235,10 +235,25 @@ export default function MatchDetail() {
           {/* Pro / Overlay Toggle */}
           <View style={styles.proRow}>
             {!effectiveIsPro ? (
-              <TouchableOpacity style={styles.unlockBtn} onPress={() => setShowProModal(true)}>
-                <Ionicons name="lock-open" size={14} color="#FFF" />
-                <Text style={styles.unlockTxt}>Unlock Pro (3 Ads)</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={styles.unlockBtn} onPress={() => setShowProModal(true)}>
+                  <Ionicons name="lock-open" size={14} color="#FFF" />
+                  <Text style={styles.unlockTxt}>Unlock Pro (3 Ads)</Text>
+                </TouchableOpacity>
+                {/* DEV TEST BUTTON - Remove before production */}
+                <TouchableOpacity 
+                  style={[styles.unlockBtn, { backgroundColor: '#FF9800' }]} 
+                  onPress={() => {
+                    setTempPro(true);
+                    setProExpiry(Date.now() + 30 * 60 * 1000);
+                    setProFromAdMob(true);
+                    Alert.alert('Test Pro', 'Pro enabled for 30 mins (Dev Test)');
+                  }}
+                >
+                  <Ionicons name="flask" size={14} color="#FFF" />
+                  <Text style={styles.unlockTxt}>Test Pro</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
               <TouchableOpacity
                 style={[styles.unlockBtn, { backgroundColor: '#4CAF50' }]}
