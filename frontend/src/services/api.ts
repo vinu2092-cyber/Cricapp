@@ -389,7 +389,6 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
 }
 
 // ============ DEEP LINK ============
-import { Alert } from 'react-native';
 
 export const openCricbuzzMatch = (matchId: string) => {
   Alert.alert(
