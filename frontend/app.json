@@ -2,7 +2,7 @@
   "expo": {
     "name": "CricApp",
     "slug": "cric-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "cricapp",
@@ -31,12 +31,17 @@
     },
     "splash": {
       "image": "./assets/splash_screen.png",
-      "resizeMode": "contain",
+      "resizeMode": "cover",
       "backgroundColor": "#f5f5dc"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#f5f5dc"
+      },
+      "splash": {
+        "image": "./assets/splash_screen.png",
+        "resizeMode": "cover",
         "backgroundColor": "#f5f5dc"
       },
       "package": "com.cricapp.live",
@@ -70,7 +75,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/logo.png",
+          "icon": "./assets/icon.png",
           "color": "#4CAF50",
           "defaultChannel": "match-alerts"
         }
