@@ -100,7 +100,7 @@ export default function AboutScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Developer</Text>
           <Text style={styles.sectionText}>
-            Developed by Vinu2092{'\n'}
+            Developed by gemmiapps{'\n'}
             © 2026 CricApp. All rights reserved.
           </Text>
         </View>
