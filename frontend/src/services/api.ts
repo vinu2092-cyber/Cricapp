@@ -1,9 +1,11 @@
 import axios from 'axios';
 import { Match, Commentary } from '../types/match';
-import { Linking } from 'react-native';
+import { Linking, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ============ API KEY MANAGEMENT ============
+const API_KEY_STORAGE = 'cricapp_user_api_key';
+
 // Keys 0,1 are SUBSCRIBED to /comm endpoint. Others only work for /matches.
 const COMM_KEYS = [
   "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
@@ -27,8 +29,33 @@ const HOST = "cricbuzz-cricket.p.rapidapi.com";
 let matchKeyIdx = 0;
 let commKeyIdx = 0;
 
+// Get user's custom API key (if set)
+async function getUserApiKey(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(API_KEY_STORAGE);
+  } catch {
+    return null;
+  }
+}
+
 // ============ API CALL HELPERS ============
 async function callApi(endpoint: string, keys: string[], maxTries: number = 5): Promise<any> {
+  // First try user's custom API key if available
+  const userKey = await getUserApiKey();
+  if (userKey) {
+    try {
+      const res = await axios.get(`https://${HOST}${endpoint}`, {
+        headers: { 'X-RapidAPI-Key': userKey, 'X-RapidAPI-Host': HOST },
+        timeout: 12000,
+      });
+      if (res.data && !res.data.message) return res.data;
+    } catch (e) {
+      // User key failed, continue with default keys
+      console.log('[API] User key failed, trying default keys');
+    }
+  }
+
+  // Try default keys
   for (let i = 0; i < Math.min(maxTries, keys.length); i++) {
     const idx = (endpoint.includes('/comm') ? commKeyIdx++ : matchKeyIdx++) % keys.length;
     try {

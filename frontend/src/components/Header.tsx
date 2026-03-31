@@ -8,6 +8,7 @@ import {
   ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { usePro } from '../context/ProContext';
 
 interface HeaderProps {
@@ -15,6 +16,7 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
+  const router = useRouter();
   const { isPro, getProTimeRemaining } = usePro();
   const [timeRemaining, setTimeRemaining] = useState<string>('');
 
@@ -51,25 +53,36 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
             resizeMode="contain"
           />
         </View>
-        <TouchableOpacity
-          style={[styles.proButton, isPro && styles.proButtonActive]}
-          onPress={onUnlockPro}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name={isPro ? 'checkmark-circle' : 'lock-closed'}
-            size={16}
-            color={isPro ? '#FFF' : '#1a1a1a'}
-          />
-          <View style={styles.proButtonContent}>
-            <Text style={[styles.proButtonText, isPro && styles.proButtonTextActive]}>
-              {isPro ? 'PRO' : 'UNLOCK PRO'}
-            </Text>
-            {isPro && timeRemaining && (
-              <Text style={styles.proTimerText}>{timeRemaining}</Text>
-            )}
-          </View>
-        </TouchableOpacity>
+        <View style={styles.rightButtons}>
+          {/* Settings Button */}
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={() => router.push('/settings')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="settings-outline" size={22} color="#FFF" />
+          </TouchableOpacity>
+          {/* Pro Button */}
+          <TouchableOpacity
+            style={[styles.proButton, isPro && styles.proButtonActive]}
+            onPress={onUnlockPro}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={isPro ? 'checkmark-circle' : 'lock-closed'}
+              size={16}
+              color={isPro ? '#FFF' : '#1a1a1a'}
+            />
+            <View style={styles.proButtonContent}>
+              <Text style={[styles.proButtonText, isPro && styles.proButtonTextActive]}>
+                {isPro ? 'PRO' : 'UNLOCK PRO'}
+              </Text>
+              {isPro && timeRemaining && (
+                <Text style={styles.proTimerText}>{timeRemaining}</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
       </View>
     </ImageBackground>
   );
@@ -95,6 +108,16 @@ const styles = StyleSheet.create({
   logo: {
     width: 160,
     height: 65,
+  },
+  rightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  settingsButton: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    padding: 8,
+    borderRadius: 20,
   },
   proButton: {
     flexDirection: 'row',

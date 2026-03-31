@@ -30,8 +30,8 @@
       "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
     },
     "splash": {
-      "image": "./assets/splash_doodle.png",
-      "resizeMode": "contain",
+      "image": "./assets/splash_screen.png",
+      "resizeMode": "cover",
       "backgroundColor": "#f5f5dc"
     },
     "android": {
