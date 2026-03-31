@@ -41,15 +41,66 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [clickTarget] = useState(Math.floor(Math.random() * 6) + 10);
 
   const rewardedRef = useRef<RewardedAd | null>(null);
+  const interstitialRef = useRef<InterstitialAd | null>(null);
   const loadingRef = useRef(false);
+  const interstitialLoadingRef = useRef(false);
   const retryRef = useRef(0);
   const unsubsRef = useRef<(() => void)[]>([]);
+  const interstitialUnsubsRef = useRef<(() => void)[]>([]);
 
   // Cleanup event listeners
   const cleanupListeners = () => {
     unsubsRef.current.forEach(u => { try { u(); } catch {} });
     unsubsRef.current = [];
   };
+
+  const cleanupInterstitialListeners = () => {
+    interstitialUnsubsRef.current.forEach(u => { try { u(); } catch {} });
+    interstitialUnsubsRef.current = [];
+  };
+
+  // Pre-load interstitial ad so it shows instantly on click threshold
+  const loadInterstitialAd = useCallback(() => {
+    if (interstitialLoadingRef.current) return;
+    if (interstitialRef.current) return; // Already have one ready
+    if (isPro) return; // Pro users don't need interstitials
+
+    interstitialLoadingRef.current = true;
+    cleanupInterstitialListeners();
+
+    try {
+      const ad = InterstitialAd.createForAdRequest(AD_IDS.interstitial, {
+        requestNonPersonalizedAdsOnly: true,
+      });
+
+      const unsub1 = ad.addAdEventListener(AdEventType.LOADED, () => {
+        console.log('[AdMob] Interstitial ad PRE-LOADED');
+        interstitialRef.current = ad;
+        interstitialLoadingRef.current = false;
+      });
+
+      const unsub2 = ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
+        console.warn('[AdMob] Interstitial preload error:', error?.message || error);
+        interstitialLoadingRef.current = false;
+        // Retry after 10s
+        setTimeout(loadInterstitialAd, 10000);
+      });
+
+      const unsub3 = ad.addAdEventListener(AdEventType.CLOSED, () => {
+        console.log('[AdMob] Interstitial CLOSED, pre-loading next');
+        interstitialRef.current = null;
+        interstitialLoadingRef.current = false;
+        // Pre-load next interstitial after this one closes
+        setTimeout(loadInterstitialAd, 1000);
+      });
+
+      interstitialUnsubsRef.current = [unsub1, unsub2, unsub3];
+      ad.load();
+    } catch (err) {
+      console.warn('[AdMob] Failed to create interstitial ad:', err);
+      interstitialLoadingRef.current = false;
+    }
+  }, [isPro]);
 
   const loadRewardedAd = useCallback(() => {
     if (loadingRef.current) return;
@@ -100,15 +151,20 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         console.log('[AdMob] SDK initialized');
         setIsAdMobInitialized(true);
         loadRewardedAd();
+        loadInterstitialAd(); // Pre-load interstitial for non-pro users
       })
       .catch((err) => {
         console.warn('[AdMob] SDK init failed:', err);
         setIsAdMobInitialized(true);
         setTimeout(loadRewardedAd, 2000);
+        setTimeout(loadInterstitialAd, 3000);
       });
 
-    return cleanupListeners;
-  }, [loadRewardedAd]);
+    return () => {
+      cleanupListeners();
+      cleanupInterstitialListeners();
+    };
+  }, [loadRewardedAd, loadInterstitialAd]);
 
   const showAppOpenAd = async (): Promise<void> => {
     return new Promise((resolve) => {
@@ -173,14 +229,39 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const showInterstitialAd = async (): Promise<boolean> => {
     if (isPro) return false;
+    
+    // Use pre-loaded interstitial ad for instant display
+    const ad = interstitialRef.current;
+    if (ad) {
+      return new Promise((resolve) => {
+        try {
+          console.log('[AdMob] Showing PRE-LOADED interstitial');
+          interstitialRef.current = null; // Clear ref, CLOSED listener will reload next
+          ad.show();
+          resolve(true);
+        } catch (err) {
+          console.warn('[AdMob] Interstitial show() failed:', err);
+          interstitialRef.current = null;
+          interstitialLoadingRef.current = false;
+          setTimeout(loadInterstitialAd, 1000);
+          resolve(false);
+        }
+      });
+    }
+
+    // Fallback: create and load on-demand if pre-loaded ad not available
+    console.log('[AdMob] No pre-loaded interstitial, loading on-demand...');
+    loadInterstitialAd(); // Start pre-loading for next time
     return new Promise((resolve) => {
       try {
-        const ad = InterstitialAd.createForAdRequest(AD_IDS.interstitial);
+        const fallbackAd = InterstitialAd.createForAdRequest(AD_IDS.interstitial, {
+          requestNonPersonalizedAdsOnly: true,
+        });
         const timeout = setTimeout(() => resolve(false), 10000);
-        ad.addAdEventListener(AdEventType.LOADED, () => ad.show());
-        ad.addAdEventListener(AdEventType.CLOSED, () => { clearTimeout(timeout); resolve(true); });
-        ad.addAdEventListener(AdEventType.ERROR, () => { clearTimeout(timeout); resolve(false); });
-        ad.load();
+        fallbackAd.addAdEventListener(AdEventType.LOADED, () => fallbackAd.show());
+        fallbackAd.addAdEventListener(AdEventType.CLOSED, () => { clearTimeout(timeout); resolve(true); });
+        fallbackAd.addAdEventListener(AdEventType.ERROR, () => { clearTimeout(timeout); resolve(false); });
+        fallbackAd.load();
       } catch { resolve(false); }
     });
   };

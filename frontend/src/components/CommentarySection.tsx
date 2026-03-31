@@ -173,12 +173,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         )}
         
         {displayedCommentary.map((item, index) => {
-          // Banner ads at over start (.1) and end (.6) - for ALL users
-          const overStr = String(item.over || '');
-          const overDecimal = overStr.split('.')[1] || '';
-          const isOverStart = overDecimal === '1';
-          const isOverEnd = overDecimal === '6';
-          const showBanner = isOverStart || isOverEnd;
+          // Banner ad every 2 balls - for ALL users (Pro + Non-Pro)
+          const showBanner = (index + 1) % 2 === 0;
 
           return (
             <View key={index}>

@@ -295,10 +295,21 @@ export default function MatchDetail() {
             <Text style={styles.noCommText}>
               {match.status === 'upcoming' ? 'Match has not started yet' : 'Commentary not available'}
             </Text>
+
+            {/* Banner Ad 1 */}
+            <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
+              <BannerAdComponent />
+            </View>
+
             <TouchableOpacity style={styles.cricbuzzBtn} onPress={() => openCricbuzzMatch(id || '')}>
               <Ionicons name="open-outline" size={16} color="#FFF" />
               <Text style={styles.cricbuzzTxt}>View on Cricbuzz</Text>
             </TouchableOpacity>
+
+            {/* Banner Ad 2 */}
+            <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
+              <BannerAdComponent />
+            </View>
           </View>
         )}
       </ScrollView>
