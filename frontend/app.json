@@ -74,7 +74,10 @@
           "color": "#4CAF50",
           "defaultChannel": "match-alerts"
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
