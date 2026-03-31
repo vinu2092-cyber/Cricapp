@@ -39,7 +39,7 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#f5f5dc"
       },
-      "package": "com.mycricapp.live",
+      "package": "com.cricapp.live",
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
