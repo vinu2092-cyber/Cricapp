@@ -8,7 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
+      fail-fast: false
       matrix:
         build-type: [apk, aab]
 
@@ -38,6 +40,9 @@ jobs:
         working-directory: frontend
         run: yarn install
 
+      - name: Increase Node memory
+        run: echo "NODE_OPTIONS=--max-old-space-size=4096" >> $GITHUB_ENV
+
       - name: Generate native android project
         working-directory: frontend
         run: npx expo prebuild --platform android --clean
@@ -60,12 +65,12 @@ jobs:
       - name: Build APK (Release)
         if: matrix.build-type == 'apk'
         working-directory: frontend/android
-        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g -XX:+HeapDumpOnOutOfMemoryError"
 
       - name: Build AAB (Release)
         if: matrix.build-type == 'aab'
         working-directory: frontend/android
-        run: ./gradlew bundleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+        run: ./gradlew bundleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g -XX:+HeapDumpOnOutOfMemoryError"
 
       - name: Upload APK
         if: matrix.build-type == 'apk'
