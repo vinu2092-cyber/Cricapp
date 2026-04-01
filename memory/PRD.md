@@ -140,6 +140,21 @@ frontend/plugins/
    - Build AAB using `./gradlew bundleRelease`
 3. Download artifacts from GitHub Actions
 
+## Build Size Optimizations Applied
+- ✅ R8 full mode enabled (maximum code shrinking)
+- ✅ Resource shrinking enabled (removes unused resources)
+- ✅ ProGuard enabled (code obfuscation & shrinking)
+- ✅ Only ARM architectures (removed x86/x86_64 - saves ~15MB)
+- ✅ PNG crunching enabled (image compression)
+- ✅ Assets compressed (8.5MB → 1.4MB = 83% reduction)
+- ✅ Debug logs removed in release
+- ✅ Network inspector disabled in release
+- ✅ Animated WebP disabled (saves ~3.4MB)
+- ✅ GIF support disabled (not needed)
+
+**Expected APK Size: ~20-25MB**
+**Expected AAB Size: ~15-18MB**
+
 ## Next Tasks
 1. Push code to GitHub using "Save to Github" feature
 2. GitHub Actions will trigger build automatically
