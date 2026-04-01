@@ -1,4 +1,4 @@
-package com.mycricapp.live
+package com.cricapp.live
 
 import android.app.Application
 import android.content.res.Configuration
@@ -16,7 +16,7 @@ import com.facebook.soloader.SoLoader
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 
-import com.mycricapp.live.floatingwidget.FloatingWidgetPackage
+import com.cricapp.live.floatingwidget.FloatingWidgetPackage
 
 class MainApplication : Application(), ReactApplication {
 

@@ -36,7 +36,7 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="cricapp"/>
-        <data android:scheme="com.mycricapp.live"/>
+        <data android:scheme="com.cricapp.live"/>
       </intent-filter>
     </activity>
     <service

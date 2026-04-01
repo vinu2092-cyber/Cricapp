@@ -1,4 +1,4 @@
-package com.mycricapp.live
+package com.cricapp.live
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

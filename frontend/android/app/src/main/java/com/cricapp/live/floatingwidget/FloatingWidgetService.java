@@ -1,4 +1,4 @@
-package com.mycricapp.live.floatingwidget;
+package com.cricapp.live.floatingwidget;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -22,8 +22,8 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
-import com.mycricapp.live.MainActivity;
-import com.mycricapp.live.R;
+import com.cricapp.live.MainActivity;
+import com.cricapp.live.R;
 
 import java.util.Locale;
 import java.util.Set;

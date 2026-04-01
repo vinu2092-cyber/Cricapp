@@ -137,8 +137,9 @@ If you want to initiate builds from here, I can prepare the commands, but you'll
 - ✅ Backend URL: `https://dragable-ui-test.preview.emergentagent.com`
 - ✅ API endpoints: `/api/cricket/*`
 - ✅ AdMob App ID: `ca-app-pub-9675798593675825~2399929714`
-- ✅ Package: `com.Vinu2092.cricapp`
-- ✅ Version: 1.0.0
+- ✅ Package: `com.cricapp.live`
+- ✅ Version: 1.0.1
+- ✅ Developer: GemmiApps
 
 ---
 

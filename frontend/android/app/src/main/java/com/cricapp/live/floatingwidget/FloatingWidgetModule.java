@@ -1,4 +1,4 @@
-package com.mycricapp.live.floatingwidget;
+package com.cricapp.live.floatingwidget;
 
 import android.content.Intent;
 import android.net.Uri;
