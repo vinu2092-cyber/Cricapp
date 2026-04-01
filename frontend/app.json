@@ -54,6 +54,7 @@
     "plugins": [
       "expo-router",
       "expo-splash-screen",
+      "./plugins/withFloatingWidget",
       [
         "expo-build-properties",
         {

@@ -18,6 +18,14 @@ import MatchMoodMeter from '../../src/components/MatchMoodMeter';
 import { usePro } from '../../src/context/ProContext';
 import { useAdMob } from '../../src/context/AdMobContext';
 import { useNotifications } from '../../src/context/NotificationContext';
+import {
+  isFloatingWidgetAvailable,
+  checkOverlayPermission,
+  requestOverlayPermission,
+  showFloatingWidget,
+  updateFloatingWidget,
+  hideFloatingWidget,
+} from '../../src/services/FloatingWidgetService';
 
 const AUTO_REFRESH = 45000;
 
@@ -44,11 +52,44 @@ export default function MatchDetail() {
   const [adsWatchedCount, setAdsWatchedCount] = useState(0);
   const [showProModal, setShowProModal] = useState(false);
 
+  // Native floating widget states
+  const [nativeOverlayActive, setNativeOverlayActive] = useState(false);
+  const [hasOverlayPermission, setHasOverlayPermission] = useState(false);
+
   // Click counter for interstitial (Logic B)
   const [clicks, setClicks] = useState(0);
   const [clickTarget] = useState(Math.floor(Math.random() * 6) + 10);
 
   const effectiveIsPro = globalIsPro || tempPro;
+
+  // Check overlay permission on mount
+  useEffect(() => {
+    if (isFloatingWidgetAvailable()) {
+      checkOverlayPermission().then(setHasOverlayPermission);
+    }
+  }, []);
+
+  // Update native floating widget when score changes (for Pro users with active overlay)
+  useEffect(() => {
+    if (nativeOverlayActive && effectiveIsPro && match) {
+      const scoreData = {
+        team1Name: match.teams[0]?.shortName || 'TM1',
+        team2Name: match.teams[1]?.shortName || 'TM2',
+        team1Score: match.teams[0]?.runs !== undefined 
+          ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` 
+          : '-',
+        team2Score: match.teams[1]?.runs !== undefined 
+          ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` 
+          : '-',
+        team1Overs: match.teams[0]?.overs?.toString() || '',
+        team2Overs: match.teams[1]?.overs?.toString() || '',
+        statusText: match.statusText || '',
+        batsmanName: '', // Can be extracted from commentary if available
+        bowlerName: '',
+      };
+      updateFloatingWidget(scoreData);
+    }
+  }, [match?.teams[0]?.runs, match?.teams[1]?.runs, nativeOverlayActive, effectiveIsPro]);
 
   // 30-Min Pro Expiry (Logic D)
   useEffect(() => {
@@ -70,6 +111,10 @@ export default function MatchDetail() {
     return () => {
       clearInterval(interval);
       Speech.stop();
+      // Stop native overlay when leaving the page
+      if (nativeOverlayActive) {
+        hideFloatingWidget();
+      }
     };
   }, [id]);
 
@@ -240,36 +285,88 @@ export default function MatchDetail() {
                 <Text style={styles.unlockTxt}>Unlock Pro (3 Ads)</Text>
               </TouchableOpacity>
             ) : (
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {/* In-App Floating Scoreboard Toggle */}
                 <TouchableOpacity
                   style={[styles.unlockBtn, { backgroundColor: showOverlay ? '#4CAF50' : '#666' }]}
                   onPress={() => setShowOverlay(!showOverlay)}
                 >
                   <Ionicons name={showOverlay ? 'eye' : 'eye-off'} size={14} color="#FFF" />
-                  <Text style={styles.unlockTxt}>{showOverlay ? 'Scoreboard ON' : 'Scoreboard OFF'}</Text>
+                  <Text style={styles.unlockTxt}>{showOverlay ? 'In-App ON' : 'In-App OFF'}</Text>
                 </TouchableOpacity>
-                {/* Open Overlay Permission Settings */}
-                <TouchableOpacity
-                  style={[styles.unlockBtn, { backgroundColor: '#2196F3' }]}
-                  onPress={() => {
-                    Alert.alert(
-                      'Enable Overlay Permission',
-                      'To show live score over other apps, you need to enable "Display over other apps" permission for CricApp.\n\nClick "Open Settings" and enable the permission.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Open Settings',
-                          onPress: () => {
-                            Linking.openSettings();
-                          },
-                        },
-                      ]
-                    );
-                  }}
-                >
-                  <Ionicons name="settings-outline" size={14} color="#FFF" />
-                  <Text style={styles.unlockTxt}>Overlay Settings</Text>
-                </TouchableOpacity>
+                
+                {/* Native Overlay (Draw Over Other Apps) - Android Only */}
+                {isFloatingWidgetAvailable() && (
+                  <TouchableOpacity
+                    style={[styles.unlockBtn, { backgroundColor: nativeOverlayActive ? '#FF6B00' : '#333' }]}
+                    onPress={async () => {
+                      if (nativeOverlayActive) {
+                        // Turn off native overlay
+                        await hideFloatingWidget();
+                        setNativeOverlayActive(false);
+                      } else {
+                        // Check permission first
+                        const hasPermission = await checkOverlayPermission();
+                        if (!hasPermission) {
+                          Alert.alert(
+                            'Enable Overlay Permission',
+                            'To show live score over other apps (like WhatsApp, YouTube), you need to enable "Display over other apps" permission.\n\nTap "Enable" to open settings.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Enable',
+                                onPress: async () => {
+                                  await requestOverlayPermission();
+                                  // Check again after a delay
+                                  setTimeout(async () => {
+                                    const granted = await checkOverlayPermission();
+                                    setHasOverlayPermission(granted);
+                                  }, 1000);
+                                },
+                              },
+                            ]
+                          );
+                          return;
+                        }
+                        
+                        // Start native overlay
+                        const scoreData = {
+                          team1Name: match.teams[0]?.shortName || 'TM1',
+                          team2Name: match.teams[1]?.shortName || 'TM2',
+                          team1Score: match.teams[0]?.runs !== undefined 
+                            ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` 
+                            : '-',
+                          team2Score: match.teams[1]?.runs !== undefined 
+                            ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` 
+                            : '-',
+                          team1Overs: match.teams[0]?.overs?.toString() || '',
+                          team2Overs: match.teams[1]?.overs?.toString() || '',
+                          statusText: match.statusText || '',
+                        };
+                        
+                        const success = await showFloatingWidget(scoreData);
+                        if (success) {
+                          setNativeOverlayActive(true);
+                          Alert.alert(
+                            'Floating Widget Active!',
+                            'Live score will now show over other apps. You can minimize CricApp and the score will still be visible!\n\n• Tap widget to minimize\n• Drag to move\n• Tap ✕ to close',
+                            [{ text: 'Got it!' }]
+                          );
+                        }
+                      }
+                    }}
+                    data-testid="native-overlay-toggle"
+                  >
+                    <Ionicons 
+                      name={nativeOverlayActive ? 'layers' : 'layers-outline'} 
+                      size={14} 
+                      color="#FFF" 
+                    />
+                    <Text style={styles.unlockTxt}>
+                      {nativeOverlayActive ? 'Overlay ON' : 'Overlay OFF'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>
