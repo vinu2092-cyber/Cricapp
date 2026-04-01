@@ -55,11 +55,22 @@ function AppOpenAdHandler({ children }: { children: React.ReactNode }) {
 
 function AppWithSplash() {
   const [showCustomSplash, setShowCustomSplash] = useState(true);
+  const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
 
   useEffect(() => {
-    // Hide native splash immediately when component mounts
-    ExpoSplashScreen.hideAsync().catch(() => {});
+    // Show native splash for 1.5-2 seconds before hiding
+    const nativeSplashTimer = setTimeout(() => {
+      ExpoSplashScreen.hideAsync().catch(() => {});
+      setNativeSplashHidden(true);
+    }, 1800); // 1.8 seconds for native splash
+
+    return () => clearTimeout(nativeSplashTimer);
   }, []);
+
+  // Don't show custom splash until native splash is hidden
+  if (!nativeSplashHidden) {
+    return null;
+  }
 
   if (showCustomSplash) {
     return (
