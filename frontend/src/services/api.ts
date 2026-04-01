@@ -234,12 +234,14 @@ function cleanText(raw: string): string {
 
 function mapEvent(e?: string): Commentary['event'] {
   if (!e) return 'normal';
-  const s = e.toLowerCase();
-  if (s.includes('wicket') || s.includes('out') || s === 'w') return 'wicket';
-  if (s.includes('six') || s === '6s') return 'six';
-  if (s.includes('four') || s.includes('boundary') || s === '4s') return 'four';
+  const s = e.toLowerCase().trim();
+  // Only map explicit events - avoid false positives
+  if (s.includes('wicket') || s === 'w' || s === 'out') return 'wicket';
+  if (s.includes('six') || s === '6s' || s === '6') return 'six';
+  if (s.includes('four') || s.includes('boundary') || s === '4s' || s === '4') return 'four';
   if (s.includes('wide') || s === 'wd') return 'wide';
-  if (s === 'none' || s === '0' || s.includes('dot')) return 'dot';
+  // Only exact "dot" text, not "0" or "none" (these are just runs)
+  if (s === 'dot') return 'dot';
   return 'normal';
 }
 
