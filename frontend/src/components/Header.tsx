@@ -91,28 +91,28 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
 const styles = StyleSheet.create({
   headerBackground: {
     width: '100%',
-    height: 160,
+    height: 110,
     justifyContent: 'flex-end',
   },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
   },
   logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   logo: {
-    width: 320,
-    height: 130,
+    width: 100,
+    height: 80,
   },
   rightButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   settingsButton: {
     backgroundColor: 'rgba(0,0,0,0.3)',
@@ -124,9 +124,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFD700',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 20,
-    gap: 6,
+    gap: 4,
   },
   proButtonActive: {
     backgroundColor: '#4CAF50',
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   proButtonText: {
     color: '#1a1a1a',
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 11,
   },
   proButtonTextActive: {
     color: '#FFF',

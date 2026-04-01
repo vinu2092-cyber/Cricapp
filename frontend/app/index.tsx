@@ -10,6 +10,7 @@ import {
   Modal,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,7 +18,6 @@ import { Match } from '../src/types/match';
 import MatchCard from '../src/components/MatchCard';
 import Header from '../src/components/Header';
 import Footer from '../src/components/Footer';
-import LoadingScreen from '../src/components/LoadingScreen';
 import ErrorScreen from '../src/components/ErrorScreen';
 import { useAdMob } from '../src/context/AdMobContext';
 import { usePro } from '../src/context/ProContext';
@@ -197,7 +197,12 @@ export default function Index() {
   };
 
   if (loading) {
-    return <LoadingScreen message="Loading cricket matches..." />;
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+        <Text style={styles.loadingText}>Loading cricket matches...</Text>
+      </View>
+    );
   }
 
   if (error) {
@@ -594,5 +599,17 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 14,
     textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
   },
 });
