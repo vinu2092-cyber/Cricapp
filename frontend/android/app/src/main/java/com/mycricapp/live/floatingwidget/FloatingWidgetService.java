@@ -165,7 +165,10 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         if (muteButton != null) {
             muteButton.post(() -> {
                 muteButton.setText(isMuted ? "🔇" : "🔊");
-                muteButton.setBackgroundColor(isMuted ? 0x40FF0000 : 0x404CAF50);
+                android.graphics.drawable.GradientDrawable muteBg = new android.graphics.drawable.GradientDrawable();
+                muteBg.setColor(isMuted ? 0x50FF4444 : 0x5044BB44); // Glass red or green
+                muteBg.setCornerRadius(14f);
+                muteButton.setBackground(muteBg);
             });
         }
     }
@@ -270,17 +273,16 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
     private View createFloatingViewProgrammatically() {
         Context context = this;
         
-        // Main container
+        // Main container - Glass/Transparent effect
         LinearLayout mainLayout = new LinearLayout(context);
         mainLayout.setOrientation(LinearLayout.VERTICAL);
-        mainLayout.setBackgroundColor(0xF0141414); // Dark semi-transparent
         mainLayout.setPadding(32, 20, 32, 20);
         
-        // Set rounded corners using GradientDrawable
+        // Set rounded corners with glass-like transparent background
         android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
-        background.setColor(0xF0141414);
+        background.setColor(0x70000000); // 44% opacity black - glass effect
         background.setCornerRadius(32f);
-        background.setStroke(4, 0xFF4CAF50); // Green border
+        background.setStroke(2, 0x804CAF50); // Semi-transparent green border
         mainLayout.setBackground(background);
         
         // Header with LIVE badge and close button
@@ -294,46 +296,50 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         headerParams.setMargins(0, 0, 0, 16);
         headerLayout.setLayoutParams(headerParams);
         
-        // LIVE badge
+        // LIVE badge - semi-transparent red
         TextView liveBadge = new TextView(context);
         liveBadge.setText("● LIVE");
         liveBadge.setTextColor(0xFFFFFFFF);
-        liveBadge.setTextSize(11);
+        liveBadge.setTextSize(10);
         liveBadge.setTypeface(null, android.graphics.Typeface.BOLD);
-        liveBadge.setPadding(16, 6, 16, 6);
+        liveBadge.setPadding(14, 5, 14, 5);
         android.graphics.drawable.GradientDrawable liveBg = new android.graphics.drawable.GradientDrawable();
-        liveBg.setColor(0xFFFF4444);
-        liveBg.setCornerRadius(16f);
+        liveBg.setColor(0xCCFF4444); // 80% opacity red
+        liveBg.setCornerRadius(14f);
         liveBadge.setBackground(liveBg);
         
-        // Mute/Unmute button for voice commentary
+        // Mute/Unmute button for voice commentary - glass style
         muteButton = new TextView(context);
         muteButton.setText("🔊");
-        muteButton.setTextSize(16);
-        muteButton.setPadding(16, 8, 16, 8);
+        muteButton.setTextSize(15);
+        muteButton.setPadding(14, 6, 14, 6);
         muteButton.setGravity(Gravity.CENTER);
         android.graphics.drawable.GradientDrawable muteBg = new android.graphics.drawable.GradientDrawable();
-        muteBg.setColor(0x404CAF50);
-        muteBg.setCornerRadius(16f);
+        muteBg.setColor(0x5044BB44); // Transparent green
+        muteBg.setCornerRadius(14f);
         muteButton.setBackground(muteBg);
         muteButton.setOnClickListener(v -> toggleMute());
         
-        // Drag indicator
+        // Drag indicator - more visible on glass
         TextView dragIndicator = new TextView(context);
         dragIndicator.setText("⋮⋮");
-        dragIndicator.setTextColor(0xFF888888);
+        dragIndicator.setTextColor(0xAAFFFFFF); // Semi-transparent white
         dragIndicator.setTextSize(14);
-        dragIndicator.setPadding(12, 0, 12, 0);
+        dragIndicator.setPadding(10, 0, 10, 0);
         dragIndicator.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         dragIndicator.setGravity(Gravity.CENTER);
         
-        // Close button
+        // Close button - glass style
         TextView closeBtn = new TextView(context);
         closeBtn.setText("✕");
-        closeBtn.setTextColor(0xFFFF6666);
-        closeBtn.setTextSize(18);
+        closeBtn.setTextColor(0xFFFFFFFF);
+        closeBtn.setTextSize(16);
         closeBtn.setTypeface(null, android.graphics.Typeface.BOLD);
-        closeBtn.setPadding(20, 10, 20, 10);
+        closeBtn.setPadding(16, 8, 16, 8);
+        android.graphics.drawable.GradientDrawable closeBg = new android.graphics.drawable.GradientDrawable();
+        closeBg.setColor(0x50FF4444); // Transparent red
+        closeBg.setCornerRadius(14f);
+        closeBtn.setBackground(closeBg);
         closeBtn.setOnClickListener(v -> stopSelf());
         
         headerLayout.addView(liveBadge);
@@ -353,43 +359,51 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         statusView.setTag("statusText");
         statusView.setTextColor(0xFFFFD700); // Gold
         statusView.setTextSize(12);
+        // Status text with shadow for glass background
+        TextView statusView = new TextView(context);
+        statusView.setTag("statusText");
+        statusView.setTextColor(0xFFFFD700); // Gold
+        statusView.setTextSize(12);
         statusView.setGravity(Gravity.CENTER);
-        statusView.setPadding(0, 16, 0, 8);
+        statusView.setPadding(0, 14, 0, 6);
+        statusView.setShadowLayer(3f, 1f, 1f, 0x99000000);
         mainLayout.addView(statusView);
         
         // Player info (batsman/bowler)
         LinearLayout playerLayout = new LinearLayout(context);
         playerLayout.setOrientation(LinearLayout.HORIZONTAL);
         playerLayout.setGravity(Gravity.CENTER);
-        playerLayout.setPadding(0, 8, 0, 0);
+        playerLayout.setPadding(0, 6, 0, 0);
         
         TextView batsmanView = new TextView(context);
         batsmanView.setTag("batsmanName");
-        batsmanView.setTextColor(0xFF4CAF50);
+        batsmanView.setTextColor(0xFF66FF66); // Brighter green
         batsmanView.setTextSize(11);
+        batsmanView.setShadowLayer(2f, 1f, 1f, 0x99000000);
         
         TextView vsView = new TextView(context);
         vsView.setText("  vs  ");
-        vsView.setTextColor(0xFF888888);
+        vsView.setTextColor(0xFFCCCCCC);
         vsView.setTextSize(11);
         
         TextView bowlerView = new TextView(context);
         bowlerView.setTag("bowlerName");
-        bowlerView.setTextColor(0xFF2196F3);
+        bowlerView.setTextColor(0xFF66B3FF); // Brighter blue
         bowlerView.setTextSize(11);
+        bowlerView.setShadowLayer(2f, 1f, 1f, 0x99000000);
         
         playerLayout.addView(batsmanView);
         playerLayout.addView(vsView);
         playerLayout.addView(bowlerView);
         mainLayout.addView(playerLayout);
         
-        // Minimize hint
+        // Minimize hint - lighter for glass effect
         TextView hintView = new TextView(context);
         hintView.setText("Tap to minimize • Drag to move");
-        hintView.setTextColor(0xFF666666);
+        hintView.setTextColor(0xAAFFFFFF); // Semi-transparent white
         hintView.setTextSize(9);
         hintView.setGravity(Gravity.CENTER);
-        hintView.setPadding(0, 12, 0, 0);
+        hintView.setPadding(0, 10, 0, 0);
         mainLayout.addView(hintView);
         
         return mainLayout;
@@ -399,45 +413,49 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         LinearLayout rowLayout = new LinearLayout(context);
         rowLayout.setOrientation(LinearLayout.HORIZONTAL);
         rowLayout.setGravity(Gravity.CENTER_VERTICAL);
-        rowLayout.setPadding(20, 16, 20, 16);
+        rowLayout.setPadding(20, 14, 20, 14);
         
+        // Glass-like transparent background for team rows
         android.graphics.drawable.GradientDrawable rowBg = new android.graphics.drawable.GradientDrawable();
-        rowBg.setColor(0x1AFFFFFF);
-        rowBg.setCornerRadius(16f);
+        rowBg.setColor(0x30FFFFFF); // 19% white - subtle glass effect
+        rowBg.setCornerRadius(14f);
         rowLayout.setBackground(rowBg);
         
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        rowParams.setMargins(0, 6, 0, 6);
+        rowParams.setMargins(0, 5, 0, 5);
         rowLayout.setLayoutParams(rowParams);
         
-        // Team name
+        // Team name - white with shadow for readability
         TextView teamName = new TextView(context);
         teamName.setTag(tag + "Name");
         teamName.setTextColor(0xFFFFFFFF);
-        teamName.setTextSize(18);
+        teamName.setTextSize(17);
         teamName.setTypeface(null, android.graphics.Typeface.BOLD);
-        teamName.setMinWidth(100);
+        teamName.setMinWidth(90);
+        teamName.setShadowLayer(3f, 1f, 1f, 0x99000000); // Text shadow for readability
         
-        // Score
+        // Score - bright green with shadow
         TextView score = new TextView(context);
         score.setTag(tag + "Score");
-        score.setTextColor(0xFF4CAF50);
-        score.setTextSize(26);
+        score.setTextColor(0xFF4AE54A); // Brighter green
+        score.setTextSize(24);
         score.setTypeface(null, android.graphics.Typeface.BOLD);
         score.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         score.setGravity(Gravity.END);
+        score.setShadowLayer(3f, 1f, 1f, 0x99000000); // Text shadow
         
-        // Overs
+        // Overs - light color with shadow
         TextView overs = new TextView(context);
         overs.setTag(tag + "Overs");
-        overs.setTextColor(0xFFCCCCCC);
-        overs.setTextSize(14);
-        overs.setPadding(16, 0, 0, 0);
-        overs.setMinWidth(80);
+        overs.setTextColor(0xFFE0E0E0);
+        overs.setTextSize(13);
+        overs.setPadding(14, 0, 0, 0);
+        overs.setMinWidth(70);
         overs.setGravity(Gravity.END);
+        overs.setShadowLayer(2f, 1f, 1f, 0x99000000);
         
         rowLayout.addView(teamName);
         rowLayout.addView(score);
