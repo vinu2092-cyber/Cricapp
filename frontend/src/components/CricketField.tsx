@@ -205,12 +205,14 @@ const CricketField: React.FC<CricketFieldProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderRadius: 16,
     marginHorizontal: 16,
     marginVertical: 8,
     padding: 16,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   title: {
     fontSize: 16,

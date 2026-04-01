@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Dimensions, Modal, Alert, Linking, Platform
+  ActivityIndicator, Dimensions, Modal, Alert, Linking, Platform, ImageBackground
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -204,10 +204,16 @@ export default function MatchDetail() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#4CAF50" size="large" />
-        <Text style={styles.loadingText}>Loading match...</Text>
-      </View>
+      <ImageBackground
+        source={require('../../assets/images/wallpaper.png')}
+        style={styles.container}
+        resizeMode="cover"
+      >
+        <View style={styles.center}>
+          <ActivityIndicator color="#4CAF50" size="large" />
+          <Text style={styles.loadingText}>Loading match...</Text>
+        </View>
+      </ImageBackground>
     );
   }
 
@@ -222,9 +228,14 @@ export default function MatchDetail() {
   }
 
   return (
-    <SafeAreaView style={styles.container} onTouchStart={handleInteraction}>
-      {/* Emotional animations overlay - 4, 6, Out, Wide */}
-      <MatchMoodMeter event={moodEvent} />
+    <ImageBackground
+      source={require('../../assets/images/wallpaper.png')}
+      style={styles.container}
+      resizeMode="cover"
+    >
+      <SafeAreaView style={styles.container} onTouchStart={handleInteraction}>
+        {/* Emotional animations overlay - 4, 6, Out, Wide */}
+        <MatchMoodMeter event={moodEvent} />
 
       <ScrollView stickyHeaderIndices={[0]}>
         {/* Sticky Score Header */}
@@ -474,14 +485,15 @@ export default function MatchDetail() {
         />
       )}
     </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' },
+  container: { flex: 1, backgroundColor: 'transparent' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
   loadingText: { color: '#999', marginTop: 12, fontSize: 14 },
-  scoreHeader: { backgroundColor: '#222', padding: 14, borderBottomWidth: 2, borderBottomColor: '#4CAF50' },
+  scoreHeader: { backgroundColor: 'rgba(34,34,34,0.85)', padding: 14, borderBottomWidth: 2, borderBottomColor: '#4CAF50' },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   backBtn: { padding: 6, marginRight: 8 },
   seriesName: { color: '#ffd700', fontSize: 12, flex: 1 },
@@ -500,7 +512,7 @@ const styles = StyleSheet.create({
   statusTxt: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginBottom: 8, fontStyle: 'italic' },
   proRow: { alignItems: 'center', marginTop: 8 },
   unlockBtn: {
-    backgroundColor: '#333',
+    backgroundColor: 'rgba(51,51,51,0.9)',
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,

@@ -30,9 +30,9 @@
       "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
     },
     "splash": {
-      "image": "./assets/splash_screen.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#FFD700"
     },
     "android": {
       "adaptiveIcon": {
@@ -40,9 +40,9 @@
         "backgroundColor": "#f5f5dc"
       },
       "splash": {
-        "image": "./assets/splash_screen.png",
+        "image": "./assets/icon.png",
         "resizeMode": "contain",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#FFD700"
       },
       "package": "com.cricapp.live",
       "permissions": [
