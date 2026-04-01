@@ -1,4 +1,4 @@
-import React, { useEffect, ErrorInfo } from 'react';
+import React, { useEffect, useState, ErrorInfo } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as ExpoSplashScreen from 'expo-splash-screen';
@@ -7,6 +7,7 @@ import { AdMobProvider, useAdMob } from '../src/context/AdMobContext';
 import { NotificationProvider } from '../src/context/NotificationContext';
 import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder';
 import ErrorScreen from '../src/components/ErrorScreen';
+import SplashScreen from '../src/components/SplashScreen';
 
 // Hide native splash when ready
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
@@ -44,14 +45,43 @@ function AppOpenAdHandler({ children }: { children: React.ReactNode }) {
   const { showAppOpenAd, isAdMobInitialized } = useAdMob();
 
   useEffect(() => {
-    // Hide splash + show App Open Ad
-    ExpoSplashScreen.hideAsync().catch(() => {});
     if (isAdMobInitialized) {
       showAppOpenAd().catch(() => {});
     }
   }, [isAdMobInitialized]);
 
   return <>{children}</>;
+}
+
+function AppWithSplash() {
+  const [showCustomSplash, setShowCustomSplash] = useState(true);
+
+  useEffect(() => {
+    // Hide native splash immediately when component mounts
+    ExpoSplashScreen.hideAsync().catch(() => {});
+  }, []);
+
+  if (showCustomSplash) {
+    return (
+      <SplashScreen
+        onFinish={() => setShowCustomSplash(false)}
+        duration={2500}
+      />
+    );
+  }
+
+  return (
+    <AppOpenAdHandler>
+      <AnimatedGlowBorder>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+      </AnimatedGlowBorder>
+    </AppOpenAdHandler>
+  );
 }
 
 export default function RootLayout() {
@@ -61,16 +91,7 @@ export default function RootLayout() {
         <AdMobProvider>
           <NotificationProvider>
             <StatusBar style="light" translucent />
-            <AppOpenAdHandler>
-              <AnimatedGlowBorder>
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    animation: 'slide_from_right',
-                  }}
-                />
-              </AnimatedGlowBorder>
-            </AppOpenAdHandler>
+            <AppWithSplash />
           </NotificationProvider>
         </AdMobProvider>
       </ProProvider>
