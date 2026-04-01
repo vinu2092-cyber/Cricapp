@@ -12,6 +12,7 @@ interface ScoreData {
   statusText?: string;
   batsmanName?: string;
   bowlerName?: string;
+  commentary?: string; // Latest commentary for TTS
 }
 
 /**

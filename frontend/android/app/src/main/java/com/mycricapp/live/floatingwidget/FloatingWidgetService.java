@@ -10,6 +10,8 @@ import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.IBinder;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -23,13 +25,23 @@ import androidx.core.app.NotificationCompat;
 import com.mycricapp.live.MainActivity;
 import com.mycricapp.live.R;
 
-public class FloatingWidgetService extends Service {
+import java.util.Locale;
+import java.util.Set;
+
+public class FloatingWidgetService extends Service implements TextToSpeech.OnInitListener {
     private static final String CHANNEL_ID = "floating_widget_channel";
     private static final int NOTIFICATION_ID = 1001;
     
     private WindowManager windowManager;
     private View floatingView;
     private boolean isMinimized = false;
+    
+    // Text-to-Speech for live commentary
+    private TextToSpeech tts;
+    private boolean isTTSReady = false;
+    private boolean isMuted = false;
+    private String lastSpokenCommentary = "";
+    private TextView muteButton;
     
     // Score data
     private static String team1Name = "TM1";
@@ -41,6 +53,7 @@ public class FloatingWidgetService extends Service {
     private static String statusText = "";
     private static String batsmanName = "";
     private static String bowlerName = "";
+    private static String commentary = "";
     
     @Nullable
     @Override
@@ -53,7 +66,47 @@ public class FloatingWidgetService extends Service {
         super.onCreate();
         createNotificationChannel();
         startForeground(NOTIFICATION_ID, createNotification());
+        
+        // Initialize Text-to-Speech
+        tts = new TextToSpeech(this, this);
+        
         createFloatingWidget();
+    }
+    
+    @Override
+    public void onInit(int status) {
+        if (status == TextToSpeech.SUCCESS) {
+            // Set language to English
+            int result = tts.setLanguage(Locale.US);
+            
+            if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
+                isTTSReady = true;
+                
+                // Set speech rate (0.9 = slightly slower for clarity)
+                tts.setSpeechRate(0.9f);
+                
+                // Set pitch (0.9 = slightly lower for male-like voice)
+                tts.setPitch(0.85f);
+                
+                // Try to find a male voice
+                try {
+                    Set<Voice> voices = tts.getVoices();
+                    if (voices != null) {
+                        for (Voice voice : voices) {
+                            String voiceName = voice.getName().toLowerCase();
+                            // Look for male voice
+                            if (voiceName.contains("male") || voiceName.contains("en-us-x-sfg") || 
+                                voiceName.contains("en-in") || voiceName.contains("james")) {
+                                tts.setVoice(voice);
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    // Use default voice if male voice not found
+                }
+            }
+        }
     }
     
     @Override
@@ -70,12 +123,51 @@ public class FloatingWidgetService extends Service {
                 statusText = intent.getStringExtra("statusText") != null ? intent.getStringExtra("statusText") : statusText;
                 batsmanName = intent.getStringExtra("batsmanName") != null ? intent.getStringExtra("batsmanName") : batsmanName;
                 bowlerName = intent.getStringExtra("bowlerName") != null ? intent.getStringExtra("bowlerName") : bowlerName;
+                
+                // Handle commentary for TTS
+                String newCommentary = intent.getStringExtra("commentary");
+                if (newCommentary != null && !newCommentary.isEmpty() && !newCommentary.equals(lastSpokenCommentary)) {
+                    commentary = newCommentary;
+                    speakCommentary(commentary);
+                    lastSpokenCommentary = commentary;
+                }
+                
                 updateFloatingWidget();
             } else if ("STOP_WIDGET".equals(action)) {
                 stopSelf();
+            } else if ("TOGGLE_MUTE".equals(action)) {
+                toggleMute();
             }
         }
         return START_STICKY;
+    }
+    
+    private void speakCommentary(String text) {
+        if (isTTSReady && !isMuted && text != null && !text.isEmpty()) {
+            // Stop any ongoing speech
+            if (tts.isSpeaking()) {
+                tts.stop();
+            }
+            // Speak the new commentary
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "commentary_" + System.currentTimeMillis());
+        }
+    }
+    
+    private void toggleMute() {
+        isMuted = !isMuted;
+        if (isMuted && tts != null && tts.isSpeaking()) {
+            tts.stop();
+        }
+        updateMuteButton();
+    }
+    
+    private void updateMuteButton() {
+        if (muteButton != null) {
+            muteButton.post(() -> {
+                muteButton.setText(isMuted ? "🔇" : "🔊");
+                muteButton.setBackgroundColor(isMuted ? 0x40FF0000 : 0x404CAF50);
+            });
+        }
     }
     
     private void createNotificationChannel() {
@@ -214,12 +306,24 @@ public class FloatingWidgetService extends Service {
         liveBg.setCornerRadius(16f);
         liveBadge.setBackground(liveBg);
         
+        // Mute/Unmute button for voice commentary
+        muteButton = new TextView(context);
+        muteButton.setText("🔊");
+        muteButton.setTextSize(16);
+        muteButton.setPadding(16, 8, 16, 8);
+        muteButton.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable muteBg = new android.graphics.drawable.GradientDrawable();
+        muteBg.setColor(0x404CAF50);
+        muteBg.setCornerRadius(16f);
+        muteButton.setBackground(muteBg);
+        muteButton.setOnClickListener(v -> toggleMute());
+        
         // Drag indicator
         TextView dragIndicator = new TextView(context);
         dragIndicator.setText("⋮⋮");
         dragIndicator.setTextColor(0xFF888888);
         dragIndicator.setTextSize(14);
-        dragIndicator.setPadding(20, 0, 20, 0);
+        dragIndicator.setPadding(12, 0, 12, 0);
         dragIndicator.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         dragIndicator.setGravity(Gravity.CENTER);
         
@@ -233,6 +337,7 @@ public class FloatingWidgetService extends Service {
         closeBtn.setOnClickListener(v -> stopSelf());
         
         headerLayout.addView(liveBadge);
+        headerLayout.addView(muteButton);
         headerLayout.addView(dragIndicator);
         headerLayout.addView(closeBtn);
         mainLayout.addView(headerLayout);
@@ -394,6 +499,14 @@ public class FloatingWidgetService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        
+        // Clean up TTS
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+            tts = null;
+        }
+        
         if (floatingView != null && windowManager != null) {
             windowManager.removeView(floatingView);
         }

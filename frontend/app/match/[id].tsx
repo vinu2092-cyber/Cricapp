@@ -72,6 +72,11 @@ export default function MatchDetail() {
   // Update native floating widget when score changes (for Pro users with active overlay)
   useEffect(() => {
     if (nativeOverlayActive && effectiveIsPro && match) {
+      // Get latest commentary for voice
+      const latestCommentary = match.commentary && match.commentary.length > 0 
+        ? match.commentary[0].english 
+        : '';
+      
       const scoreData = {
         team1Name: match.teams[0]?.shortName || 'TM1',
         team2Name: match.teams[1]?.shortName || 'TM2',
@@ -84,12 +89,13 @@ export default function MatchDetail() {
         team1Overs: match.teams[0]?.overs?.toString() || '',
         team2Overs: match.teams[1]?.overs?.toString() || '',
         statusText: match.statusText || '',
-        batsmanName: '', // Can be extracted from commentary if available
+        batsmanName: '',
         bowlerName: '',
+        commentary: latestCommentary, // Send commentary for TTS
       };
       updateFloatingWidget(scoreData);
     }
-  }, [match?.teams[0]?.runs, match?.teams[1]?.runs, nativeOverlayActive, effectiveIsPro]);
+  }, [match?.teams[0]?.runs, match?.teams[1]?.runs, match?.commentary?.[0]?.english, nativeOverlayActive, effectiveIsPro]);
 
   // 30-Min Pro Expiry (Logic D)
   useEffect(() => {
