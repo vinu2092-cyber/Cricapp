@@ -16,7 +16,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message }) => {
   return (
     <View style={styles.container}>
       <Image
-        source={require('../../assets/splash.png')}
+        source={require('../../assets/splash_screen.png')}
         style={styles.splashImage}
         resizeMode="cover"
       />
@@ -27,7 +27,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5dc',
+    backgroundColor: '#FFFFFF',
   },
   splashImage: {
     width: SCREEN_WIDTH,

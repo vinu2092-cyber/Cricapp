@@ -39,13 +39,14 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: yarn install
-
-      - name: Increase Node memory
-        run: echo "NODE_OPTIONS=--max-old-space-size=4096" >> $GITHUB_ENV
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Generate native android project
         working-directory: frontend
         run: npx expo prebuild --platform android --clean
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Make gradlew executable
         working-directory: frontend/android
