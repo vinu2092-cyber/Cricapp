@@ -91,7 +91,7 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
 const styles = StyleSheet.create({
   headerBackground: {
     width: '100%',
-    height: 130,
+    height: 160,
     justifyContent: 'flex-end',
   },
   headerContent: {
@@ -106,8 +106,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 160,
-    height: 65,
+    width: 320,
+    height: 130,
   },
   rightButtons: {
     flexDirection: 'row',
