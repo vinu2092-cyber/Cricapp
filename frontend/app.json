@@ -31,8 +31,8 @@
     },
     "splash": {
       "image": "./assets/splash_screen.png",
-      "resizeMode": "cover",
-      "backgroundColor": "#f5f5dc"
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
     },
     "android": {
       "adaptiveIcon": {
@@ -41,8 +41,8 @@
       },
       "splash": {
         "image": "./assets/splash_screen.png",
-        "resizeMode": "cover",
-        "backgroundColor": "#f5f5dc"
+        "resizeMode": "contain",
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.cricapp.live",
       "permissions": [
