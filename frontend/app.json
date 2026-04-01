@@ -32,7 +32,7 @@
     "splash": {
       "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFD700"
+      "backgroundColor": "#E4DCC4"
     },
     "android": {
       "adaptiveIcon": {
@@ -42,7 +42,7 @@
       "splash": {
         "image": "./assets/icon.png",
         "resizeMode": "contain",
-        "backgroundColor": "#FFD700"
+        "backgroundColor": "#E4DCC4"
       },
       "package": "com.cricapp.live",
       "permissions": [
