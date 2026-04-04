@@ -75,7 +75,7 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
             />
             <View style={styles.proButtonContent}>
               <Text style={[styles.proButtonText, isPro && styles.proButtonTextActive]}>
-                {isPro ? 'PRO' : 'UNLOCK PRO'}
+                {isPro ? 'PRO' : 'Unlock Features'}
               </Text>
               {isPro && timeRemaining && (
                 <Text style={styles.proTimerText}>{timeRemaining}</Text>

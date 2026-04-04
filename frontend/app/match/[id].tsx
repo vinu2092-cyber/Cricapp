@@ -333,7 +333,7 @@ export default function MatchDetail() {
             {!effectiveIsPro ? (
               <TouchableOpacity style={styles.unlockBtn} onPress={() => setShowProModal(true)}>
                 <Ionicons name="lock-open" size={14} color="#FFF" />
-                <Text style={styles.unlockTxt}>Unlock Pro (3 Ads)</Text>
+                <Text style={styles.unlockTxt}>Unlock Features (3 Ads)</Text>
               </TouchableOpacity>
             ) : (
               <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -466,7 +466,7 @@ export default function MatchDetail() {
       <Modal visible={showProModal} transparent animationType="fade">
         <View style={styles.modalBg}>
           <View style={styles.modalBox}>
-            <Text style={styles.mTitle}>Unlock Pro Access</Text>
+            <Text style={styles.mTitle}>Unlock Special Access</Text>
 
             <View style={styles.featureList}>
               {[

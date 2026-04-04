@@ -76,11 +76,11 @@ export default function AboutScreen() {
             </View>
             <View style={styles.featureItem}>
               <Ionicons name="tv" size={20} color="#4CAF50" />
-              <Text style={styles.featureText}>Floating Scoreboard (Pro)</Text>
+              <Text style={styles.featureText}>Floating Scoreboard</Text>
             </View>
             <View style={styles.featureItem}>
               <Ionicons name="volume-high" size={20} color="#4CAF50" />
-              <Text style={styles.featureText}>Voice Commentary (Pro)</Text>
+              <Text style={styles.featureText}>Voice Commentary</Text>
             </View>
           </View>
         </View>
@@ -108,8 +108,7 @@ export default function AboutScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Data Sources</Text>
           <Text style={styles.sectionText}>
-            Match data provided by CricAPI.com and our proprietary data services.
-            Live scores are updated in real-time.
+            Match data provided by third-party live sports APIs and our proprietary data services. Live scores are updated in real-time.
           </Text>
         </View>
 

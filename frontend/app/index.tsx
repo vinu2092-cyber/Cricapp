@@ -365,7 +365,7 @@ export default function Index() {
               </>
             ) : (
               <>
-                <Text style={styles.proModalTitle}>Unlock Pro Features</Text>
+                <Text style={styles.proModalTitle}>Unlock Special Features</Text>
                 
                 <View style={styles.proFeaturesList}>
                   <View style={styles.proFeatureItem}>
