@@ -126,7 +126,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       </View>
 
       <ScrollView style={styles.commentaryList} nestedScrollEnabled>
-        {/* If no commentary, show 2 banner ads with Cricbuzz button in middle */}
+        {/* If no commentary, show 2 banner ads with external link button in middle */}
         {displayedCommentary.length === 0 && (
           <View style={{ padding: 20, alignItems: 'center' }}>
             <Ionicons name="chatbox-outline" size={40} color="#999" />
@@ -137,7 +137,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             <View style={styles.bannerAdContainer}>
               <BannerAdComponent />
             </View>
-            {/* Cricbuzz External Link Button */}
+            {/* External Link Button */}
             <TouchableOpacity
               style={{
                 backgroundColor: '#022d5d',
@@ -153,7 +153,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                 if (matchId) {
                   Alert.alert(
                     'External Link',
-                    'You will be redirected to Cricbuzz website for live commentary. Do you want to continue?',
+                    'You will be redirected to an external website for live commentary. Do you want to continue?',
                     [
                       { text: 'No', style: 'cancel' },
                       { text: 'Yes', onPress: () => Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`) },
@@ -163,7 +163,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
               }}
             >
               <Ionicons name="globe-outline" size={20} color="#FFF" />
-              <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>View Live Commentary on Cricbuzz</Text>
+              <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>View Live Commentary</Text>
             </TouchableOpacity>
             {/* Banner Ad 2 */}
             <View style={styles.bannerAdContainer}>
@@ -218,7 +218,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           );
         })}
 
-        {/* Load More - Direct to Cricbuzz with confirmation */}
+        {/* Load More - Direct to external with confirmation */}
         {hasMoreLocal ? (
           <View style={styles.actionContainer}>
             <TouchableOpacity
@@ -227,7 +227,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                 if (matchId) {
                   Alert.alert(
                     'External Link',
-                    'You will be redirected to Cricbuzz website. Do you want to continue?',
+                    'You will be redirected to an external website. Do you want to continue?',
                     [
                       { text: 'No', style: 'cancel' },
                       { text: 'Yes', onPress: () => Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`) },
@@ -239,7 +239,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             >
               <Ionicons name="open-outline" size={20} color="#4CAF50" />
               <Text style={styles.loadMoreText}>
-                Load More on Cricbuzz ({commentary.length - displayCount} remaining)
+                Load More ({commentary.length - displayCount} remaining)
               </Text>
             </TouchableOpacity>
           </View>

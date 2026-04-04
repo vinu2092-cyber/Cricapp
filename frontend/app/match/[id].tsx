@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Dimensions, Modal, Alert, Linking, Platform, ImageBackground
+  ActivityIndicator, Dimensions, Modal, Alert, Linking, Platform, ImageBackground, AppState
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import { fetchMatchById, openCricbuzzMatch } from '../../src/services/api';
+import { fetchMatchById, openExternalScorecard } from '../../src/services/api';
 import { Match } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
 import LiveIndicator from '../../src/components/LiveIndicator';
@@ -27,7 +27,8 @@ import {
   hideFloatingWidget,
 } from '../../src/services/FloatingWidgetService';
 
-const AUTO_REFRESH = 45000;
+const AUTO_REFRESH = 60000; // 60 seconds refresh
+const MATCH_CACHE_FLUSH = 1800000; // 30 minutes
 
 export default function MatchDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -111,11 +112,44 @@ export default function MatchDetail() {
     return () => clearInterval(interval);
   }, [tempPro, proExpiry]);
 
+  // Refs for timers - cleanup on unmount
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cacheFlushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
+    // Initial load
     loadMatch();
-    const interval = setInterval(loadMatch, AUTO_REFRESH);
+    
+    // 60-second refresh with state cleanup
+    refreshIntervalRef.current = setInterval(() => {
+      // Clear previous match state before update to prevent memory bloat
+      setMatch(prevMatch => {
+        if (prevMatch) {
+          // Keep minimal data, clear commentary cache
+          return { ...prevMatch, commentary: [] };
+        }
+        return prevMatch;
+      });
+      loadMatch();
+    }, AUTO_REFRESH);
+
+    // 30-minute absolute cache flush
+    cacheFlushIntervalRef.current = setInterval(() => {
+      console.log('[Memory] Match page - 30 min cache flush');
+      setMatch(null);
+      loadMatch();
+    }, MATCH_CACHE_FLUSH);
+
+    // Cleanup on unmount - kills ALL background fetching instantly
     return () => {
-      clearInterval(interval);
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+      if (cacheFlushIntervalRef.current) {
+        clearInterval(cacheFlushIntervalRef.current);
+        cacheFlushIntervalRef.current = null;
+      }
       Speech.stop();
       // Stop native overlay when leaving the page
       if (nativeOverlayActive) {
@@ -261,10 +295,10 @@ export default function MatchDetail() {
                 />
               </TouchableOpacity>
 
-              {/* Cricbuzz Link */}
+              {/* External Link */}
               <TouchableOpacity
                 style={[styles.actionBtn, { backgroundColor: 'rgba(255,165,0,0.15)' }]}
-                onPress={() => openCricbuzzMatch(id || '')}
+                onPress={() => openExternalScorecard(id || '')}
               >
                 <Ionicons name="open-outline" size={16} color="#FFA500" />
               </TouchableOpacity>
@@ -415,9 +449,9 @@ export default function MatchDetail() {
               <BannerAdComponent />
             </View>
 
-            <TouchableOpacity style={styles.cricbuzzBtn} onPress={() => openCricbuzzMatch(id || '')}>
+            <TouchableOpacity style={styles.externalBtn} onPress={() => openExternalScorecard(id || '')}>
               <Ionicons name="open-outline" size={16} color="#FFF" />
-              <Text style={styles.cricbuzzTxt}>View on Cricbuzz</Text>
+              <Text style={styles.externalTxt}>View Full Scorecard</Text>
             </TouchableOpacity>
 
             {/* Banner Ad 2 */}
@@ -523,7 +557,7 @@ const styles = StyleSheet.create({
   unlockTxt: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
   noComm: { padding: 40, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', margin: 16, borderRadius: 12 },
   noCommText: { color: '#999', fontSize: 16, marginTop: 12, marginBottom: 16, textAlign: 'center' },
-  cricbuzzBtn: {
+  externalBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFA500',
@@ -532,7 +566,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     gap: 8,
   },
-  cricbuzzTxt: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  externalTxt: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
   modalBox: { backgroundColor: '#FFF', padding: 24, borderRadius: 20, width: '85%', alignItems: 'center' },
   mTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 16, color: '#333' },

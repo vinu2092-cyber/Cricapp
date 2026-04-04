@@ -392,10 +392,10 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
 
 // ============ DEEP LINK ============
 
-export const openCricbuzzMatch = (matchId: string) => {
+export const openExternalScorecard = (matchId: string) => {
   Alert.alert(
     'External Link',
-    'You will be redirected to Cricbuzz website. Do you want to continue?',
+    'You will be redirected to an external website for more details. Do you want to continue?',
     [
       { text: 'No', style: 'cancel' },
       {

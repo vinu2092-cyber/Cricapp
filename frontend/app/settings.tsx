@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  Alert, ScrollView, KeyboardAvoidingView, Platform
+  Alert, ScrollView, KeyboardAvoidingView, Platform, Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_KEY_STORAGE = 'cricapp_user_api_key';
+const RAPIDAPI_URL = 'https://rapidapi.com/cricketapilive/api/cricbuzz-cricket';
 
 export default function Settings() {
   const router = useRouter();
@@ -75,6 +76,24 @@ export default function Settings() {
     );
   };
 
+  const handleGetApiKey = () => {
+    Alert.alert(
+      'External Link',
+      'You are being redirected to an external link to get your API Key. Do you want to continue?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes',
+          onPress: () => {
+            Linking.openURL(RAPIDAPI_URL).catch(() => {
+              Alert.alert('Error', 'Unable to open the link. Please try again.');
+            });
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
@@ -91,44 +110,20 @@ export default function Settings() {
         </View>
 
         <ScrollView style={styles.content}>
-          {/* Info Card */}
-          <View style={styles.infoCard}>
-            <Ionicons name="information-circle" size={24} color="#2196F3" />
-            <Text style={styles.infoText}>
-              Add your own RapidAPI key to get unlimited access to live cricket data.
-            </Text>
-          </View>
-
-          {/* Locked Fields - Provider Info */}
+          {/* Section 1: Get API Key Button */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>API Provider (Locked)</Text>
-            
-            <View style={styles.lockedField}>
-              <Text style={styles.lockedLabel}>Provider</Text>
-              <View style={styles.lockedValue}>
-                <Ionicons name="lock-closed" size={16} color="#666" />
-                <Text style={styles.lockedText}>RapidAPI</Text>
-              </View>
-            </View>
-
-            <View style={styles.lockedField}>
-              <Text style={styles.lockedLabel}>API Host</Text>
-              <View style={styles.lockedValue}>
-                <Ionicons name="lock-closed" size={16} color="#666" />
-                <Text style={styles.lockedText}>cricbuzz-cricket.p.rapidapi.com</Text>
-              </View>
-            </View>
-
-            <View style={styles.lockedField}>
-              <Text style={styles.lockedLabel}>Header Name</Text>
-              <View style={styles.lockedValue}>
-                <Ionicons name="lock-closed" size={16} color="#666" />
-                <Text style={styles.lockedText}>X-RapidAPI-Key</Text>
-              </View>
-            </View>
+            <TouchableOpacity 
+              style={styles.getApiKeyBtn}
+              onPress={handleGetApiKey}
+              data-testid="get-api-key-btn"
+            >
+              <Ionicons name="key-outline" size={22} color="#FFF" />
+              <Text style={styles.getApiKeyText}>Get API Key</Text>
+              <Ionicons name="open-outline" size={18} color="#FFF" />
+            </TouchableOpacity>
           </View>
 
-          {/* API Key Input */}
+          {/* Section 2: API Key Input - DO NOT TOUCH */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Your API Key</Text>
             
@@ -140,6 +135,7 @@ export default function Settings() {
               onChangeText={setApiKey}
               autoCapitalize="none"
               autoCorrect={false}
+              data-testid="api-key-input"
             />
 
             {savedKey ? (
@@ -153,6 +149,7 @@ export default function Settings() {
               style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
               onPress={saveApiKey}
               disabled={isSaving}
+              data-testid="save-api-key-btn"
             >
               <Ionicons name="save" size={20} color="#FFF" />
               <Text style={styles.saveBtnText}>
@@ -168,15 +165,13 @@ export default function Settings() {
             ) : null}
           </View>
 
-          {/* How to get API Key */}
+          {/* Section 3: Simple Help Text */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>How to get API Key?</Text>
-            <View style={styles.steps}>
-              <Text style={styles.step}>1. Go to rapidapi.com</Text>
-              <Text style={styles.step}>2. Search for "Cricbuzz Cricket"</Text>
-              <Text style={styles.step}>3. Subscribe to a plan (Free/Pro/Ultra)</Text>
-              <Text style={styles.step}>4. Copy your X-RapidAPI-Key</Text>
-              <Text style={styles.step}>5. Paste it above and save</Text>
+            <View style={styles.helpTextContainer}>
+              <Ionicons name="help-circle-outline" size={20} color="#888" />
+              <Text style={styles.helpText}>
+                If user is unable to see the match, then they can generate their own API key by clicking on Get API Key and pasting it in the box above.
+              </Text>
             </View>
           </View>
         </ScrollView>
@@ -211,20 +206,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  infoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(33, 150, 243, 0.1)',
-    padding: 16,
-    borderRadius: 12,
-    gap: 12,
-    marginBottom: 20,
-  },
-  infoText: {
-    flex: 1,
-    color: '#2196F3',
-    fontSize: 14,
-  },
   section: {
     marginBottom: 24,
   },
@@ -234,26 +215,19 @@ const styles = StyleSheet.create({
     color: '#FFF',
     marginBottom: 12,
   },
-  lockedField: {
-    backgroundColor: '#1E1E1E',
-    padding: 14,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  lockedLabel: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 4,
-  },
-  lockedValue: {
+  getApiKeyBtn: {
+    backgroundColor: '#2196F3',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 10,
   },
-  lockedText: {
-    fontSize: 14,
-    color: '#CCC',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  getApiKeyText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   input: {
     backgroundColor: '#1E1E1E',
@@ -308,14 +282,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  steps: {
+  helpTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     backgroundColor: '#1E1E1E',
     padding: 16,
     borderRadius: 10,
+    gap: 10,
   },
-  step: {
-    color: '#CCC',
+  helpText: {
+    flex: 1,
+    color: '#AAA',
     fontSize: 14,
-    marginBottom: 8,
+    lineHeight: 20,
   },
 });

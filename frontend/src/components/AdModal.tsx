@@ -103,13 +103,13 @@ const AdModal: React.FC<AdModalProps> = ({ visible, onClose }) => {
         <View style={styles.adContent}>
           <View style={styles.adBox}>
             <Ionicons name="trophy" size={48} color="#FFD700" />
-            <Text style={styles.proTitle}>Unlock Pro Features</Text>
+            <Text style={styles.proTitle}>Unlock Special Features</Text>
             <Text style={styles.proDescription}>
               Watch 3 short video ads to unlock:{'\n\n'}
               ✓ Ad-free experience for 30 mins{'\n'}
               ✓ Floating scoreboard widget{'\n'}
               ✓ Voice commentary{'\n'}
-              ✓ Premium features
+              ✓ Enhanced features
             </Text>
           </View>
 

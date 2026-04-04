@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  AppState,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,7 +31,8 @@ import {
 type TabType = 'live' | 'recent' | 'upcoming';
 type CategoryType = 'all' | 'international' | 'league' | 'domestic' | 'women';
 
-const AUTO_REFRESH_INTERVAL = 60000;
+const AUTO_REFRESH_INTERVAL = 60000; // 60 seconds
+const CACHE_FLUSH_INTERVAL = 1800000; // 30 minutes
 
 export default function Index() {
   const router = useRouter();
@@ -46,14 +48,29 @@ export default function Index() {
   const [showProModal, setShowProModal] = useState(false);
   const [localAdsWatched, setLocalAdsWatched] = useState(0);
 
+  // Refs for timers - important for cleanup
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cacheFlushRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const appStateRef = useRef(AppState.currentState);
   
-  // In-memory cache per tab so switching doesn't trigger loading spinner
+  // In-memory cache per tab
   const tabCacheRef = useRef<Record<TabType, Match[]>>({ live: [], recent: [], upcoming: [] });
 
-  // Fetch matches - returns cached data instantly if available, then refreshes in background
+  // Clear all cache and reset state - memory optimization
+  const flushAllCache = useCallback(() => {
+    console.log('[Memory] Flushing all cache (30 min interval)');
+    tabCacheRef.current = { live: [], recent: [], upcoming: [] };
+    setFilteredMatches([]);
+  }, []);
+
+  // Fetch matches with state cleanup before update
   const fetchMatches = async (tab: TabType, forceRefresh = false) => {
     try {
+      // Clear previous state before fetching - prevents memory bloat
+      if (forceRefresh) {
+        tabCacheRef.current[tab] = [];
+      }
+      
       let fetchedMatches: Match[] = [];
       
       switch (tab) {
@@ -103,27 +120,58 @@ export default function Index() {
     return 'Domestic';
   };
 
-  // Auto-refresh for live matches
+  // Auto-refresh for live matches + 30-minute cache flush
   useEffect(() => {
+    // 30-minute cache flush timer
+    cacheFlushRef.current = setInterval(() => {
+      flushAllCache();
+      // Re-fetch current tab after flush
+      fetchMatches(activeTab, true).then(data => {
+        applyCategory(data, selectedCategory);
+      }).catch(console.error);
+    }, CACHE_FLUSH_INTERVAL);
+
+    // Auto-refresh for live tab (60 seconds)
     if (activeTab === 'live') {
       autoRefreshRef.current = setInterval(() => {
-        fetchMatches('live').then(data => {
+        // Clear previous state before updating
+        tabCacheRef.current['live'] = [];
+        fetchMatches('live', true).then(data => {
           if (activeTab === 'live') applyCategory(data, selectedCategory);
         }).catch(console.error);
       }, AUTO_REFRESH_INTERVAL);
+    }
 
-      return () => {
-        if (autoRefreshRef.current) {
-          clearInterval(autoRefreshRef.current);
-        }
-      };
-    } else {
+    // Cleanup on unmount or tab change - kills all background fetching
+    return () => {
       if (autoRefreshRef.current) {
         clearInterval(autoRefreshRef.current);
         autoRefreshRef.current = null;
       }
-    }
-  }, [activeTab]);
+      if (cacheFlushRef.current) {
+        clearInterval(cacheFlushRef.current);
+        cacheFlushRef.current = null;
+      }
+    };
+  }, [activeTab, selectedCategory]);
+
+  // App state listener for background/foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App came to foreground - refresh data
+        console.log('[Memory] App foregrounded - refreshing');
+        fetchMatches(activeTab, true).then(data => {
+          applyCategory(data, selectedCategory);
+        }).catch(console.error);
+      }
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [activeTab, selectedCategory]);
 
   // Apply category filter
   const applyCategory = (matches: Match[], category: CategoryType) => {
