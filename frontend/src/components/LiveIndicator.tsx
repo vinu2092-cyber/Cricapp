@@ -20,6 +20,11 @@ const getMatchState = (state?: string, isLive?: boolean): MatchState => {
   if (s === 'upcoming') return 'upcoming';
   if (s === 'recent') return 'completed';
   
+  // IMPORTANT: Check abandon FIRST before other patterns (contains "toss" in "no toss")
+  if (s.includes('abandon') || s.includes('no result') || s.includes('cancelled')) {
+    return 'abandoned';
+  }
+  
   // Text-based matching for statusText
   if (s.includes('live') || s.includes('in progress') || s.includes('innings break') || s.includes('day ')) {
     return 'live';
@@ -29,9 +34,6 @@ const getMatchState = (state?: string, isLive?: boolean): MatchState => {
   }
   if (s.includes('won') || s.includes('draw') || s.includes('tied') || s.includes('complete') || s.includes('ended') || s.includes('result')) {
     return 'completed';
-  }
-  if (s.includes('abandon') || s.includes('no result') || s.includes('cancelled')) {
-    return 'abandoned';
   }
   if (s.includes('delay') || s.includes('rain') || s.includes('bad light')) {
     return 'delayed';
