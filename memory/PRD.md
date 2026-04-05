@@ -1,7 +1,7 @@
 # CricApp - PRD & Task Tracker
 
 ## Original Problem Statement
-Clone CricApp repo, append 4 new RapidAPI keys, fix 3 specific UI bugs (0 badge, \n formatting, dynamic state badge). No new features.
+Clone CricApp repo, append API keys, fix UI bugs, add IPL/International match notifications.
 
 ## Architecture
 - **Platform**: React Native / Expo
@@ -10,39 +10,55 @@ Clone CricApp repo, append 4 new RapidAPI keys, fix 3 specific UI bugs (0 badge,
 
 ## What's Been Implemented (Jan 2026)
 
-### Task 1: Repository Cloned ✅
-- Cloned from: https://github.com/gemmiapps-rgb/CricApp.git
+### API Key Status Check ✅
+- **6 Active Keys** (working):
+  - `6a948b174d...` (Key 13)
+  - `be681ef5f4...` (Key 15)
+  - `efa0ba9303...` (Key 16)
+  - `49895f57cb...` (Key 17)
+  - `3b5c50ff5f...` (Key 18)
+  - `948dd6c539...` (Key 19)
+- **13 Inactive Keys** (rate limited/expired) - removed from rotation
 
-### Task 2: API Keys Appended ✅
-- File: `/app/frontend/src/services/api.ts`
-- Added 4 new keys to MATCH_KEYS array:
-  - `39135304c0msh9b36fa9057dbf23p141f77jsnfb140a4c7127`
-  - `3151754456msh3821b80e3429ed0p15ac70jsn887be255a4d6`
-  - `6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925`
-  - `1a6681fd59mshb9cbb21cf3aa0f3p127c5djsnc12085b39c27`
+### Badge Bug Fix ✅
+- Abandoned matches now show "ABANDONED" (orange) instead of "UPCOMING"
+- Check order: abandon/no result → completed → live → upcoming → delayed
 
-### Task 3: UI Bug Fixes ✅
+### Auto Notification System ✅ (NEW)
+**Files Modified:**
+- `/frontend/src/services/NotificationService.ts` - Added `scheduleMatchReminder()`
+- `/frontend/src/context/NotificationContext.tsx` - Complete rewrite with:
+  - Auto-tracking IPL & International matches
+  - Match start reminder (10 min before)
+  - Wicket, Four, Six, Milestone detection from commentary
+  - Better event detection using keyword matching
+- `/frontend/app/settings.tsx` - Added notification toggle UI
 
-#### Bug 1: '0' Badge Bug (Already Fixed in Codebase)
-- File: `/app/frontend/src/components/CommentarySection.tsx`
-- Logic: `isActualDelivery` check hides over badge for non-ball events
+**Features:**
+1. **Auto-Track**: Automatically tracks all IPL and International matches
+2. **Match Reminder**: 10 minutes before match starts
+3. **Event Alerts**:
+   - 🔴 WICKET alerts
+   - 4️⃣ FOUR alerts  
+   - 6️⃣ SIX alerts
+   - 🎯 Milestone alerts (50s, 100s)
+4. **Settings UI**: Toggle auto-track and notifications
 
-#### Bug 2: String Formatting (Already Fixed in Codebase)
-- File: `/app/frontend/src/components/CommentarySection.tsx`
-- Logic: `parseText()` converts `\n` literals to actual line breaks
-
-#### Bug 3: Dynamic State Badge ✅ FIXED
-- File: `/app/frontend/app/match/[id].tsx`
-- Changed from hardcoded `<LiveIndicator />` to `<MatchStatusBadge state={match.status} isLive={match.status === 'live'} />`
-- Now shows: LIVE (red), UPCOMING (blue), COMPLETED (grey), ABANDONED (orange), DELAYED (orange)
+**IPL/International Detection Keywords:**
+- IPL: 'ipl', 'indian premier league', 'tata ipl'
+- International: 'test', 'odi', 't20i', 'world cup', 'asia cup', 'icc'
 
 ## Files Modified
-1. `/app/frontend/src/services/api.ts` - Appended 4 API keys
-2. `/app/frontend/app/match/[id].tsx` - Dynamic state badge
+1. `/frontend/src/services/api.ts` - Updated to only active keys (6 keys)
+2. `/frontend/src/services/NotificationService.ts` - Added match reminder
+3. `/frontend/src/context/NotificationContext.tsx` - Auto-track + event detection
+4. `/frontend/src/components/LiveIndicator.tsx` - Badge fix
+5. `/frontend/app/settings.tsx` - Notification settings UI
 
-## Pending: EAS Build
-- User will trigger EAS build for APK and AAB via their setup
-- User will push code via "Save to Github" feature
+## Pending
+- User to trigger EAS build
+- Push code via "Save to Github"
 
 ## Backlog
-- None (scope was fix-only, no new features)
+- Background task for notifications when app is killed
+- Push notifications via server (FCM) for better reliability

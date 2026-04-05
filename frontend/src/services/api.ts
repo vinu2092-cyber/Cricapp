@@ -6,29 +6,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // ============ API KEY MANAGEMENT ============
 const API_KEY_STORAGE = 'cricapp_user_api_key';
 
-// Keys 0,1 are SUBSCRIBED to /comm endpoint. Others only work for /matches.
+// ACTIVE KEYS ONLY (verified working as of latest check)
+// Keys for commentary endpoint
 const COMM_KEYS = [
-  "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
-  "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
+  "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
+  "be681ef5f4mshf8eb5972bbbe7abp1d55d8jsn54464cbad4d4",
+  "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
 ];
 
+// All active keys for match endpoints
 const MATCH_KEYS = [
-  "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
-  "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
-  "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",
-  "59b9249be3mshcab753fe794baa3p14e78cjsne1da55eef3aa",
-  "c651c7e717msh7d7c4d05cae7b6dp17500bjsn1e00d9cf8d61",
-  "4223543bdbmsh7962a0ecb8d4e7fp1132a3jsn8f9a656e2b32",
-  "ba8052cb25msh6ea2297ebf719dcp14bc6ejsn51e281c87482",
-  "db67e8004emsh40add8626f58e58p183678jsne28298b94c3b",
-  "2a21f65881msh680271f280de7p182fbdjsn151d068c6392",
-  "cd6ae88bddmsh5dcf84f0286d14cp1af3f9jsn7d2de7fe2a03",
-  // Appended new keys for expanded quota (batch 1)
-  "39135304c0msh9b36fa9057dbf23p141f77jsnfb140a4c7127",
-  "3151754456msh3821b80e3429ed0p15ac70jsn887be255a4d6",
+  // Active keys (batch 2 + Key 13)
   "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
-  "1a6681fd59mshb9cbb21cf3aa0f3p127c5djsnc12085b39c27",
-  // Appended new keys for expanded quota (batch 2)
   "be681ef5f4mshf8eb5972bbbe7abp1d55d8jsn54464cbad4d4",
   "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
   "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",

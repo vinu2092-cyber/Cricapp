@@ -101,3 +101,47 @@ const VIBRATION_PATTERNS: Record<AlertType, number[]> = {
 export async function cancelAllMatchAlerts() {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
+
+// Schedule a notification for match start (10 minutes before)
+export async function scheduleMatchReminder(
+  matchId: string,
+  team1: string,
+  team2: string,
+  matchStartTime: Date,
+  seriesName: string
+) {
+  const reminderTime = new Date(matchStartTime.getTime() - 10 * 60 * 1000); // 10 min before
+  const now = new Date();
+  
+  if (reminderTime <= now) {
+    // Match already started or about to start, skip scheduling
+    return;
+  }
+
+  const identifier = `match-reminder-${matchId}`;
+  
+  // Cancel existing reminder for this match if any
+  await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
+
+  await Notifications.scheduleNotificationAsync({
+    identifier,
+    content: {
+      title: `🏏 Match Starting Soon!`,
+      body: `${team1} vs ${team2}\n${seriesName}\nMatch starts in 10 minutes!`,
+      data: { matchId, type: 'match-reminder' },
+      sound: 'default',
+      ...(Platform.OS === 'android' && {
+        channelId: 'match-alerts',
+        priority: 'high',
+      }),
+    },
+    trigger: {
+      date: reminderTime,
+    },
+  });
+}
+
+// Cancel match reminder
+export async function cancelMatchReminder(matchId: string) {
+  await Notifications.cancelScheduledNotificationAsync(`match-reminder-${matchId}`).catch(() => {});
+}

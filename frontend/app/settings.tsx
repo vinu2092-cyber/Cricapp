@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  Alert, ScrollView, KeyboardAvoidingView, Platform, Linking
+  Alert, ScrollView, KeyboardAvoidingView, Platform, Linking, Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNotifications } from '../src/context/NotificationContext';
 
 const API_KEY_STORAGE = 'cricapp_user_api_key';
 const RAPIDAPI_URL = 'https://rapidapi.com/cricketapilive/api/cricbuzz-cricket';
@@ -16,6 +17,7 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState('');
   const [savedKey, setSavedKey] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const { notificationsEnabled, autoTrackEnabled, enableNotifications, disableNotifications, toggleAutoTrack } = useNotifications();
 
   // Load saved API key on mount
   useEffect(() => {
@@ -165,7 +167,56 @@ export default function Settings() {
             ) : null}
           </View>
 
-          {/* Section 3: Simple Help Text */}
+          {/* Section 3: Notification Settings */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notification Settings</Text>
+            
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Ionicons name="notifications" size={22} color="#4CAF50" />
+                <View style={styles.settingText}>
+                  <Text style={styles.settingTitle}>Match Notifications</Text>
+                  <Text style={styles.settingDesc}>Get alerts for wickets, fours, sixes</Text>
+                </View>
+              </View>
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={(value) => value ? enableNotifications() : disableNotifications()}
+                trackColor={{ false: '#333', true: '#4CAF50' }}
+                thumbColor={notificationsEnabled ? '#FFF' : '#999'}
+              />
+            </View>
+            
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Ionicons name="trophy" size={22} color="#FFD700" />
+                <View style={styles.settingText}>
+                  <Text style={styles.settingTitle}>Auto-Track IPL & International</Text>
+                  <Text style={styles.settingDesc}>Automatically track IPL and International matches</Text>
+                </View>
+              </View>
+              <Switch
+                value={autoTrackEnabled}
+                onValueChange={toggleAutoTrack}
+                trackColor={{ false: '#333', true: '#FFD700' }}
+                thumbColor={autoTrackEnabled ? '#FFF' : '#999'}
+                disabled={!notificationsEnabled}
+              />
+            </View>
+            
+            <View style={styles.notifInfoBox}>
+              <Ionicons name="information-circle" size={20} color="#2196F3" />
+              <Text style={styles.notifInfoText}>
+                When enabled, you'll automatically receive notifications for all IPL and International matches including:{'\n'}
+                • Match start reminder (10 min before){'\n'}
+                • Wicket alerts{'\n'}
+                • Boundary alerts (4s & 6s){'\n'}
+                • Milestone alerts (50s, 100s)
+              </Text>
+            </View>
+          </View>
+
+          {/* Section 4: Simple Help Text */}
           <View style={styles.section}>
             <View style={styles.helpTextContainer}>
               <Ionicons name="help-circle-outline" size={20} color="#888" />
@@ -281,6 +332,50 @@ const styles = StyleSheet.create({
     color: '#F44336',
     fontSize: 16,
     fontWeight: '600',
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1E1E1E',
+    padding: 16,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  settingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  settingText: {
+    flex: 1,
+  },
+  settingTitle: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  settingDesc: {
+    color: '#888',
+    fontSize: 12,
+  },
+  notifInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(33, 150, 243, 0.1)',
+    padding: 14,
+    borderRadius: 10,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(33, 150, 243, 0.3)',
+  },
+  notifInfoText: {
+    flex: 1,
+    color: '#AAA',
+    fontSize: 13,
+    lineHeight: 20,
   },
   helpTextContainer: {
     flexDirection: 'row',
