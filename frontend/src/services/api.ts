@@ -389,6 +389,43 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
           }
         }
 
+        // Extract current batsmen (striker and non-striker)
+        const batsmen: any[] = [];
+        const batsmanStriker = ms.batsmanstriker || ms.batsman1 || {};
+        const batsmanNonStriker = ms.batsmannonstriker || ms.batsman2 || {};
+        
+        if (batsmanStriker.batname || batsmanStriker.name) {
+          batsmen.push({
+            name: batsmanStriker.batname || batsmanStriker.name || 'Batsman 1',
+            runs: batsmanStriker.batruns ?? batsmanStriker.runs ?? 0,
+            balls: batsmanStriker.batballs ?? batsmanStriker.balls ?? 0,
+            isStriker: true,
+          });
+        }
+        if (batsmanNonStriker.batname || batsmanNonStriker.name) {
+          batsmen.push({
+            name: batsmanNonStriker.batname || batsmanNonStriker.name || 'Batsman 2',
+            runs: batsmanNonStriker.batruns ?? batsmanNonStriker.runs ?? 0,
+            balls: batsmanNonStriker.batballs ?? batsmanNonStriker.balls ?? 0,
+            isStriker: false,
+          });
+        }
+        if (batsmen.length > 0) {
+          match.batsmen = batsmen;
+        }
+
+        // Extract over summary (o_summary or recentovsummary)
+        const oSummary = ms.o_summary || ms.recentovsummary || ms.oversummary || ms.recentOvs || '';
+        if (oSummary) {
+          match.oSummary = oSummary;
+        }
+
+        // Current over number
+        const currentOver = ms.overs || ms.currentover;
+        if (currentOver !== undefined) {
+          match.currentOver = parseFloat(currentOver);
+        }
+
         // Always prefer commentary matchheaders status (it has actual result)
         if (mh.status) {
           match.statusText = mh.status;

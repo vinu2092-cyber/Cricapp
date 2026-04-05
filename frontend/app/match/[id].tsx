@@ -30,6 +30,67 @@ import {
 const AUTO_REFRESH = 60000; // 60 seconds refresh
 const MATCH_CACHE_FLUSH = 1800000; // 30 minutes
 
+// Format over summary with wickets in RED
+const formatOverSummary = (summary: string, currentOver?: number): React.ReactNode[] => {
+  const elements: React.ReactNode[] = [];
+  
+  // Parse the summary - can be like "1 4 W 0 2 6" or "1|4|W|0|2|6" or comma separated
+  const balls = summary.split(/[\s|,]+/).filter(b => b.trim());
+  
+  let overNum = currentOver ? Math.floor(currentOver) : 1;
+  let ballCount = 0;
+  
+  balls.forEach((ball, idx) => {
+    const b = ball.trim().toUpperCase();
+    if (!b) return;
+    
+    // Check if it's a new over marker
+    if (b.includes('OVER') || b === '|') {
+      return;
+    }
+    
+    // Add over separator every 6 balls
+    if (ballCount > 0 && ballCount % 6 === 0) {
+      overNum++;
+      elements.push(
+        <Text key={`sep-${idx}`} style={{ color: '#666', marginHorizontal: 4, fontWeight: '600' }}>
+          | Over {overNum} |
+        </Text>
+      );
+    }
+    
+    // Style based on ball type
+    let style: any = { marginHorizontal: 3, fontSize: 14 };
+    
+    if (b === 'W' || b === 'WKT' || b === 'WICKET') {
+      // Wicket - RED and BOLD
+      style = { ...style, color: '#FF0000', fontWeight: 'bold' };
+    } else if (b === '4') {
+      style = { ...style, color: '#4CAF50', fontWeight: '600' };
+    } else if (b === '6') {
+      style = { ...style, color: '#9C27B0', fontWeight: 'bold' };
+    } else if (b === 'WD' || b === 'WIDE') {
+      style = { ...style, color: '#FF9800' };
+    } else if (b === 'NB' || b === 'NOBALL') {
+      style = { ...style, color: '#FF9800' };
+    } else if (b === '0' || b === '.') {
+      style = { ...style, color: '#999' };
+    } else {
+      style = { ...style, color: '#FFF' };
+    }
+    
+    elements.push(
+      <Text key={`ball-${idx}`} style={style}>
+        {b === '.' ? '0' : b}
+      </Text>
+    );
+    
+    ballCount++;
+  });
+  
+  return elements;
+};
+
 export default function MatchDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -328,6 +389,46 @@ export default function MatchDetail() {
 
           {match.statusText ? <Text style={styles.statusTxt} numberOfLines={2}>{match.statusText}</Text> : null}
 
+          {/* Live Match Details: Current Batsmen & Over Summary */}
+          {match.status === 'live' && (match.batsmen || match.oSummary) && (
+            <View style={styles.liveDetails}>
+              {/* Current Batsmen */}
+              {match.batsmen && match.batsmen.length > 0 && (
+                <View style={styles.batsmenContainer}>
+                  <Text style={styles.batsmenTitle}>At The Crease</Text>
+                  <View style={styles.batsmenRow}>
+                    {match.batsmen.map((bat, idx) => (
+                      <View key={idx} style={styles.batsmanItem}>
+                        <Text style={[styles.batsmanName, bat.isStriker && styles.strikerName]}>
+                          {bat.isStriker ? '* ' : ''}{bat.name}
+                        </Text>
+                        <Text style={styles.batsmanScore}>
+                          {bat.runs} ({bat.balls})
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Over Summary */}
+              {match.oSummary && (
+                <View style={styles.overSummaryContainer}>
+                  <Text style={styles.overSummaryTitle}>Recent Overs</Text>
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.overSummaryScroll}
+                  >
+                    <View style={styles.overSummaryContent}>
+                      {formatOverSummary(match.oSummary, match.currentOver)}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+          )}
+
           {/* Pro / Overlay Toggle */}
           <View style={styles.proRow}>
             {!effectiveIsPro ? (
@@ -545,6 +646,65 @@ const styles = StyleSheet.create({
   teamScore: { color: '#FFF', fontSize: 22, fontWeight: 'bold' },
   overs: { color: '#999', fontSize: 11, marginTop: 2 },
   statusTxt: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginBottom: 8, fontStyle: 'italic' },
+  // Live match details styles
+  liveDetails: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  batsmenContainer: {
+    marginBottom: 10,
+  },
+  batsmenTitle: {
+    color: '#4CAF50',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  batsmenRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  batsmanItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  batsmanName: {
+    color: '#CCC',
+    fontSize: 13,
+  },
+  strikerName: {
+    color: '#FFD700',
+    fontWeight: 'bold',
+  },
+  batsmanScore: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  overSummaryContainer: {
+    marginTop: 4,
+  },
+  overSummaryTitle: {
+    color: '#4CAF50',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  overSummaryScroll: {
+    maxHeight: 30,
+  },
+  overSummaryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
   proRow: { alignItems: 'center', marginTop: 8 },
   unlockBtn: {
     backgroundColor: 'rgba(51,51,51,0.9)',

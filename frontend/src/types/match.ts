@@ -6,6 +6,13 @@ export interface Team {
   overs?: number;
 }
 
+export interface Batsman {
+  name: string;
+  runs: number;
+  balls: number;
+  isStriker: boolean;
+}
+
 export interface Commentary {
   id: string;
   over: string;
@@ -33,6 +40,10 @@ export interface Match {
   teams: Team[];
   commentary?: Commentary[];
   category?: MatchCategory;
+  // Live match data
+  batsmen?: Batsman[];
+  oSummary?: string; // Over summary like "1 4 W 0 2 6 | 0 1 ..."
+  currentOver?: number;
 }
 
 export type MatchCategory = 'All' | 'International' | 'League' | 'Domestic' | 'Women';
