@@ -415,7 +415,47 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
         }
 
         // Extract over summary (o_summary or recentovsummary)
-        const oSummary = ms.o_summary || ms.recentovsummary || ms.oversummary || ms.recentOvs || '';
+        let oSummary = ms.o_summary || ms.recentovsummary || ms.oversummary || ms.recentOvs || ms.lastWicket || '';
+        
+        // If no oSummary from API, build from recent commentary
+        if (!oSummary && commentary && commentary.length > 0) {
+          const recentBalls: string[] = [];
+          for (let i = 0; i < Math.min(12, commentary.length); i++) {
+            const comm = commentary[i];
+            if (comm.over && comm.over !== '0' && /\d/.test(comm.over)) {
+              // Detect ball result from commentary text
+              const text = (comm.english || '').toLowerCase();
+              if (text.includes('wicket') || text.includes('out') || text.includes('bowled') || 
+                  text.includes('caught') || text.includes('lbw') || text.includes('stumped')) {
+                recentBalls.push('W');
+              } else if (text.includes('six') || text.includes('sixer')) {
+                recentBalls.push('6');
+              } else if (text.includes('four') || text.includes('boundary')) {
+                recentBalls.push('4');
+              } else if (text.includes('wide')) {
+                recentBalls.push('Wd');
+              } else if (text.includes('no ball') || text.includes('no-ball')) {
+                recentBalls.push('Nb');
+              } else if (text.includes('no run') || text.includes('dot')) {
+                recentBalls.push('0');
+              } else if (text.includes('single') || text.includes('one run') || text.includes('1 run')) {
+                recentBalls.push('1');
+              } else if (text.includes('two') || text.includes('2 run')) {
+                recentBalls.push('2');
+              } else if (text.includes('three') || text.includes('3 run')) {
+                recentBalls.push('3');
+              } else {
+                // Default - extract number if present
+                const numMatch = text.match(/(\d) run/);
+                recentBalls.push(numMatch ? numMatch[1] : '•');
+              }
+            }
+          }
+          if (recentBalls.length > 0) {
+            oSummary = recentBalls.reverse().join(' ');
+          }
+        }
+        
         if (oSummary) {
           match.oSummary = oSummary;
         }

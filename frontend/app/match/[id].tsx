@@ -340,6 +340,15 @@ export default function MatchDetail() {
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
             <Text style={styles.seriesName} numberOfLines={1}>{match.seriesName}</Text>
+            
+            {/* Unlock Button - Compact in header */}
+            {!effectiveIsPro && (
+              <TouchableOpacity style={styles.unlockBtnHeader} onPress={() => setShowProModal(true)}>
+                <Ionicons name="lock-open" size={11} color="#FFD700" />
+                <Text style={styles.unlockTxtHeader}>Unlock</Text>
+              </TouchableOpacity>
+            )}
+            
             <View style={styles.headerActions}>
               {/* Notification Toggle */}
               <TouchableOpacity
@@ -365,14 +374,6 @@ export default function MatchDetail() {
               </TouchableOpacity>
             </View>
           </View>
-
-          {/* UNLOCK FEATURES BUTTON - TOP POSITION */}
-          {!effectiveIsPro && (
-            <TouchableOpacity style={styles.unlockBtnTop} onPress={() => setShowProModal(true)}>
-              <Ionicons name="lock-open" size={14} color="#FFF" />
-              <Text style={styles.unlockTxt}>Unlock Features (3 Ads)</Text>
-            </TouchableOpacity>
-          )}
 
           {/* Score Row - Compact */}
           <View style={styles.teamRow}>
@@ -631,6 +632,23 @@ const styles = StyleSheet.create({
   backBtn: { padding: 6, marginRight: 8 },
   seriesName: { color: '#ffd700', fontSize: 12, flex: 1 },
   headerActions: { flexDirection: 'row', gap: 8 },
+  unlockBtnHeader: {
+    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.5)',
+    marginRight: 8,
+  },
+  unlockTxtHeader: { 
+    color: '#FFD700', 
+    fontWeight: 'bold', 
+    fontSize: 10,
+  },
   actionBtn: {
     padding: 8,
     borderRadius: 20,
@@ -643,19 +661,6 @@ const styles = StyleSheet.create({
   teamScore: { color: '#FFF', fontSize: 22, fontWeight: 'bold' },
   overs: { color: '#999', fontSize: 11, marginTop: 2 },
   statusTxt: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginBottom: 6, fontStyle: 'italic' },
-  // Unlock button at top
-  unlockBtnTop: {
-    backgroundColor: 'rgba(51,51,51,0.95)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginBottom: 10,
-    alignSelf: 'center',
-  },
   // Live match batsmen section
   batsmenContainer: {
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -693,28 +698,35 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 2,
   },
-  // Over summary section - VISIBLE
+  // Over summary section - PROMINENT & VISIBLE
   overSummaryContainer: {
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(76, 175, 80, 0.3)',
   },
   overSummaryTitle: {
     color: '#4CAF50',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   overSummaryScroll: {
-    minHeight: 28,
+    minHeight: 32,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   overSummaryScrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingRight: 20,
+    gap: 2,
   },
   proRow: { alignItems: 'center', marginTop: 6 },
   unlockBtn: {
