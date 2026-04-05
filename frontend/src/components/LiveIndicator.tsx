@@ -15,13 +15,19 @@ const getMatchState = (state?: string, isLive?: boolean): MatchState => {
   
   const s = state.toLowerCase();
   
+  // Direct match for API states: 'live', 'recent', 'upcoming'
+  if (s === 'live') return 'live';
+  if (s === 'upcoming') return 'upcoming';
+  if (s === 'recent') return 'completed';
+  
+  // Text-based matching for statusText
   if (s.includes('live') || s.includes('in progress') || s.includes('innings break') || s.includes('day ')) {
     return 'live';
   }
-  if (s.includes('upcoming') || s.includes('starts') || s.includes('toss') || s.includes('match begins')) {
+  if (s.includes('upcoming') || s.includes('starts') || s.includes('toss') || s.includes('match begins') || s.includes('preview')) {
     return 'upcoming';
   }
-  if (s.includes('won') || s.includes('draw') || s.includes('tied') || s.includes('complete') || s.includes('ended')) {
+  if (s.includes('won') || s.includes('draw') || s.includes('tied') || s.includes('complete') || s.includes('ended') || s.includes('result')) {
     return 'completed';
   }
   if (s.includes('abandon') || s.includes('no result') || s.includes('cancelled')) {
