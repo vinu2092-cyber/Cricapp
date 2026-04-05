@@ -160,8 +160,8 @@ const CricketField: React.FC<CricketFieldProps> = ({
         <View style={styles.boundaryRope} />
       </View>
 
-      {/* Last Ball Info */}
-      {lastCommentary && (
+      {/* Last Ball Info - Hide if over is '0' or empty */}
+      {lastCommentary && lastCommentary.over && lastCommentary.over !== '0' && /\d/.test(lastCommentary.over) && (
         <View style={[styles.lastBallInfo, { borderLeftColor: getEventColor(lastCommentary.event) }]}>
           <View style={styles.lastBallHeader}>
             <Text style={styles.lastBallOver}>{lastCommentary.over}</Text>
@@ -176,6 +176,15 @@ const CricketField: React.FC<CricketFieldProps> = ({
               <Text style={styles.runsText}>+{lastCommentary.runs}</Text>
             )}
           </View>
+          <Text style={styles.lastBallText} numberOfLines={2}>
+            {lastCommentary.english}
+          </Text>
+        </View>
+      )}
+      
+      {/* Status text only box - when over is 0 or missing */}
+      {lastCommentary && (!lastCommentary.over || lastCommentary.over === '0' || !/\d/.test(lastCommentary.over)) && (
+        <View style={[styles.lastBallInfo, { borderLeftColor: '#4CAF50' }]}>
           <Text style={styles.lastBallText} numberOfLines={2}>
             {lastCommentary.english}
           </Text>

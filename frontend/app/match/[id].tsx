@@ -366,7 +366,15 @@ export default function MatchDetail() {
             </View>
           </View>
 
-          {/* Score Row */}
+          {/* UNLOCK FEATURES BUTTON - TOP POSITION */}
+          {!effectiveIsPro && (
+            <TouchableOpacity style={styles.unlockBtnTop} onPress={() => setShowProModal(true)}>
+              <Ionicons name="lock-open" size={14} color="#FFF" />
+              <Text style={styles.unlockTxt}>Unlock Features (3 Ads)</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Score Row - Compact */}
           <View style={styles.teamRow}>
             <View style={styles.teamBlock}>
               <Text style={styles.teamName}>{match.teams[0].shortName}</Text>
@@ -389,54 +397,43 @@ export default function MatchDetail() {
 
           {match.statusText ? <Text style={styles.statusTxt} numberOfLines={2}>{match.statusText}</Text> : null}
 
-          {/* Live Match Details: Current Batsmen & Over Summary */}
-          {match.status === 'live' && (match.batsmen || match.oSummary) && (
-            <View style={styles.liveDetails}>
-              {/* Current Batsmen */}
-              {match.batsmen && match.batsmen.length > 0 && (
-                <View style={styles.batsmenContainer}>
-                  <Text style={styles.batsmenTitle}>At The Crease</Text>
-                  <View style={styles.batsmenRow}>
-                    {match.batsmen.map((bat, idx) => (
-                      <View key={idx} style={styles.batsmanItem}>
-                        <Text style={[styles.batsmanName, bat.isStriker && styles.strikerName]}>
-                          {bat.isStriker ? '* ' : ''}{bat.name}
-                        </Text>
-                        <Text style={styles.batsmanScore}>
-                          {bat.runs} ({bat.balls})
-                        </Text>
-                      </View>
-                    ))}
+          {/* Live Match Details: Current Batsmen */}
+          {match.status === 'live' && match.batsmen && match.batsmen.length > 0 && (
+            <View style={styles.batsmenContainer}>
+              <Text style={styles.batsmenTitle}>At The Crease</Text>
+              <View style={styles.batsmenRow}>
+                {match.batsmen.map((bat, idx) => (
+                  <View key={idx} style={styles.batsmanItem}>
+                    <Text style={[styles.batsmanName, bat.isStriker && styles.strikerName]}>
+                      {bat.isStriker ? '* ' : ''}{bat.name}
+                    </Text>
+                    <Text style={styles.batsmanScore}>
+                      {bat.runs} ({bat.balls})
+                    </Text>
                   </View>
-                </View>
-              )}
-
-              {/* Over Summary */}
-              {match.oSummary && (
-                <View style={styles.overSummaryContainer}>
-                  <Text style={styles.overSummaryTitle}>Recent Overs</Text>
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.overSummaryScroll}
-                  >
-                    <View style={styles.overSummaryContent}>
-                      {formatOverSummary(match.oSummary, match.currentOver)}
-                    </View>
-                  </ScrollView>
-                </View>
-              )}
+                ))}
+              </View>
             </View>
           )}
 
-          {/* Pro / Overlay Toggle */}
-          <View style={styles.proRow}>
-            {!effectiveIsPro ? (
-              <TouchableOpacity style={styles.unlockBtn} onPress={() => setShowProModal(true)}>
-                <Ionicons name="lock-open" size={14} color="#FFF" />
-                <Text style={styles.unlockTxt}>Unlock Features (3 Ads)</Text>
-              </TouchableOpacity>
-            ) : (
+          {/* OVER SUMMARY - Below Batsmen, Always Visible for Live */}
+          {match.status === 'live' && match.oSummary && (
+            <View style={styles.overSummaryContainer}>
+              <Text style={styles.overSummaryTitle}>Recent Overs</Text>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={true}
+                style={styles.overSummaryScroll}
+                contentContainerStyle={styles.overSummaryScrollContent}
+              >
+                {formatOverSummary(match.oSummary, match.currentOver)}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Pro Overlay Toggles - Only show for Pro users */}
+          {effectiveIsPro && (
+            <View style={styles.proRow}>
               <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                 {/* In-App Floating Scoreboard Toggle */}
                 <TouchableOpacity
@@ -520,8 +517,8 @@ export default function MatchDetail() {
                   </TouchableOpacity>
                 )}
               </View>
-            )}
-          </View>
+            </View>
+          )}
         </View>
 
         {/* Cricket Field */}
@@ -645,21 +642,31 @@ const styles = StyleSheet.create({
   teamName: { color: '#CCC', fontSize: 13, fontWeight: '600' },
   teamScore: { color: '#FFF', fontSize: 22, fontWeight: 'bold' },
   overs: { color: '#999', fontSize: 11, marginTop: 2 },
-  statusTxt: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginBottom: 8, fontStyle: 'italic' },
-  // Live match details styles
-  liveDetails: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
+  statusTxt: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginBottom: 6, fontStyle: 'italic' },
+  // Unlock button at top
+  unlockBtnTop: {
+    backgroundColor: 'rgba(51,51,51,0.95)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 10,
+    alignSelf: 'center',
+  },
+  // Live match batsmen section
+  batsmenContainer: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
     borderRadius: 8,
     padding: 10,
-    marginBottom: 10,
-  },
-  batsmenContainer: {
-    marginBottom: 10,
+    marginBottom: 8,
   },
   batsmenTitle: {
     color: '#4CAF50',
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '700',
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -674,7 +681,7 @@ const styles = StyleSheet.create({
   },
   batsmanName: {
     color: '#CCC',
-    fontSize: 13,
+    fontSize: 12,
   },
   strikerName: {
     color: '#FFD700',
@@ -682,30 +689,34 @@ const styles = StyleSheet.create({
   },
   batsmanScore: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     marginTop: 2,
   },
+  // Over summary section - VISIBLE
   overSummaryContainer: {
-    marginTop: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
   },
   overSummaryTitle: {
     color: '#4CAF50',
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 6,
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   overSummaryScroll: {
-    maxHeight: 30,
+    minHeight: 28,
   },
-  overSummaryContent: {
+  overSummaryScrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingRight: 20,
   },
-  proRow: { alignItems: 'center', marginTop: 8 },
+  proRow: { alignItems: 'center', marginTop: 6 },
   unlockBtn: {
     backgroundColor: 'rgba(51,51,51,0.9)',
     paddingVertical: 8,
