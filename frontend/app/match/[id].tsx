@@ -436,6 +436,7 @@ export default function MatchDetail() {
             commentary={match.commentary}
             matchId={id}
             isLive={match.status === 'live'}
+            matchStatus={match.status as 'live' | 'recent' | 'upcoming'}
           />
         ) : (
           <View style={styles.noComm}>

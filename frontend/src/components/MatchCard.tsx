@@ -49,7 +49,24 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
         <Text style={styles.matchTitle} numberOfLines={1}>
           {formatSeries(match.series || match.seriesName)}
         </Text>
-        {getStatusBadge()}
+        <View style={styles.headerRight}>
+          {/* Bell icon next to LIVE badge for live matches */}
+          {match.status === 'live' && (
+            <TouchableOpacity
+              style={[styles.bellBtnHeader, tracked && styles.bellBtnHeaderActive]}
+              onPress={handleBellPress}
+              data-testid={`alert-toggle-${match.matchId}`}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={tracked ? 'notifications' : 'notifications-outline'}
+                size={16}
+                color={tracked ? '#4CAF50' : '#888'}
+              />
+            </TouchableOpacity>
+          )}
+          {getStatusBadge()}
+        </View>
       </View>
 
       <View style={styles.teamsContainer}>
@@ -108,20 +125,6 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
       )}
 
       <View style={styles.cardFooter}>
-        {match.status === 'live' && (
-          <TouchableOpacity
-            style={[styles.bellBtn, tracked && styles.bellBtnActive]}
-            onPress={handleBellPress}
-            data-testid={`alert-toggle-${match.matchId}`}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons
-              name={tracked ? 'notifications' : 'notifications-outline'}
-              size={18}
-              color={tracked ? '#4CAF50' : '#888'}
-            />
-          </TouchableOpacity>
-        )}
         <Ionicons name="chevron-forward" size={20} color="#666" />
       </View>
     </TouchableOpacity>
@@ -151,6 +154,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bellBtnHeader: {
+    padding: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  bellBtnHeaderActive: {
+    backgroundColor: 'rgba(76, 175, 80, 0.15)',
   },
   matchTitle: {
     fontSize: 12,

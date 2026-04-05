@@ -19,12 +19,14 @@ interface CommentarySectionProps {
   commentary: Commentary[];
   matchId?: string;
   isLive?: boolean;
+  matchStatus?: 'live' | 'recent' | 'upcoming';
 }
 
 const CommentarySection: React.FC<CommentarySectionProps> = ({
   commentary,
   matchId,
   isLive = false,
+  matchStatus,
 }) => {
   const [language, setLanguage] = useState<Language>('english');
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
@@ -118,12 +120,15 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.titleContainer}>
-          <Ionicons name="chatbubbles" size={20} color="#4CAF50" />
-          <Text style={styles.title}>Ball by Ball Commentary</Text>
+      {/* Hide "Ball by Ball Commentary" header for upcoming matches */}
+      {matchStatus !== 'upcoming' && (
+        <View style={styles.header}>
+          <View style={styles.titleContainer}>
+            <Ionicons name="chatbubbles" size={20} color="#4CAF50" />
+            <Text style={styles.title}>Ball by Ball Commentary</Text>
+          </View>
         </View>
-      </View>
+      )}
 
       <ScrollView style={styles.commentaryList} nestedScrollEnabled>
         {/* If no commentary, show 2 banner ads with external link button in middle */}
@@ -173,8 +178,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         )}
         
         {displayedCommentary.map((item, index) => {
-          // Banner ad every 2 balls - for ALL users (Pro + Non-Pro)
-          const showBanner = (index + 1) % 2 === 0;
+          // Banner ad after EVERY ball/commentary item
+          const showBanner = true;
           
           // Fix: Only show over/ball circle if it's an actual delivery (has valid over number)
           const isActualDelivery = item.over && item.over !== '0' && item.over !== '' && /\d/.test(item.over);
