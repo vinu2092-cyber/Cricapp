@@ -23,11 +23,17 @@ const MATCH_KEYS = [
   "db67e8004emsh40add8626f58e58p183678jsne28298b94c3b",
   "2a21f65881msh680271f280de7p182fbdjsn151d068c6392",
   "cd6ae88bddmsh5dcf84f0286d14cp1af3f9jsn7d2de7fe2a03",
-  // Appended new keys for expanded quota
+  // Appended new keys for expanded quota (batch 1)
   "39135304c0msh9b36fa9057dbf23p141f77jsnfb140a4c7127",
   "3151754456msh3821b80e3429ed0p15ac70jsn887be255a4d6",
   "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
   "1a6681fd59mshb9cbb21cf3aa0f3p127c5djsnc12085b39c27",
+  // Appended new keys for expanded quota (batch 2)
+  "be681ef5f4mshf8eb5972bbbe7abp1d55d8jsn54464cbad4d4",
+  "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
+  "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",
+  "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
+  "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
 ];
 
 const HOST = "cricbuzz-cricket.p.rapidapi.com";

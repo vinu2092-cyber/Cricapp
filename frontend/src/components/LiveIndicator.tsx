@@ -20,9 +20,15 @@ const getMatchState = (state?: string, isLive?: boolean): MatchState => {
   if (s === 'upcoming') return 'upcoming';
   if (s === 'recent') return 'completed';
   
-  // IMPORTANT: Check abandon FIRST before other patterns (contains "toss" in "no toss")
-  if (s.includes('abandon') || s.includes('no result') || s.includes('cancelled')) {
+  // IMPORTANT: Check abandon/no result FIRST before other patterns
+  // This handles cases like "Match abandoned due to wet outfield (no toss)"
+  if (s.includes('abandon') || s.includes('no result') || s.includes('cancelled') || s.includes('no play')) {
     return 'abandoned';
+  }
+  
+  // Check completed/won before upcoming (handles result text)
+  if (s.includes('won') || s.includes('draw') || s.includes('tied') || s.includes('complete') || s.includes('ended')) {
+    return 'completed';
   }
   
   // Text-based matching for statusText
@@ -31,9 +37,6 @@ const getMatchState = (state?: string, isLive?: boolean): MatchState => {
   }
   if (s.includes('upcoming') || s.includes('starts') || s.includes('toss') || s.includes('match begins') || s.includes('preview')) {
     return 'upcoming';
-  }
-  if (s.includes('won') || s.includes('draw') || s.includes('tied') || s.includes('complete') || s.includes('ended') || s.includes('result')) {
-    return 'completed';
   }
   if (s.includes('delay') || s.includes('rain') || s.includes('bad light')) {
     return 'delayed';
