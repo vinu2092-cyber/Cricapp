@@ -10,7 +10,7 @@ import * as Speech from 'expo-speech';
 import { fetchMatchById, openExternalScorecard } from '../../src/services/api';
 import { Match } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
-import LiveIndicator from '../../src/components/LiveIndicator';
+import LiveIndicator, { MatchStatusBadge } from '../../src/components/LiveIndicator';
 import CricketField from '../../src/components/CricketField';
 import CommentarySection from '../../src/components/CommentarySection';
 import FloatingScoreboard from '../../src/components/FloatingScoreboard';
@@ -315,7 +315,7 @@ export default function MatchDetail() {
               {match.teams[0].overs !== undefined && <Text style={styles.overs}>({match.teams[0].overs} ov)</Text>}
             </View>
 
-            <LiveIndicator />
+            <MatchStatusBadge state={match.status} isLive={match.status === 'live'} />
 
             <View style={styles.teamBlock}>
               <Text style={styles.teamName}>{match.teams[1].shortName}</Text>

@@ -17,9 +17,9 @@ const POLL_INTERVAL_BACKGROUND = 90000; // 90s when app is in background
 const getBackendUrl = (): string => {
   try {
     const Constants = require('expo-constants').default;
-    return Constants.expoConfig?.extra?.backendUrl || 'https://scoreboard-pro-21.preview.emergentagent.com';
+    return Constants.expoConfig?.extra?.backendUrl || 'https://cricapp-bugfix.preview.emergentagent.com';
   } catch {
-    return 'https://scoreboard-pro-21.preview.emergentagent.com';
+    return 'https://cricapp-bugfix.preview.emergentagent.com';
   }
 };
 
