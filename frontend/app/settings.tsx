@@ -165,6 +165,14 @@ export default function Settings() {
                 <Text style={styles.removeBtnText}>Remove API Key</Text>
               </TouchableOpacity>
             ) : null}
+
+            {/* API Help Text - moved here to be part of API section */}
+            <View style={[styles.helpTextContainer, { marginTop: 12 }]}>
+              <Ionicons name="help-circle-outline" size={20} color="#888" />
+              <Text style={styles.helpText}>
+                If user is unable to see the match, then they can generate their own API key by clicking on Get API Key and pasting it in the box above.
+              </Text>
+            </View>
           </View>
 
           {/* Section 3: Notification Settings */}
@@ -212,16 +220,6 @@ export default function Settings() {
                 • Wicket alerts{'\n'}
                 • Boundary alerts (4s & 6s){'\n'}
                 • Milestone alerts (50s, 100s)
-              </Text>
-            </View>
-          </View>
-
-          {/* Section 4: Simple Help Text */}
-          <View style={styles.section}>
-            <View style={styles.helpTextContainer}>
-              <Ionicons name="help-circle-outline" size={20} color="#888" />
-              <Text style={styles.helpText}>
-                If user is unable to see the match, then they can generate their own API key by clicking on Get API Key and pasting it in the box above.
               </Text>
             </View>
           </View>
