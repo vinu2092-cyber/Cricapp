@@ -51,7 +51,7 @@ RAPIDAPI_PROVIDERS = [
     }
 ]
 
-# 10 API Keys with rotation
+# 14 API Keys with rotation (10 original + 4 new for expanded quota)
 RAPIDAPI_KEYS = [
     "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",
     "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
@@ -63,6 +63,11 @@ RAPIDAPI_KEYS = [
     "4223543bdbmsh7962a0ecb8d4e7fp1132a3jsn8f9a656e2b32",
     "ba8052cb25msh6ea2297ebf719dcp14bc6ejsn51e281c87482",
     "db67e8004emsh40add8626f58e58p183678jsne28298b94c3b",
+    # New keys appended for cricbuzz-cricket.p.rapidapi.com
+    "39135304c0msh9b36fa9057dbf23p141f77jsnfb140a4c7127",
+    "3151754456msh3821b80e3429ed0p15ac70jsn887be255a4d6",
+    "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
+    "1a6681fd59mshb9cbb21cf3aa0f3p127c5djsnc12085b39c27",
 ]
 
 current_key_index = 0

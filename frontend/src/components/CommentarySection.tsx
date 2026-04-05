@@ -175,13 +175,27 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         {displayedCommentary.map((item, index) => {
           // Banner ad every 2 balls - for ALL users (Pro + Non-Pro)
           const showBanner = (index + 1) % 2 === 0;
+          
+          // Fix: Only show over/ball circle if it's an actual delivery (has valid over number)
+          const isActualDelivery = item.over && item.over !== '0' && item.over !== '' && /\d/.test(item.over);
+          
+          // Fix: Parse \n escape sequences in text to actual line breaks
+          const parseText = (text: string) => {
+            if (!text) return '';
+            return text.replace(/\\n/g, '\n').replace(/\\r/g, '');
+          };
 
           return (
             <View key={index}>
               <View style={styles.commentaryItem}>
-                <View style={styles.overBall}>
-                  <Text style={styles.overText}>{item.over}</Text>
-                </View>
+                {/* Only show over ball circle for actual deliveries */}
+                {isActualDelivery ? (
+                  <View style={styles.overBall}>
+                    <Text style={styles.overText}>{item.over}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.overBallPlaceholder} />
+                )}
 
                 <View style={styles.commentaryContent}>
                   {item.event && item.event !== 'normal' && (
@@ -191,7 +205,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                     </View>
                   )}
                   <Text style={styles.commentaryText}>
-                    {language === 'english' ? item.english : (item.hindi || item.english)}
+                    {parseText(language === 'english' ? item.english : (item.hindi || item.english))}
                   </Text>
                 </View>
 
@@ -315,6 +329,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   overBall: { width: 50, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 4 },
+  overBallPlaceholder: { width: 50 }, // Empty placeholder when no over/ball data
   overText: {
     fontSize: 14,
     fontWeight: '700',

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Match } from '../types/match';
-import LiveIndicator from './LiveIndicator';
+import { MatchStatusBadge } from './LiveIndicator';
 import { useNotifications } from '../context/NotificationContext';
 
 interface MatchCardProps {
@@ -21,25 +21,12 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
     }
     toggleTracking(match.matchId, match.teams[0]?.shortName || 'TM1', match.teams[1]?.shortName || 'TM2');
   };
+  
+  // Dynamic status badge based on actual match state
   const getStatusBadge = () => {
-    switch (match.status) {
-      case 'live':
-        return <LiveIndicator />;
-      case 'recent':
-        return (
-          <View style={[styles.statusBadge, styles.resultBadge]}>
-            <Text style={styles.resultText}>RESULT</Text>
-          </View>
-        );
-      case 'upcoming':
-        return (
-          <View style={[styles.statusBadge, styles.upcomingBadge]}>
-            <Text style={styles.upcomingText}>UPCOMING</Text>
-          </View>
-        );
-      default:
-        return null;
-    }
+    // Use statusText from API to determine actual state
+    const isLive = match.status === 'live';
+    return <MatchStatusBadge state={match.statusText} isLive={isLive} />;
   };
 
   const formatSeries = (series?: string) => {
