@@ -30,7 +30,7 @@ import {
 const AUTO_REFRESH = 60000; // 60 seconds refresh
 const MATCH_CACHE_FLUSH = 1800000; // 30 minutes
 
-// Format over summary with wickets in RED
+// Format over summary with wickets in RED, 6 in Purple, 4 in Green
 const formatOverSummary = (summary: string, currentOver?: number): React.ReactNode[] => {
   const elements: React.ReactNode[] = [];
   
@@ -51,29 +51,35 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
     // Add simple pipe separator every 6 balls
     if (ballCount > 0 && ballCount % 6 === 0) {
       elements.push(
-        <Text key={`sep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
+        <Text key={`sep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 8, fontWeight: 'bold', fontSize: 20 }}>
           |
         </Text>
       );
     }
     
-    // Style based on ball type
-    let style: any = { marginHorizontal: 4, fontSize: 15, fontWeight: '600' };
+    // Style based on ball type - BIGGER SIZE
+    let style: any = { marginHorizontal: 5, fontSize: 18, fontWeight: '700' };
     
     if (b === 'W' || b === 'WKT' || b === 'WICKET') {
       // Wicket - RED and BOLD
-      style = { ...style, color: '#FF0000', fontWeight: 'bold' };
-    } else if (b === '4') {
-      style = { ...style, color: '#4CAF50', fontWeight: 'bold' };
+      style = { ...style, color: '#FF0000', fontWeight: 'bold', fontSize: 20 };
     } else if (b === '6') {
-      style = { ...style, color: '#9C27B0', fontWeight: 'bold' };
+      // SIX - Purple Bold
+      style = { ...style, color: '#9C27B0', fontWeight: 'bold', fontSize: 20 };
+    } else if (b === '4') {
+      // FOUR - Green Bold
+      style = { ...style, color: '#00E676', fontWeight: 'bold', fontSize: 20 };
     } else if (b === 'WD' || b === 'WIDE') {
-      style = { ...style, color: '#FF9800' };
+      // Wide - Orange
+      style = { ...style, color: '#FF9800', fontSize: 16 };
     } else if (b === 'NB' || b === 'NOBALL') {
-      style = { ...style, color: '#FF9800' };
+      // No Ball - Orange
+      style = { ...style, color: '#FF9800', fontSize: 16 };
     } else if (b === '0' || b === '.' || b === '•') {
+      // Dot ball - Grey
       style = { ...style, color: '#888' };
     } else {
+      // Other runs (1, 2, 3) - White
       style = { ...style, color: '#FFF' };
     }
     
@@ -696,29 +702,29 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 2,
   },
-  // Over summary section - PROMINENT & VISIBLE
+  // Over summary section - BIGGER & PROMINENT
   overSummaryContainer: {
     backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: 'rgba(76, 175, 80, 0.3)',
+    borderColor: 'rgba(76, 175, 80, 0.4)',
   },
   overSummaryTitle: {
     color: '#4CAF50',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 10,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   overSummaryScroll: {
-    minHeight: 32,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    minHeight: 40,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   overSummaryScrollContent: {
     flexDirection: 'row',
