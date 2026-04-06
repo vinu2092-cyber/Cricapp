@@ -1,42 +1,31 @@
-# CricApp - Product Requirements Document
+# CricApp - Final PRD
 
-## Original Problem Statement
-Clone CricApp from GitHub, fix the Floating Scoreboard (Draw over other apps) feature.
+## App Status: READY FOR PLAY STORE TESTING
 
-## Root Cause Found (April 6, 2026)
-`expo prebuild --clean` DELETES the entire `android/` folder and regenerates it.
-The custom Java files were being deleted. The old plugin only modified AndroidManifest.xml - it didn't recreate the Java files.
-
-## THE FIX
-Updated `/frontend/plugins/withFloatingWidget.js` to:
-1. **Create Java files programmatically** after prebuild runs
-2. Modify MainApplication.kt to register FloatingWidgetPackage
-3. Update AndroidManifest.xml with service and permissions
+## What's Implemented
+- ✅ Live Cricket Scores with real-time updates
+- ✅ Floating Scoreboard (Draw over other apps) - Native Android Service
+- ✅ App Opening Ad (Google Test ID)
+- ✅ Interstitial Ad (10-15 clicks for non-pro users)
+- ✅ Rewarded Ads (Watch 3 ads for 30 min Pro)
+- ✅ Banner Ads
+- ✅ Pro Features (Voice Commentary, Ad-free)
+- ✅ Match Notifications
+- ✅ Ball-by-ball Commentary
 
 ## Key Files
-- `/frontend/plugins/withFloatingWidget.js` - **THE MAIN FIX** - Config plugin that injects all native code
-- `/frontend/src/services/FloatingWidgetService.ts` - TypeScript wrapper
+- `/frontend/src/context/AdMobContext.native.tsx` - Ad logic & IDs
+- `/frontend/plugins/withFloatingWidget.js` - Native overlay plugin
+- `/frontend/app.json` - App config, versions, package name
+- `/PRODUCTION_RELEASE_GUIDE.md` - Complete release guide
 
-## Java Files Injected by Plugin
-The plugin automatically creates these files in `android/app/src/main/java/com/cricapp/live/floatingwidget/`:
-- FloatingWidgetService.java (528 lines) - Foreground service with WindowManager overlay
-- FloatingWidgetModule.java - React Native bridge module
-- FloatingWidgetPackage.java - React package registration
+## After 14 Days Testing - Change These:
+1. Ad Unit IDs in `AdMobContext.native.tsx` (Lines 15-22)
+2. App ID in `app.json` (Lines 30 & 73)
+3. Version & versionCode in `app.json` (Lines 5 & 27)
 
-## Build Instructions
-1. Push code to GitHub using "Save to GitHub" button
-2. GitHub Actions will run `npx expo prebuild --platform android --clean`
-3. The plugin will inject all native Java files
-4. APK and AAB will be generated
-
-## What's Been Implemented
-- [x] Complete config plugin that creates Java files during prebuild
-- [x] Plugin modifies MainApplication.kt automatically
-- [x] Plugin adds all required permissions to AndroidManifest.xml
-- [x] Cleaned up frontend code - removed error popups
-
-## Next Steps
-1. Push to GitHub
-2. Wait for GitHub Actions build (~15-20 min)
-3. Download APK/AAB from Actions artifacts
-4. Test on Android device
+## Tech Stack
+- React Native with Expo SDK 54
+- TypeScript
+- Native Android modules (Java/Kotlin)
+- react-native-google-mobile-ads
