@@ -402,31 +402,8 @@ export default function MatchDetail() {
                 style={[styles.actionBtn, nativeOverlayActive && styles.actionBtnActive]}
                 onPress={async () => {
                   if (nativeOverlayActive) {
-                    // Hide overlay
                     await hideFloatingWidget();
                     setNativeOverlayActive(false);
-                    return;
-                  }
-                  
-                  // Check if native module is available
-                  if (!isFloatingWidgetAvailable()) {
-                    Alert.alert(
-                      'Native Module Missing',
-                      'The floating widget native code is not included in this build.\n\nTo fix: Run "npx expo prebuild --clean" and build fresh APK.\n\nWould you like to open settings manually?',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { 
-                          text: 'Open Settings',
-                          onPress: async () => {
-                            try {
-                              await Linking.openSettings();
-                            } catch (e) {
-                              console.warn('Could not open settings', e);
-                            }
-                          }
-                        }
-                      ]
-                    );
                     return;
                   }
                   
@@ -435,7 +412,7 @@ export default function MatchDetail() {
                   if (!hasPermission) {
                     Alert.alert(
                       'Permission Required',
-                      'To show floating scoreboard over other apps, please enable "Display over other apps" permission.',
+                      'Enable "Display over other apps" permission for CricApp.',
                       [
                         { text: 'Cancel', style: 'cancel' },
                         { 
