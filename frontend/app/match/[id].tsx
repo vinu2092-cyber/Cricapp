@@ -128,12 +128,55 @@ export default function MatchDetail() {
 
   const effectiveIsPro = globalIsPro || tempPro;
 
-  // Check overlay permission on mount
+  // Pending overlay request - track if user was sent to settings
+  const [pendingOverlayRequest, setPendingOverlayRequest] = useState(false);
+
+  // Check overlay permission on mount and when app returns from settings
   useEffect(() => {
     if (isFloatingWidgetAvailable()) {
       checkOverlayPermission().then(setHasOverlayPermission);
     }
   }, []);
+
+  // Listen for app state changes to detect when user returns from settings
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'active' && pendingOverlayRequest) {
+        // User came back from settings, check permission again
+        const granted = await checkOverlayPermission();
+        setHasOverlayPermission(granted);
+        setPendingOverlayRequest(false);
+        
+        if (granted && match) {
+          // Permission granted! Start the floating widget automatically
+          const scoreData = {
+            team1Name: match.teams[0]?.shortName || 'TM1',
+            team2Name: match.teams[1]?.shortName || 'TM2',
+            team1Score: match.teams[0]?.runs !== undefined 
+              ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` 
+              : '-',
+            team2Score: match.teams[1]?.runs !== undefined 
+              ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` 
+              : '-',
+            team1Overs: match.teams[0]?.overs?.toString() || '',
+            team2Overs: match.teams[1]?.overs?.toString() || '',
+            statusText: match.statusText || '',
+            commentary: match.commentary?.[0]?.english || '',
+          };
+          const success = await showFloatingWidget(scoreData);
+          if (success) {
+            setNativeOverlayActive(true);
+            Alert.alert(
+              'Floating Widget Active!',
+              'Score will now show over other apps. Minimize CricApp and check!',
+              [{ text: 'Got it!' }]
+            );
+          }
+        }
+      }
+    });
+    return () => subscription.remove();
+  }, [pendingOverlayRequest, match]);
 
   // Update native floating widget when score changes (for Pro users with active overlay)
   useEffect(() => {
@@ -354,7 +397,7 @@ export default function MatchDetail() {
             )}
             
             <View style={styles.headerActions}>
-              {/* Floating Popup Button - Draw over other apps */}
+              {/* Pin Score Button - Draw over other apps */}
               <TouchableOpacity
                 style={[styles.actionBtn, nativeOverlayActive && styles.actionBtnActive]}
                 onPress={async () => {
@@ -371,7 +414,13 @@ export default function MatchDetail() {
                         'To show floating scoreboard over other apps, please enable "Display over other apps" permission.',
                         [
                           { text: 'Cancel', style: 'cancel' },
-                          { text: 'Open Settings', onPress: () => requestOverlayPermission() }
+                          { 
+                            text: 'Open Settings', 
+                            onPress: async () => {
+                              setPendingOverlayRequest(true);
+                              await requestOverlayPermission();
+                            }
+                          }
                         ]
                       );
                       return;
@@ -391,6 +440,7 @@ export default function MatchDetail() {
                     setNativeOverlayActive(true);
                   }
                 }}
+                data-testid="pin-score-button"
               >
                 <Ionicons
                   name={nativeOverlayActive ? 'layers' : 'layers-outline'}
@@ -515,12 +565,8 @@ export default function MatchDetail() {
                               {
                                 text: 'Enable',
                                 onPress: async () => {
+                                  setPendingOverlayRequest(true);
                                   await requestOverlayPermission();
-                                  // Check again after a delay
-                                  setTimeout(async () => {
-                                    const granted = await checkOverlayPermission();
-                                    setHasOverlayPermission(granted);
-                                  }, 1000);
                                 },
                               },
                             ]
@@ -541,6 +587,7 @@ export default function MatchDetail() {
                           team1Overs: match.teams[0]?.overs?.toString() || '',
                           team2Overs: match.teams[1]?.overs?.toString() || '',
                           statusText: match.statusText || '',
+                          commentary: match.commentary?.[0]?.english || '',
                         };
                         
                         const success = await showFloatingWidget(scoreData);

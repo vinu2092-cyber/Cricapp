@@ -12,7 +12,7 @@
     "extra": {
       "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
       "router": {},
-      "backendUrl": "https://cricapp-bugfix.preview.emergentagent.com",
+      "backendUrl": "https://cricapp-preview.preview.emergentagent.com",
       "admob": {
         "appId": "ca-app-pub-9675798593675825~2399929714",
         "appOpenAdId": "ca-app-pub-9675798593675825/4826782503",
