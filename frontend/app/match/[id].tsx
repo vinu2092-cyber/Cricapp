@@ -37,51 +37,49 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
   // Parse the summary - can be like "1 4 W 0 2 6" or "1|4|W|0|2|6" or comma separated
   const balls = summary.split(/[\s|,]+/).filter(b => b.trim());
   
-  let overNum = currentOver ? Math.floor(currentOver) : 1;
   let ballCount = 0;
   
   balls.forEach((ball, idx) => {
     const b = ball.trim().toUpperCase();
     if (!b) return;
     
-    // Check if it's a new over marker
+    // Check if it's a new over marker text - skip it
     if (b.includes('OVER') || b === '|') {
       return;
     }
     
-    // Add over separator every 6 balls
+    // Add simple pipe separator every 6 balls
     if (ballCount > 0 && ballCount % 6 === 0) {
-      overNum++;
       elements.push(
-        <Text key={`sep-${idx}`} style={{ color: '#666', marginHorizontal: 4, fontWeight: '600' }}>
-          | Over {overNum} |
+        <Text key={`sep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
+          |
         </Text>
       );
     }
     
     // Style based on ball type
-    let style: any = { marginHorizontal: 3, fontSize: 14 };
+    let style: any = { marginHorizontal: 4, fontSize: 15, fontWeight: '600' };
     
     if (b === 'W' || b === 'WKT' || b === 'WICKET') {
       // Wicket - RED and BOLD
       style = { ...style, color: '#FF0000', fontWeight: 'bold' };
     } else if (b === '4') {
-      style = { ...style, color: '#4CAF50', fontWeight: '600' };
+      style = { ...style, color: '#4CAF50', fontWeight: 'bold' };
     } else if (b === '6') {
       style = { ...style, color: '#9C27B0', fontWeight: 'bold' };
     } else if (b === 'WD' || b === 'WIDE') {
       style = { ...style, color: '#FF9800' };
     } else if (b === 'NB' || b === 'NOBALL') {
       style = { ...style, color: '#FF9800' };
-    } else if (b === '0' || b === '.') {
-      style = { ...style, color: '#999' };
+    } else if (b === '0' || b === '.' || b === '•') {
+      style = { ...style, color: '#888' };
     } else {
       style = { ...style, color: '#FFF' };
     }
     
     elements.push(
       <Text key={`ball-${idx}`} style={style}>
-        {b === '.' ? '0' : b}
+        {b === '.' || b === '•' ? '0' : b}
       </Text>
     );
     
