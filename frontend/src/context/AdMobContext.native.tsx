@@ -12,12 +12,13 @@ import mobileAds, {
 } from 'react-native-google-mobile-ads';
 import { usePro } from './ProContext';
 
-// Production IDs
+// Google Official Test Ad IDs (for testing/development)
 const AD_IDS = {
-  appOpen: 'ca-app-pub-9675798593675825/4826782503',
-  interstitial: 'ca-app-pub-9675798593675825/8438724452',
-  banner: 'ca-app-pub-9675798593675825/8616886104',
-  rewarded: 'ca-app-pub-9675798593675825/6702740458',
+  appOpen: 'ca-app-pub-3940256099942544/3419835294',
+  interstitial: 'ca-app-pub-3940256099942544/1033173712',
+  banner: 'ca-app-pub-3940256099942544/6300978111',
+  rewarded: 'ca-app-pub-3940256099942544/5224354917',
+  native: 'ca-app-pub-3940256099942544/2247696110',
 };
 
 interface AdMobContextType {
@@ -278,11 +279,13 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const BannerAdComponent: React.FC = () => (
-    <BannerAd
-      unitId={AD_IDS.banner}
-      size={BannerAdSize.BANNER}
-      requestOptions={{ requestNonPersonalizedAdsOnly: true }}
-    />
+    <View style={{ minHeight: 50, alignItems: 'center', justifyContent: 'center', marginVertical: 10, width: '100%' }}>
+      <BannerAd
+        unitId={AD_IDS.banner}
+        size={BannerAdSize.BANNER}
+        requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+      />
+    </View>
   );
 
   return (

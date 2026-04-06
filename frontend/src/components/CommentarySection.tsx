@@ -178,8 +178,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         )}
         
         {displayedCommentary.map((item, index) => {
-          // Banner ad after EVERY ball/commentary item
-          const showBanner = true;
+          // Banner ad ONLY after every complete over (6 balls) - Policy Compliant
+          const showBanner = (index + 1) % 6 === 0;
           
           // Fix: Only show over/ball circle if it's an actual delivery (has valid over number)
           const isActualDelivery = item.over && item.over !== '0' && item.over !== '' && /\d/.test(item.over);
@@ -358,7 +358,13 @@ const styles = StyleSheet.create({
   eventText: { fontSize: 10, fontWeight: '700', color: '#FFF', letterSpacing: 0.5 },
   commentaryText: { fontSize: 14, lineHeight: 20, color: '#333', marginBottom: 4 },
   speakButton: { padding: 4, justifyContent: 'center' },
-  bannerAdContainer: { marginVertical: 12, alignItems: 'center' },
+  bannerAdContainer: { 
+    minHeight: 50, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    marginVertical: 10,
+    width: '100%',
+  },
   actionContainer: { paddingVertical: 12, alignItems: 'center' },
   loadMoreButton: {
     flexDirection: 'row',
