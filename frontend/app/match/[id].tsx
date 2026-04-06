@@ -402,10 +402,10 @@ export default function MatchDetail() {
 
           {match.statusText ? <Text style={styles.statusTxt} numberOfLines={2}>{match.statusText}</Text> : null}
 
-          {/* Live Match Details: Current Batsmen */}
-          {match.status === 'live' && match.batsmen && match.batsmen.length > 0 && (
+          {/* Match Details: Current Batsmen - For LIVE and RECENT */}
+          {(match.status === 'live' || match.status === 'recent') && match.batsmen && match.batsmen.length > 0 && (
             <View style={styles.batsmenContainer}>
-              <Text style={styles.batsmenTitle}>At The Crease</Text>
+              <Text style={styles.batsmenTitle}>{match.status === 'live' ? 'At The Crease' : 'Last Batsmen'}</Text>
               <View style={styles.batsmenRow}>
                 {match.batsmen.map((bat, idx) => (
                   <View key={idx} style={styles.batsmanItem}>
@@ -421,8 +421,8 @@ export default function MatchDetail() {
             </View>
           )}
 
-          {/* OVER SUMMARY - Below Batsmen, Always Visible for Live */}
-          {match.status === 'live' && match.oSummary && (
+          {/* OVER SUMMARY - For LIVE and RECENT */}
+          {(match.status === 'live' || match.status === 'recent') && match.oSummary && (
             <View style={styles.overSummaryContainer}>
               <Text style={styles.overSummaryTitle}>Recent Overs</Text>
               <ScrollView 

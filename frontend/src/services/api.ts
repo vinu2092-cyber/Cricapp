@@ -120,13 +120,21 @@ async function setCache(key: string, data: any): Promise<void> {
   } catch {}
 }
 
-// Clear all expired cache entries
+// Clear all expired cache entries (excludes settings like API key)
 async function clearExpiredCache(): Promise<void> {
   try {
     const allKeys = await AsyncStorage.getAllKeys();
-    const cricappKeys = allKeys.filter(k => k.startsWith(CACHE_PREFIX));
+    // Only clear cache keys, NOT settings (API_KEY_STORAGE)
+    const cacheOnlyKeys = allKeys.filter(k => 
+      k.startsWith(CACHE_PREFIX) && 
+      k !== API_KEY_STORAGE && 
+      !k.includes('user_api_key') &&
+      !k.includes('settings') &&
+      !k.includes('tracked_matches') &&
+      !k.includes('auto_track')
+    );
     
-    for (const fullKey of cricappKeys) {
+    for (const fullKey of cacheOnlyKeys) {
       try {
         const raw = await AsyncStorage.getItem(fullKey);
         if (raw) {
@@ -141,8 +149,7 @@ async function clearExpiredCache(): Promise<void> {
           }
         }
       } catch {
-        // Remove corrupted cache entries
-        await AsyncStorage.removeItem(fullKey);
+        // Don't remove on parse error - might be settings
       }
     }
     console.log('[Cache] Cleanup completed');
@@ -151,16 +158,20 @@ async function clearExpiredCache(): Promise<void> {
   }
 }
 
-// Clear ALL cache (for memory optimization)
+// Clear ALL API cache only (NOT settings)
 async function clearAllCache(): Promise<void> {
   try {
     const allKeys = await AsyncStorage.getAllKeys();
-    const cricappKeys = allKeys.filter(k => k.startsWith(CACHE_PREFIX));
-    if (cricappKeys.length > 0) {
-      await AsyncStorage.multiRemove(cricappKeys);
+    // Only clear cache keys: live, recent, upcoming, match_*
+    const cacheOnlyKeys = allKeys.filter(k => 
+      k.startsWith(CACHE_PREFIX) && 
+      (k.includes('_live') || k.includes('_recent') || k.includes('_upcoming') || k.includes('_match_'))
+    );
+    if (cacheOnlyKeys.length > 0) {
+      await AsyncStorage.multiRemove(cacheOnlyKeys);
     }
     cacheKeys.clear();
-    console.log('[Cache] All cache cleared');
+    console.log('[Cache] All API cache cleared');
   } catch {}
 }
 
