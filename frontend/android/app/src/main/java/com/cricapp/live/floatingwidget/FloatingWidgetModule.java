@@ -47,15 +47,15 @@ public class FloatingWidgetModule extends ReactContextBaseJavaModule {
                     );
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     reactContext.startActivity(intent);
-                    promise.resolve(false); // User needs to grant permission
+                    promise.resolve(false);
                 } catch (Exception e) {
                     promise.reject("ERROR", "Failed to open overlay settings: " + e.getMessage());
                 }
             } else {
-                promise.resolve(true); // Already has permission
+                promise.resolve(true);
             }
         } else {
-            promise.resolve(true); // No permission needed
+            promise.resolve(true);
         }
     }
     
@@ -63,7 +63,7 @@ public class FloatingWidgetModule extends ReactContextBaseJavaModule {
     public void showFloatingWidget(ReadableMap scoreData, Promise promise) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(reactContext)) {
-                promise.reject("NO_PERMISSION", "Overlay permission not granted. Please enable 'Display over other apps' permission.");
+                promise.reject("NO_PERMISSION", "Overlay permission not granted.");
                 return;
             }
             
@@ -95,7 +95,6 @@ public class FloatingWidgetModule extends ReactContextBaseJavaModule {
     
     @ReactMethod
     public void updateFloatingWidget(ReadableMap scoreData, Promise promise) {
-        // Same as show - service handles updates
         showFloatingWidget(scoreData, promise);
     }
     

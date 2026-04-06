@@ -36,14 +36,12 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
     private View floatingView;
     private boolean isMinimized = false;
     
-    // Text-to-Speech for live commentary
     private TextToSpeech tts;
     private boolean isTTSReady = false;
     private boolean isMuted = false;
     private String lastSpokenCommentary = "";
     private TextView muteButton;
     
-    // Score data
     private static String team1Name = "TM1";
     private static String team2Name = "TM2";
     private static String team1Score = "-";
@@ -66,35 +64,23 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         super.onCreate();
         createNotificationChannel();
         startForeground(NOTIFICATION_ID, createNotification());
-        
-        // Initialize Text-to-Speech
         tts = new TextToSpeech(this, this);
-        
         createFloatingWidget();
     }
     
     @Override
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS) {
-            // Set language to English
             int result = tts.setLanguage(Locale.US);
-            
             if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
                 isTTSReady = true;
-                
-                // Set speech rate (0.9 = slightly slower for clarity)
                 tts.setSpeechRate(0.9f);
-                
-                // Set pitch (0.9 = slightly lower for male-like voice)
                 tts.setPitch(0.85f);
-                
-                // Try to find a male voice
                 try {
                     Set<Voice> voices = tts.getVoices();
                     if (voices != null) {
                         for (Voice voice : voices) {
                             String voiceName = voice.getName().toLowerCase();
-                            // Look for male voice
                             if (voiceName.contains("male") || voiceName.contains("en-us-x-sfg") || 
                                 voiceName.contains("en-in") || voiceName.contains("james")) {
                                 tts.setVoice(voice);
@@ -102,9 +88,7 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
                             }
                         }
                     }
-                } catch (Exception e) {
-                    // Use default voice if male voice not found
-                }
+                } catch (Exception e) {}
             }
         }
     }
@@ -124,7 +108,6 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
                 batsmanName = intent.getStringExtra("batsmanName") != null ? intent.getStringExtra("batsmanName") : batsmanName;
                 bowlerName = intent.getStringExtra("bowlerName") != null ? intent.getStringExtra("bowlerName") : bowlerName;
                 
-                // Handle commentary for TTS
                 String newCommentary = intent.getStringExtra("commentary");
                 if (newCommentary != null && !newCommentary.isEmpty() && !newCommentary.equals(lastSpokenCommentary)) {
                     commentary = newCommentary;
@@ -144,11 +127,9 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
     
     private void speakCommentary(String text) {
         if (isTTSReady && !isMuted && text != null && !text.isEmpty()) {
-            // Stop any ongoing speech
             if (tts.isSpeaking()) {
                 tts.stop();
             }
-            // Speak the new commentary
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "commentary_" + System.currentTimeMillis());
         }
     }
@@ -164,9 +145,9 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
     private void updateMuteButton() {
         if (muteButton != null) {
             muteButton.post(() -> {
-                muteButton.setText(isMuted ? "🔇" : "🔊");
+                muteButton.setText(isMuted ? "\uD83D\uDD07" : "\uD83D\uDD0A");
                 android.graphics.drawable.GradientDrawable muteBg = new android.graphics.drawable.GradientDrawable();
-                muteBg.setColor(isMuted ? 0x50FF4444 : 0x5044BB44); // Glass red or green
+                muteBg.setColor(isMuted ? 0x50FF4444 : 0x5044BB44);
                 muteBg.setCornerRadius(14f);
                 muteButton.setBackground(muteBg);
             });
@@ -207,11 +188,8 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
     
     private void createFloatingWidget() {
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        
-        // Create layout programmatically for the floating widget
         floatingView = createFloatingViewProgrammatically();
         
-        // Window parameters
         int layoutType;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             layoutType = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
@@ -231,7 +209,6 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         params.x = 20;
         params.y = 150;
         
-        // Touch handling for dragging
         floatingView.setOnTouchListener(new View.OnTouchListener() {
             private int initialX, initialY;
             private float initialTouchX, initialTouchY;
@@ -257,7 +234,6 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
                     case MotionEvent.ACTION_UP:
                         long clickDuration = System.currentTimeMillis() - startClickTime;
                         if (clickDuration < 200) {
-                            // Short click - toggle minimize
                             toggleMinimize(params);
                         }
                         return true;
@@ -273,19 +249,16 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
     private View createFloatingViewProgrammatically() {
         Context context = this;
         
-        // Main container - Glass/Transparent effect
         LinearLayout mainLayout = new LinearLayout(context);
         mainLayout.setOrientation(LinearLayout.VERTICAL);
         mainLayout.setPadding(32, 20, 32, 20);
         
-        // Set rounded corners with glass-like transparent background
         android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
-        background.setColor(0x70000000); // 44% opacity black - glass effect
+        background.setColor(0x70000000);
         background.setCornerRadius(32f);
-        background.setStroke(2, 0x804CAF50); // Semi-transparent green border
+        background.setStroke(2, 0x804CAF50);
         mainLayout.setBackground(background);
         
-        // Header with LIVE badge and close button
         LinearLayout headerLayout = new LinearLayout(context);
         headerLayout.setOrientation(LinearLayout.HORIZONTAL);
         headerLayout.setGravity(Gravity.CENTER_VERTICAL);
@@ -296,7 +269,6 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         headerParams.setMargins(0, 0, 0, 16);
         headerLayout.setLayoutParams(headerParams);
         
-        // LIVE badge - semi-transparent red
         TextView liveBadge = new TextView(context);
         liveBadge.setText("● LIVE");
         liveBadge.setTextColor(0xFFFFFFFF);
@@ -304,32 +276,29 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         liveBadge.setTypeface(null, android.graphics.Typeface.BOLD);
         liveBadge.setPadding(14, 5, 14, 5);
         android.graphics.drawable.GradientDrawable liveBg = new android.graphics.drawable.GradientDrawable();
-        liveBg.setColor(0xCCFF4444); // 80% opacity red
+        liveBg.setColor(0xCCFF4444);
         liveBg.setCornerRadius(14f);
         liveBadge.setBackground(liveBg);
         
-        // Mute/Unmute button for voice commentary - glass style
         muteButton = new TextView(context);
-        muteButton.setText("🔊");
+        muteButton.setText("\uD83D\uDD0A");
         muteButton.setTextSize(15);
         muteButton.setPadding(14, 6, 14, 6);
         muteButton.setGravity(Gravity.CENTER);
         android.graphics.drawable.GradientDrawable muteBg = new android.graphics.drawable.GradientDrawable();
-        muteBg.setColor(0x5044BB44); // Transparent green
+        muteBg.setColor(0x5044BB44);
         muteBg.setCornerRadius(14f);
         muteButton.setBackground(muteBg);
         muteButton.setOnClickListener(v -> toggleMute());
         
-        // Drag indicator - more visible on glass
         TextView dragIndicator = new TextView(context);
         dragIndicator.setText("⋮⋮");
-        dragIndicator.setTextColor(0xAAFFFFFF); // Semi-transparent white
+        dragIndicator.setTextColor(0xAAFFFFFF);
         dragIndicator.setTextSize(14);
         dragIndicator.setPadding(10, 0, 10, 0);
         dragIndicator.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         dragIndicator.setGravity(Gravity.CENTER);
         
-        // Close button - glass style
         TextView closeBtn = new TextView(context);
         closeBtn.setText("✕");
         closeBtn.setTextColor(0xFFFFFFFF);
@@ -337,7 +306,7 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         closeBtn.setTypeface(null, android.graphics.Typeface.BOLD);
         closeBtn.setPadding(16, 8, 16, 8);
         android.graphics.drawable.GradientDrawable closeBg = new android.graphics.drawable.GradientDrawable();
-        closeBg.setColor(0x50FF4444); // Transparent red
+        closeBg.setColor(0x50FF4444);
         closeBg.setCornerRadius(14f);
         closeBtn.setBackground(closeBg);
         closeBtn.setOnClickListener(v -> stopSelf());
@@ -348,23 +317,18 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         headerLayout.addView(closeBtn);
         mainLayout.addView(headerLayout);
         
-        // Team 1 row
         mainLayout.addView(createTeamRow(context, "team1"));
-        
-        // Team 2 row
         mainLayout.addView(createTeamRow(context, "team2"));
         
-        // Status text with shadow for glass background
         TextView statusView = new TextView(context);
         statusView.setTag("statusText");
-        statusView.setTextColor(0xFFFFD700); // Gold
+        statusView.setTextColor(0xFFFFD700);
         statusView.setTextSize(12);
         statusView.setGravity(Gravity.CENTER);
         statusView.setPadding(0, 14, 0, 6);
         statusView.setShadowLayer(3f, 1f, 1f, 0x99000000);
         mainLayout.addView(statusView);
         
-        // Player info (batsman/bowler)
         LinearLayout playerLayout = new LinearLayout(context);
         playerLayout.setOrientation(LinearLayout.HORIZONTAL);
         playerLayout.setGravity(Gravity.CENTER);
@@ -372,7 +336,7 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         
         TextView batsmanView = new TextView(context);
         batsmanView.setTag("batsmanName");
-        batsmanView.setTextColor(0xFF66FF66); // Brighter green
+        batsmanView.setTextColor(0xFF66FF66);
         batsmanView.setTextSize(11);
         batsmanView.setShadowLayer(2f, 1f, 1f, 0x99000000);
         
@@ -383,7 +347,7 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         
         TextView bowlerView = new TextView(context);
         bowlerView.setTag("bowlerName");
-        bowlerView.setTextColor(0xFF66B3FF); // Brighter blue
+        bowlerView.setTextColor(0xFF66B3FF);
         bowlerView.setTextSize(11);
         bowlerView.setShadowLayer(2f, 1f, 1f, 0x99000000);
         
@@ -392,10 +356,9 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         playerLayout.addView(bowlerView);
         mainLayout.addView(playerLayout);
         
-        // Minimize hint - lighter for glass effect
         TextView hintView = new TextView(context);
         hintView.setText("Tap to minimize • Drag to move");
-        hintView.setTextColor(0xAAFFFFFF); // Semi-transparent white
+        hintView.setTextColor(0xAAFFFFFF);
         hintView.setTextSize(9);
         hintView.setGravity(Gravity.CENTER);
         hintView.setPadding(0, 10, 0, 0);
@@ -410,9 +373,8 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         rowLayout.setGravity(Gravity.CENTER_VERTICAL);
         rowLayout.setPadding(20, 14, 20, 14);
         
-        // Glass-like transparent background for team rows
         android.graphics.drawable.GradientDrawable rowBg = new android.graphics.drawable.GradientDrawable();
-        rowBg.setColor(0x30FFFFFF); // 19% white - subtle glass effect
+        rowBg.setColor(0x30FFFFFF);
         rowBg.setCornerRadius(14f);
         rowLayout.setBackground(rowBg);
         
@@ -423,26 +385,23 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         rowParams.setMargins(0, 5, 0, 5);
         rowLayout.setLayoutParams(rowParams);
         
-        // Team name - white with shadow for readability
         TextView teamName = new TextView(context);
         teamName.setTag(tag + "Name");
         teamName.setTextColor(0xFFFFFFFF);
         teamName.setTextSize(17);
         teamName.setTypeface(null, android.graphics.Typeface.BOLD);
         teamName.setMinWidth(90);
-        teamName.setShadowLayer(3f, 1f, 1f, 0x99000000); // Text shadow for readability
+        teamName.setShadowLayer(3f, 1f, 1f, 0x99000000);
         
-        // Score - bright green with shadow
         TextView score = new TextView(context);
         score.setTag(tag + "Score");
-        score.setTextColor(0xFF4AE54A); // Brighter green
+        score.setTextColor(0xFF4AE54A);
         score.setTextSize(24);
         score.setTypeface(null, android.graphics.Typeface.BOLD);
         score.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         score.setGravity(Gravity.END);
-        score.setShadowLayer(3f, 1f, 1f, 0x99000000); // Text shadow
+        score.setShadowLayer(3f, 1f, 1f, 0x99000000);
         
-        // Overs - light color with shadow
         TextView overs = new TextView(context);
         overs.setTag(tag + "Overs");
         overs.setTextColor(0xFFE0E0E0);
@@ -479,10 +438,9 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         if (t1Overs != null) t1Overs.setText(team1Overs.isEmpty() ? "" : "(" + team1Overs + ")");
         if (t2Overs != null) t2Overs.setText(team2Overs.isEmpty() ? "" : "(" + team2Overs + ")");
         if (status != null) status.setText(statusText);
-        if (batsman != null) batsman.setText(batsmanName.isEmpty() ? "" : "🏏 " + batsmanName);
+        if (batsman != null) batsman.setText(batsmanName.isEmpty() ? "" : "\uD83C\uDFCF " + batsmanName);
         if (bowler != null) bowler.setText(bowlerName.isEmpty() ? "" : "⚾ " + bowlerName);
         
-        // Update notification as well
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) {
             manager.notify(NOTIFICATION_ID, createNotification());
@@ -495,12 +453,10 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         LinearLayout mainLayout = (LinearLayout) floatingView;
         
         if (isMinimized) {
-            // Show only score info - hide all but first 3 children (header + 2 team rows)
             for (int i = 3; i < mainLayout.getChildCount(); i++) {
                 mainLayout.getChildAt(i).setVisibility(View.GONE);
             }
         } else {
-            // Show full widget
             for (int i = 0; i < mainLayout.getChildCount(); i++) {
                 mainLayout.getChildAt(i).setVisibility(View.VISIBLE);
             }
@@ -513,7 +469,6 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
     public void onDestroy() {
         super.onDestroy();
         
-        // Clean up TTS
         if (tts != null) {
             tts.stop();
             tts.shutdown();

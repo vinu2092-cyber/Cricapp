@@ -711,14 +711,31 @@ const withFloatingWidgetMainApplication = (config) => {
 
     // Add package registration if not present
     if (!contents.includes('FloatingWidgetPackage()')) {
-      // Find the getPackages function and add the package
-      const packagesRegex = /(override\s+fun\s+getPackages\s*\(\s*\)\s*:\s*List<ReactPackage>\s*\{[\s\S]*?packages\.toMutableList\(\))/;
-      const match = contents.match(packagesRegex);
-      if (match) {
-        const insertPoint = match.index + match[0].length;
-        const addition = '\n            // Add FloatingWidgetPackage for native overlay functionality\n            packages.add(FloatingWidgetPackage())';
-        contents = contents.slice(0, insertPoint) + addition + contents.slice(insertPoint);
-        console.log('[withFloatingWidget] Added FloatingWidgetPackage to getPackages()');
+      // Pattern 1: New Expo template with .apply { }
+      if (contents.includes('.packages.apply {')) {
+        contents = contents.replace(
+          /\.packages\.apply\s*\{/,
+          `.packages.apply {
+              // Add FloatingWidgetPackage for native overlay functionality
+              add(FloatingWidgetPackage())`
+        );
+        console.log('[withFloatingWidget] Added FloatingWidgetPackage to getPackages() (apply pattern)');
+      }
+      // Pattern 2: Older template with toMutableList()
+      else if (contents.includes('packages.toMutableList()')) {
+        contents = contents.replace(
+          /packages\.toMutableList\(\)/,
+          `packages.toMutableList().also { it.add(FloatingWidgetPackage()) }`
+        );
+        console.log('[withFloatingWidget] Added FloatingWidgetPackage to getPackages() (toMutableList pattern)');
+      }
+      // Pattern 3: PackageList(this).packages directly
+      else if (contents.includes('PackageList(this).packages')) {
+        contents = contents.replace(
+          /PackageList\(this\)\.packages/,
+          `PackageList(this).packages.toMutableList().also { it.add(FloatingWidgetPackage()) }`
+        );
+        console.log('[withFloatingWidget] Added FloatingWidgetPackage to getPackages() (direct pattern)');
       }
     }
 

@@ -7,24 +7,9 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# ============ OPTIMIZATION RULES ============
-# Remove debug logs in release
--assumenosideeffects class android.util.Log {
-    public static *** d(...);
-    public static *** v(...);
-    public static *** i(...);
-}
-
 # react-native-reanimated
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
-
-# Keep Floating Widget Service
--keep class com.cricapp.live.floatingwidget.** { *; }
-
-# Keep React Native core
--keep class com.facebook.hermes.unicode.** { *; }
--keep class com.facebook.jni.** { *; }
 
 # Add any project specific keep options here:
 
