@@ -303,11 +303,13 @@ export default function MatchDetail() {
     }
   }, [id, retryCount]);
 
-  // Logic B: Interstitial on random clicks
+  // Logic B: Interstitial on random clicks (10-15 range for non-pro users)
   const handleInteraction = () => {
     if (effectiveIsPro) return;
     const next = clicks + 1;
+    console.log(`[Interstitial] Click ${next}/${clickTarget}`);
     if (next >= clickTarget) {
+      console.log('[Interstitial] Target reached! Showing interstitial ad...');
       showInterstitialAd();
       setClicks(0);
     } else {

@@ -14,11 +14,11 @@ import { usePro } from './ProContext';
 
 // Google Official Test Ad IDs (for testing/development)
 const AD_IDS = {
-  appOpen: 'ca-app-pub-3940256099942544/3419835294',
-  interstitial: 'ca-app-pub-3940256099942544/1033173712',
-  banner: 'ca-app-pub-3940256099942544/6300978111',
-  rewarded: 'ca-app-pub-3940256099942544/5224354917',
-  native: 'ca-app-pub-3940256099942544/2247696110',
+  appOpen: 'ca-app-pub-3940256099942544/9257395921',      // CORRECT App Open Test ID
+  interstitial: 'ca-app-pub-3940256099942544/1033173712', // Interstitial Test ID
+  banner: 'ca-app-pub-3940256099942544/6300978111',       // Banner Test ID
+  rewarded: 'ca-app-pub-3940256099942544/5224354917',     // Rewarded Test ID
+  native: 'ca-app-pub-3940256099942544/2247696110',       // Native Test ID
 };
 
 interface AdMobContextType {
@@ -168,6 +168,12 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, [loadRewardedAd, loadInterstitialAd]);
 
   const showAppOpenAd = async (): Promise<void> => {
+    // Skip for Pro users
+    if (isPro) {
+      console.log('[AdMob] Pro user - skipping App Open Ad');
+      return Promise.resolve();
+    }
+    
     console.log('[AdMob] showAppOpenAd called, SDK initialized:', isAdMobInitialized);
     return new Promise((resolve) => {
       try {
@@ -175,22 +181,36 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const ad = AppOpenAd.createForAdRequest(AD_IDS.appOpen, {
           requestNonPersonalizedAdsOnly: true,
         });
+        
+        // Increased timeout to 15 seconds for slow networks
         const timeout = setTimeout(() => {
-          console.log('[AdMob] App Open Ad timeout');
+          console.log('[AdMob] App Open Ad timeout after 15s');
           resolve();
-        }, 8000);
+        }, 15000);
         
         ad.addAdEventListener(AdEventType.LOADED, () => {
-          console.log('[AdMob] App Open Ad LOADED, showing...');
-          ad.show();
+          console.log('[AdMob] App Open Ad LOADED, showing now...');
+          try {
+            ad.show();
+          } catch (showErr) {
+            console.log('[AdMob] App Open Ad show error:', showErr);
+            clearTimeout(timeout);
+            resolve();
+          }
         });
+        
+        ad.addAdEventListener(AdEventType.OPENED, () => {
+          console.log('[AdMob] App Open Ad OPENED (visible to user)');
+        });
+        
         ad.addAdEventListener(AdEventType.CLOSED, () => {
-          console.log('[AdMob] App Open Ad CLOSED');
+          console.log('[AdMob] App Open Ad CLOSED by user');
           clearTimeout(timeout);
           resolve();
         });
+        
         ad.addAdEventListener(AdEventType.ERROR, (error) => {
-          console.log('[AdMob] App Open Ad ERROR:', error);
+          console.log('[AdMob] App Open Ad ERROR:', error?.message || error);
           clearTimeout(timeout);
           resolve();
         });

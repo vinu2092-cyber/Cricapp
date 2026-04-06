@@ -44,13 +44,20 @@ class AppErrorBoundary extends React.Component<
 }
 
 function AppOpenAdHandler({ children }: { children: React.ReactNode }) {
-  const { showAppOpenAd, isAdMobInitialized } = useAdMob();
+  const { showAppOpenAd, isAdMobInitialized, isPro } = useAdMob();
+  const [adShown, setAdShown] = useState(false);
 
   useEffect(() => {
-    if (isAdMobInitialized) {
-      showAppOpenAd().catch(() => {});
+    // Show App Opening Ad only once when SDK is initialized
+    // Skip for Pro users
+    if (isAdMobInitialized && !adShown && !isPro) {
+      console.log('[AppOpenAdHandler] SDK ready, showing App Open Ad...');
+      setAdShown(true);
+      showAppOpenAd()
+        .then(() => console.log('[AppOpenAdHandler] App Open Ad flow complete'))
+        .catch((err) => console.log('[AppOpenAdHandler] App Open Ad error:', err));
     }
-  }, [isAdMobInitialized]);
+  }, [isAdMobInitialized, adShown, isPro]);
 
   return <>{children}</>;
 }
