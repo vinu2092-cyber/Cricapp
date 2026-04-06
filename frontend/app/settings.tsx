@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNotifications } from '../src/context/NotificationContext';
+import { clearAllCache } from '../src/services/api';
 
 const API_KEY_STORAGE = 'cricapp_user_api_key';
 const RAPIDAPI_URL = 'https://rapidapi.com/cricketapilive/api/cricbuzz-cricket';
@@ -223,6 +224,38 @@ export default function Settings() {
               </Text>
             </View>
           </View>
+
+          {/* Section 4: Storage & Performance */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Storage & Performance</Text>
+            
+            <TouchableOpacity 
+              style={styles.clearCacheBtn}
+              onPress={() => {
+                Alert.alert(
+                  'Clear Cache',
+                  'This will clear all cached data. App will fetch fresh data on next load.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'Clear', 
+                      style: 'destructive',
+                      onPress: async () => {
+                        await clearAllCache();
+                        Alert.alert('Done', 'Cache cleared successfully!');
+                      }
+                    },
+                  ]
+                );
+              }}
+            >
+              <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+              <View style={styles.settingText}>
+                <Text style={styles.clearCacheTitle}>Clear Cache</Text>
+                <Text style={styles.clearCacheDesc}>Free up storage space (auto-clears every hour)</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -388,5 +421,25 @@ const styles = StyleSheet.create({
     color: '#AAA',
     fontSize: 14,
     lineHeight: 20,
+  },
+  clearCacheBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E1E1E',
+    padding: 16,
+    borderRadius: 10,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 107, 0.3)',
+  },
+  clearCacheTitle: {
+    color: '#FF6B6B',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  clearCacheDesc: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 2,
   },
 });

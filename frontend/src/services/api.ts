@@ -89,24 +89,106 @@ async function callApi(endpoint: string, keys: string[], maxTries: number = 5): 
 // ============ CACHE HELPERS ============
 const CACHE_TTL = 60000; // 1 minute cache for lists
 const MATCH_DETAIL_CACHE_TTL = 30000; // 30 seconds for match details (live data needs fresher)
+const CACHE_CLEANUP_INTERVAL = 3600000; // 1 hour - auto cleanup interval
+const CACHE_PREFIX = 'cricapp_';
+
+// Track all cache keys for cleanup
+let cacheKeys: Set<string> = new Set();
+let cleanupTimerId: ReturnType<typeof setInterval> | null = null;
 
 async function getCached(key: string): Promise<any> {
   try {
-    const raw = await AsyncStorage.getItem(`cricapp_${key}`);
+    const raw = await AsyncStorage.getItem(`${CACHE_PREFIX}${key}`);
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw);
     // Use shorter TTL for match details
     const ttl = key.startsWith('match_') ? MATCH_DETAIL_CACHE_TTL : CACHE_TTL;
-    if (Date.now() - ts > ttl) return null;
+    if (Date.now() - ts > ttl) {
+      // Auto-remove expired cache
+      await AsyncStorage.removeItem(`${CACHE_PREFIX}${key}`);
+      cacheKeys.delete(key);
+      return null;
+    }
     return data;
   } catch { return null; }
 }
 
 async function setCache(key: string, data: any): Promise<void> {
   try {
-    await AsyncStorage.setItem(`cricapp_${key}`, JSON.stringify({ data, ts: Date.now() }));
+    await AsyncStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify({ data, ts: Date.now() }));
+    cacheKeys.add(key);
   } catch {}
 }
+
+// Clear all expired cache entries
+async function clearExpiredCache(): Promise<void> {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const cricappKeys = allKeys.filter(k => k.startsWith(CACHE_PREFIX));
+    
+    for (const fullKey of cricappKeys) {
+      try {
+        const raw = await AsyncStorage.getItem(fullKey);
+        if (raw) {
+          const { ts } = JSON.parse(raw);
+          const key = fullKey.replace(CACHE_PREFIX, '');
+          const ttl = key.startsWith('match_') ? MATCH_DETAIL_CACHE_TTL : CACHE_TTL;
+          
+          // Remove if expired (older than TTL)
+          if (Date.now() - ts > ttl) {
+            await AsyncStorage.removeItem(fullKey);
+            cacheKeys.delete(key);
+          }
+        }
+      } catch {
+        // Remove corrupted cache entries
+        await AsyncStorage.removeItem(fullKey);
+      }
+    }
+    console.log('[Cache] Cleanup completed');
+  } catch (err) {
+    console.warn('[Cache] Cleanup error:', err);
+  }
+}
+
+// Clear ALL cache (for memory optimization)
+async function clearAllCache(): Promise<void> {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const cricappKeys = allKeys.filter(k => k.startsWith(CACHE_PREFIX));
+    if (cricappKeys.length > 0) {
+      await AsyncStorage.multiRemove(cricappKeys);
+    }
+    cacheKeys.clear();
+    console.log('[Cache] All cache cleared');
+  } catch {}
+}
+
+// Start auto-cleanup timer (runs every 1 hour)
+function startCacheCleanup(): void {
+  if (cleanupTimerId) return; // Already running
+  
+  // Initial cleanup on start
+  clearExpiredCache();
+  
+  // Schedule hourly cleanup
+  cleanupTimerId = setInterval(() => {
+    clearExpiredCache();
+  }, CACHE_CLEANUP_INTERVAL);
+  
+  console.log('[Cache] Auto-cleanup started (1 hour interval)');
+}
+
+// Stop cleanup timer (call on app unmount if needed)
+function stopCacheCleanup(): void {
+  if (cleanupTimerId) {
+    clearInterval(cleanupTimerId);
+    cleanupTimerId = null;
+  }
+}
+
+// Initialize cache cleanup on module load
+startCacheCleanup();
 
 // ============ MATCH TRANSFORMATION ============
 // Match list API uses camelCase inside matchInfo wrapper
@@ -511,3 +593,6 @@ export const openExternalScorecard = (matchId: string) => {
     ]
   );
 };
+
+// ============ CACHE MANAGEMENT EXPORTS ============
+export { clearAllCache, clearExpiredCache };
