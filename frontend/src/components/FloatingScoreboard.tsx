@@ -9,6 +9,8 @@ import {
   Dimensions,
   Alert,
   AppState,
+  Linking,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
@@ -139,8 +141,32 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
 
   // Handle Pin Score button click - opens native overlay over other apps
   const handlePinScorePress = async () => {
-    if (!isFloatingWidgetAvailable()) {
+    // First check if we're on Android
+    if (Platform.OS !== 'android') {
       Alert.alert('Not Supported', 'Floating overlay is only available on Android devices.');
+      return;
+    }
+
+    // Check if native module is available
+    if (!isFloatingWidgetAvailable()) {
+      // Native module not linked - show manual instructions
+      Alert.alert(
+        'Native Module Missing',
+        'The floating widget native code is not included in this build.\n\nTo fix this:\n1. Run "npx expo prebuild --clean"\n2. Build a fresh APK with GitHub Actions\n\nWould you like to open settings to enable overlay permission manually?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Open Settings',
+            onPress: async () => {
+              try {
+                await Linking.openSettings();
+              } catch (e) {
+                console.warn('Could not open settings', e);
+              }
+            }
+          }
+        ]
+      );
       return;
     }
 

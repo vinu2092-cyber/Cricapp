@@ -1,64 +1,76 @@
-# CricApp - PRD & Task Tracker
+# CricApp - Product Requirements Document
 
 ## Original Problem Statement
-Clone CricApp repo, append API keys, fix UI bugs, add IPL/International match notifications.
+Clone CricApp from GitHub, fix the Floating Scoreboard (Draw over other apps) feature.
 
 ## Architecture
-- **Platform**: React Native / Expo
-- **Build**: EAS Build (APK + AAB)
-- **API Provider**: Cricbuzz Cricket (RapidAPI)
+- **Frontend**: React Native with Expo (SDK 54)
+- **Backend**: External Cricbuzz API via RapidAPI
+- **Native Module**: FloatingWidgetService (Java) for Android overlay
 
-## What's Been Implemented (Jan 2026)
+## Key Files
+- `/app/frontend/android/app/src/main/java/com/cricapp/live/floatingwidget/FloatingWidgetService.java` - Native Android service
+- `/app/frontend/android/app/src/main/java/com/cricapp/live/floatingwidget/FloatingWidgetModule.java` - React Native bridge
+- `/app/frontend/src/services/FloatingWidgetService.ts` - TypeScript wrapper
+- `/app/frontend/src/components/FloatingScoreboard.tsx` - In-app floating UI
+- `/app/frontend/app/match/[id].tsx` - Match detail page
 
-### API Key Status Check ✅
-- **6 Active Keys** (working):
-  - `6a948b174d...` (Key 13)
-  - `be681ef5f4...` (Key 15)
-  - `efa0ba9303...` (Key 16)
-  - `49895f57cb...` (Key 17)
-  - `3b5c50ff5f...` (Key 18)
-  - `948dd6c539...` (Key 19)
-- **13 Inactive Keys** (rate limited/expired) - removed from rotation
+## What's Been Implemented
 
-### Badge Bug Fix ✅
-- Abandoned matches now show "ABANDONED" (orange) instead of "UPCOMING"
-- Check order: abandon/no result → completed → live → upcoming → delayed
+### April 6, 2026
+1. Added AppState listener to detect when user returns from settings
+2. Added `pendingOverlayRequest` state to track permission flow
+3. Updated "Open Settings" button to use `requestOverlayPermission()` with Linking fallback
+4. Added detailed error messages when native module is missing
+5. Added debug logging to FloatingWidgetService.ts
 
-### Auto Notification System ✅ (NEW)
-**Files Modified:**
-- `/frontend/src/services/NotificationService.ts` - Added `scheduleMatchReminder()`
-- `/frontend/src/context/NotificationContext.tsx` - Complete rewrite with:
-  - Auto-tracking IPL & International matches
-  - Match start reminder (10 min before)
-  - Wicket, Four, Six, Milestone detection from commentary
-  - Better event detection using keyword matching
-- `/frontend/app/settings.tsx` - Added notification toggle UI
+## Current Issue - CRITICAL
+**Native Module Not Found at Runtime**
 
-**Features:**
-1. **Auto-Track**: Automatically tracks all IPL and International matches
-2. **Match Reminder**: 10 minutes before match starts
-3. **Event Alerts**:
-   - 🔴 WICKET alerts
-   - 4️⃣ FOUR alerts  
-   - 6️⃣ SIX alerts
-   - 🎯 Milestone alerts (50s, 100s)
-4. **Settings UI**: Toggle auto-track and notifications
+The `FloatingWidgetModule` is `null` in `NativeModules` even though:
+- Java code exists in `/app/frontend/android/app/src/main/java/com/cricapp/live/floatingwidget/`
+- MainApplication.kt registers `FloatingWidgetPackage()`
+- AndroidManifest.xml declares the service
 
-**IPL/International Detection Keywords:**
-- IPL: 'ipl', 'indian premier league', 'tata ipl'
-- International: 'test', 'odi', 't20i', 'world cup', 'asia cup', 'icc'
+**Root Cause**: APK was built without running `npx expo prebuild --clean` first. The native code exists but was never compiled into the APK.
 
-## Files Modified
-1. `/frontend/src/services/api.ts` - Updated to only active keys (6 keys)
-2. `/frontend/src/services/NotificationService.ts` - Added match reminder
-3. `/frontend/src/context/NotificationContext.tsx` - Auto-track + event detection
-4. `/frontend/src/components/LiveIndicator.tsx` - Badge fix
-5. `/frontend/app/settings.tsx` - Notification settings UI
+## Fix Required - BUILD PROCESS
 
-## Pending
-- User to trigger EAS build
-- Push code via "Save to Github"
+### Step 1: Clean Prebuild
+```bash
+cd frontend
+npx expo prebuild --platform android --clean
+```
 
-## Backlog
-- Background task for notifications when app is killed
-- Push notifications via server (FCM) for better reliability
+### Step 2: Build APK via GitHub Actions
+Trigger the `build-android.yml` workflow which should:
+1. Run `expo prebuild`
+2. Build APK with Gradle
+3. Include the native FloatingWidget module
+
+### Step 3: Test on Device
+1. Install new APK
+2. Click "Pin Score" button
+3. "Open Settings" should now work
+4. Enable overlay permission
+5. Return to app - floating widget should appear
+
+## Prioritized Backlog
+
+### P0 (Critical)
+- [x] Fix "Open Settings" not opening settings
+- [ ] **PENDING**: Rebuild APK with `expo prebuild --clean`
+
+### P1 (High)
+- [ ] Test floating widget on device after rebuild
+- [ ] Verify auto-start after permission grant
+
+### P2 (Medium)
+- [ ] Add visual feedback when overlay is active
+- [ ] Handle edge cases (low memory, etc.)
+
+## Next Tasks
+1. Trigger GitHub Actions build with clean prebuild
+2. Test APK on Android device
+3. Verify overlay permission flow works
+4. Verify floating widget appears over other apps

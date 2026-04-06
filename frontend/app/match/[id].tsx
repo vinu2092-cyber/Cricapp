@@ -405,38 +405,64 @@ export default function MatchDetail() {
                     // Hide overlay
                     await hideFloatingWidget();
                     setNativeOverlayActive(false);
-                  } else {
-                    // Check permission first
-                    const hasPermission = await checkOverlayPermission();
-                    if (!hasPermission) {
-                      Alert.alert(
-                        'Permission Required',
-                        'To show floating scoreboard over other apps, please enable "Display over other apps" permission.',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { 
-                            text: 'Open Settings', 
-                            onPress: async () => {
-                              setPendingOverlayRequest(true);
-                              await requestOverlayPermission();
+                    return;
+                  }
+                  
+                  // Check if native module is available
+                  if (!isFloatingWidgetAvailable()) {
+                    Alert.alert(
+                      'Native Module Missing',
+                      'The floating widget native code is not included in this build.\n\nTo fix: Run "npx expo prebuild --clean" and build fresh APK.\n\nWould you like to open settings manually?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Open Settings',
+                          onPress: async () => {
+                            try {
+                              await Linking.openSettings();
+                            } catch (e) {
+                              console.warn('Could not open settings', e);
                             }
                           }
-                        ]
-                      );
-                      return;
-                    }
-                    // Show floating widget
-                    const scoreData = {
-                      team1Name: match.teams[0]?.shortName || 'Team 1',
-                      team2Name: match.teams[1]?.shortName || 'Team 2',
-                      team1Score: match.teams[0]?.runs !== undefined ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` : '-',
-                      team2Score: match.teams[1]?.runs !== undefined ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` : '-',
-                      team1Overs: match.teams[0]?.overs?.toString() || '',
-                      team2Overs: match.teams[1]?.overs?.toString() || '',
-                      statusText: match.statusText || '',
-                      commentary: match.commentary?.[0]?.english || '',
-                    };
-                    await showFloatingWidget(scoreData);
+                        }
+                      ]
+                    );
+                    return;
+                  }
+                  
+                  // Check permission first
+                  const hasPermission = await checkOverlayPermission();
+                  if (!hasPermission) {
+                    Alert.alert(
+                      'Permission Required',
+                      'To show floating scoreboard over other apps, please enable "Display over other apps" permission.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Open Settings', 
+                          onPress: async () => {
+                            setPendingOverlayRequest(true);
+                            await requestOverlayPermission();
+                          }
+                        }
+                      ]
+                    );
+                    return;
+                  }
+                  
+                  // Show floating widget
+                  const scoreData = {
+                    team1Name: match.teams[0]?.shortName || 'Team 1',
+                    team2Name: match.teams[1]?.shortName || 'Team 2',
+                    team1Score: match.teams[0]?.runs !== undefined ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` : '-',
+                    team2Score: match.teams[1]?.runs !== undefined ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` : '-',
+                    team1Overs: match.teams[0]?.overs?.toString() || '',
+                    team2Overs: match.teams[1]?.overs?.toString() || '',
+                    statusText: match.statusText || '',
+                    commentary: match.commentary?.[0]?.english || '',
+                  };
+                  const success = await showFloatingWidget(scoreData);
+                  if (success) {
                     setNativeOverlayActive(true);
                   }
                 }}

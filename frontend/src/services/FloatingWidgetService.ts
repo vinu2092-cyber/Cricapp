@@ -2,6 +2,11 @@ import { NativeModules, Platform, Linking } from 'react-native';
 
 const { FloatingWidgetModule } = NativeModules;
 
+// Debug logging
+console.log('[FloatingWidget] Platform:', Platform.OS);
+console.log('[FloatingWidget] NativeModules available:', Object.keys(NativeModules));
+console.log('[FloatingWidget] FloatingWidgetModule:', FloatingWidgetModule);
+
 interface ScoreData {
   team1Name: string;
   team2Name: string;
@@ -12,15 +17,17 @@ interface ScoreData {
   statusText?: string;
   batsmanName?: string;
   bowlerName?: string;
-  commentary?: string; // Latest commentary for TTS
+  commentary?: string;
 }
 
 /**
  * Check if floating widget (draw over other apps) is available
- * Only available on Android
+ * Only available on Android with native module properly linked
  */
 export const isFloatingWidgetAvailable = (): boolean => {
-  return Platform.OS === 'android' && FloatingWidgetModule != null;
+  const available = Platform.OS === 'android' && FloatingWidgetModule != null;
+  console.log('[FloatingWidget] isFloatingWidgetAvailable:', available, 'Platform:', Platform.OS, 'Module:', !!FloatingWidgetModule);
+  return available;
 };
 
 /**
@@ -28,11 +35,20 @@ export const isFloatingWidgetAvailable = (): boolean => {
  * Returns true if permission is granted or not needed
  */
 export const checkOverlayPermission = async (): Promise<boolean> => {
-  if (!isFloatingWidgetAvailable()) {
+  if (Platform.OS !== 'android') {
+    console.log('[FloatingWidget] Not Android, returning false');
     return false;
   }
+  
+  if (!FloatingWidgetModule) {
+    console.log('[FloatingWidget] Native module not available, returning false');
+    return false;
+  }
+  
   try {
-    return await FloatingWidgetModule.checkOverlayPermission();
+    const result = await FloatingWidgetModule.checkOverlayPermission();
+    console.log('[FloatingWidget] checkOverlayPermission result:', result);
+    return result;
   } catch (error) {
     console.warn('[FloatingWidget] checkOverlayPermission error:', error);
     return false;
@@ -40,41 +56,57 @@ export const checkOverlayPermission = async (): Promise<boolean> => {
 };
 
 /**
- * Request overlay permission
- * Opens system settings for the user to grant permission
- * Returns true if permission already granted, false if user needs to grant it
+ * Request overlay permission - Opens system settings
+ * Uses Linking API as fallback if native module fails
  */
 export const requestOverlayPermission = async (): Promise<boolean> => {
-  if (!isFloatingWidgetAvailable()) {
+  if (Platform.OS !== 'android') {
+    console.log('[FloatingWidget] Not Android');
     return false;
   }
-  try {
-    const result = await FloatingWidgetModule.requestOverlayPermission();
-    return result;
-  } catch (error) {
-    console.warn('[FloatingWidget] requestOverlayPermission error, trying fallback:', error);
-    // Fallback: Try opening settings via Linking
+  
+  // Try native module first
+  if (FloatingWidgetModule) {
     try {
-      await Linking.openSettings();
-      return false;
-    } catch (linkError) {
-      console.warn('[FloatingWidget] Linking.openSettings also failed:', linkError);
-      return false;
+      console.log('[FloatingWidget] Calling native requestOverlayPermission');
+      const result = await FloatingWidgetModule.requestOverlayPermission();
+      console.log('[FloatingWidget] Native requestOverlayPermission result:', result);
+      return result;
+    } catch (error) {
+      console.warn('[FloatingWidget] Native requestOverlayPermission failed:', error);
     }
+  }
+  
+  // Fallback: Open app settings using Linking
+  console.log('[FloatingWidget] Using Linking.openSettings fallback');
+  try {
+    await Linking.openSettings();
+    return false;
+  } catch (linkError) {
+    console.warn('[FloatingWidget] Linking.openSettings also failed:', linkError);
+    return false;
   }
 };
 
 /**
  * Show the floating score widget overlay
- * Requires overlay permission to be granted
  */
 export const showFloatingWidget = async (scoreData: ScoreData): Promise<boolean> => {
-  if (!isFloatingWidgetAvailable()) {
-    console.warn('[FloatingWidget] Not available on this platform');
+  if (Platform.OS !== 'android') {
+    console.warn('[FloatingWidget] Not available - not Android');
     return false;
   }
+  
+  if (!FloatingWidgetModule) {
+    console.warn('[FloatingWidget] Not available - native module is null');
+    return false;
+  }
+  
   try {
-    return await FloatingWidgetModule.showFloatingWidget(scoreData);
+    console.log('[FloatingWidget] Calling showFloatingWidget with data:', scoreData);
+    const result = await FloatingWidgetModule.showFloatingWidget(scoreData);
+    console.log('[FloatingWidget] showFloatingWidget result:', result);
+    return result;
   } catch (error: any) {
     if (error?.code === 'NO_PERMISSION') {
       console.warn('[FloatingWidget] Overlay permission not granted');
