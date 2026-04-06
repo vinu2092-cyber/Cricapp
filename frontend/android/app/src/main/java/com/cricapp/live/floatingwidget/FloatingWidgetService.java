@@ -354,11 +354,6 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         // Team 2 row
         mainLayout.addView(createTeamRow(context, "team2"));
         
-        // Status text
-        TextView statusView = new TextView(context);
-        statusView.setTag("statusText");
-        statusView.setTextColor(0xFFFFD700); // Gold
-        statusView.setTextSize(12);
         // Status text with shadow for glass background
         TextView statusView = new TextView(context);
         statusView.setTag("statusText");

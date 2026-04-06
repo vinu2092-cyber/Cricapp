@@ -182,9 +182,10 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         )}
         
         {displayedCommentary.map((item, index) => {
-          // Banner ad after 1st ball, then after every complete over (6 balls)
-          // index 0 = 1st ball, then index 6, 12, 18... (every 6th)
-          const showBanner = index === 0 || (index > 0 && index % 6 === 0);
+          // Banner ad BEFORE index 0 (first ball), then AFTER every 6 balls (end of over)
+          // So: banner before index 0, then after index 5, 11, 17... (which is before index 6, 12, 18)
+          const showBannerBefore = index === 0;
+          const showBannerAfter = (index + 1) % 6 === 0;
           
           // Fix: Only show over/ball circle if it's an actual delivery (has valid over number)
           const isActualDelivery = item.over && item.over !== '0' && item.over !== '' && /\d/.test(item.over);
@@ -197,6 +198,13 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
           return (
             <View key={index}>
+              {/* Banner BEFORE first ball */}
+              {showBannerBefore && BannerAdComponent && (
+                <View style={styles.bannerAdContainer}>
+                  <BannerAdComponent />
+                </View>
+              )}
+              
               <View style={styles.commentaryItem}>
                 {/* Only show over ball circle for actual deliveries */}
                 {isActualDelivery ? (
@@ -233,7 +241,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                 )}
               </View>
 
-              {showBanner && BannerAdComponent && (
+              {/* Banner AFTER every complete over (6 balls) */}
+              {showBannerAfter && BannerAdComponent && (
                 <View style={styles.bannerAdContainer}>
                   <BannerAdComponent />
                 </View>
