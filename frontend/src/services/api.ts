@@ -87,14 +87,17 @@ async function callApi(endpoint: string, keys: string[], maxTries: number = 5): 
 }
 
 // ============ CACHE HELPERS ============
-const CACHE_TTL = 60000; // 1 minute cache
+const CACHE_TTL = 60000; // 1 minute cache for lists
+const MATCH_DETAIL_CACHE_TTL = 30000; // 30 seconds for match details (live data needs fresher)
 
 async function getCached(key: string): Promise<any> {
   try {
     const raw = await AsyncStorage.getItem(`cricapp_${key}`);
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw);
-    if (Date.now() - ts > CACHE_TTL) return null;
+    // Use shorter TTL for match details
+    const ttl = key.startsWith('match_') ? MATCH_DETAIL_CACHE_TTL : CACHE_TTL;
+    if (Date.now() - ts > ttl) return null;
     return data;
   } catch { return null; }
 }
@@ -324,8 +327,13 @@ function parseCommentary(data: any, matchId: string): Commentary[] {
 }
 
 // ============ FETCH MATCH BY ID ============
+const MATCH_CACHE_TTL = 30000; // 30 seconds cache for match details (live data)
 
 export async function fetchMatchById(id: string): Promise<Match | null> {
+  // Check cache first (shorter TTL for live matches)
+  const cached = await getCached(`match_${id}`);
+  if (cached) return cached;
+
   let match: Match | null = null;
   let commentary: Commentary[] = [];
 
@@ -479,6 +487,8 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
 
   if (match) {
     match.commentary = commentary;
+    // Cache the match data (30 second TTL for live updates)
+    await setCache(`match_${id}`, match);
   }
 
   return match;
