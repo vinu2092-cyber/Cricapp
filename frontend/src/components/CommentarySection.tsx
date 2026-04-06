@@ -8,12 +8,16 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { Commentary, Language } from '../types/match';
 import { usePro } from '../context/ProContext';
-import { useAdMob } from '../context/AdMobContext.native';
+// Platform-specific AdMob
+const { useAdMob } = Platform.OS === 'web' 
+  ? require('../context/AdMobContext') 
+  : require('../context/AdMobContext.native');
 
 interface CommentarySectionProps {
   commentary: Commentary[];
@@ -178,8 +182,9 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         )}
         
         {displayedCommentary.map((item, index) => {
-          // Banner ad ONLY after every complete over (6 balls) - Policy Compliant
-          const showBanner = (index + 1) % 6 === 0;
+          // Banner ad after 1st ball, then after every complete over (6 balls)
+          // index 0 = 1st ball, then index 6, 12, 18... (every 6th)
+          const showBanner = index === 0 || (index > 0 && index % 6 === 0);
           
           // Fix: Only show over/ball circle if it's an actual delivery (has valid over number)
           const isActualDelivery = item.over && item.over !== '0' && item.over !== '' && /\d/.test(item.over);
