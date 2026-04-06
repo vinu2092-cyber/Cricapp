@@ -533,14 +533,16 @@ export default function MatchDetail() {
           bowlingTeam={match.teams[1].shortName}
         />
 
-        {/* Commentary */}
+        {/* Commentary - with error boundary */}
         {match.commentary && match.commentary.length > 0 ? (
-          <CommentarySection
-            commentary={match.commentary}
-            matchId={id}
-            isLive={match.status === 'live'}
-            matchStatus={match.status as 'live' | 'recent' | 'upcoming'}
-          />
+          <React.Suspense fallback={<View style={styles.noComm}><ActivityIndicator color="#4CAF50" /></View>}>
+            <CommentarySection
+              commentary={match.commentary}
+              matchId={id}
+              isLive={match.status === 'live'}
+              matchStatus={match.status as 'live' | 'recent' | 'upcoming'}
+            />
+          </React.Suspense>
         ) : (
           <View style={styles.noComm}>
             <Ionicons name="chatbox-outline" size={40} color="#999" />

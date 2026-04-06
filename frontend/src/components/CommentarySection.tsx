@@ -228,7 +228,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                 )}
               </View>
 
-              {showBanner && (
+              {showBanner && BannerAdComponent && (
                 <View style={styles.bannerAdContainer}>
                   <BannerAdComponent />
                 </View>

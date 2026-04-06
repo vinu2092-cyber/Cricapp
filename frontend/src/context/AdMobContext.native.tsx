@@ -278,15 +278,23 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
-  const BannerAdComponent: React.FC = () => (
-    <View style={{ minHeight: 50, alignItems: 'center', justifyContent: 'center', marginVertical: 10, width: '100%' }}>
-      <BannerAd
-        unitId={AD_IDS.banner}
-        size={BannerAdSize.BANNER}
-        requestOptions={{ requestNonPersonalizedAdsOnly: true }}
-      />
-    </View>
-  );
+  const BannerAdComponent: React.FC = () => {
+    try {
+      return (
+        <View style={{ minHeight: 50, alignItems: 'center', justifyContent: 'center', marginVertical: 10, width: '100%' }}>
+          <BannerAd
+            unitId={AD_IDS.banner}
+            size={BannerAdSize.BANNER}
+            requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+            onAdFailedToLoad={(error) => console.log('[AdMob] Banner failed:', error)}
+          />
+        </View>
+      );
+    } catch (error) {
+      console.warn('[AdMob] BannerAd render error:', error);
+      return null;
+    }
+  };
 
   return (
     <AdMobContext.Provider value={{
