@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { Commentary, Language } from '../types/match';
 import { usePro } from '../context/ProContext';
-import { useAdMob } from '../context/AdMobContext';
+import { useAdMob } from '../context/AdMobContext.native';
 
 interface CommentarySectionProps {
   commentary: Commentary[];

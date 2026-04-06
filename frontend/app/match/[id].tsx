@@ -16,7 +16,7 @@ import CommentarySection from '../../src/components/CommentarySection';
 import FloatingScoreboard from '../../src/components/FloatingScoreboard';
 import MatchMoodMeter from '../../src/components/MatchMoodMeter';
 import { usePro } from '../../src/context/ProContext';
-import { useAdMob } from '../../src/context/AdMobContext';
+import { useAdMob } from '../../src/context/AdMobContext.native';
 import { useNotifications } from '../../src/context/NotificationContext';
 import {
   isFloatingWidgetAvailable,

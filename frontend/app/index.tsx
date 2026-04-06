@@ -20,7 +20,7 @@ import MatchCard from '../src/components/MatchCard';
 import Header from '../src/components/Header';
 import Footer from '../src/components/Footer';
 import ErrorScreen from '../src/components/ErrorScreen';
-import { useAdMob } from '../src/context/AdMobContext';
+import { useAdMob } from '../src/context/AdMobContext.native';
 import { usePro } from '../src/context/ProContext';
 import {
   fetchLiveMatches,

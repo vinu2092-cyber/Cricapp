@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
 import mobileAds, {
   BannerAd,
   BannerAdSize,

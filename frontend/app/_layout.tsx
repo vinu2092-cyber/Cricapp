@@ -1,9 +1,11 @@
 import React, { useEffect, useState, ErrorInfo } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { Platform } from 'react-native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import { ProProvider } from '../src/context/ProContext';
-import { AdMobProvider, useAdMob } from '../src/context/AdMobContext';
+// Use native AdMob for Android/iOS, web stub for web
+import { AdMobProvider, useAdMob } from '../src/context/AdMobContext.native';
 import { NotificationProvider } from '../src/context/NotificationContext';
 import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder';
 import ErrorScreen from '../src/components/ErrorScreen';
