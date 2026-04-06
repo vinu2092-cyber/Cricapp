@@ -7,11 +7,20 @@ import {
   Animated,
   PanResponder,
   Dimensions,
+  Alert,
+  AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import * as Notifications from 'expo-notifications';
 import { Match } from '../types/match';
+import {
+  isFloatingWidgetAvailable,
+  checkOverlayPermission,
+  requestOverlayPermission,
+  showFloatingWidget,
+  hideFloatingWidget,
+} from '../services/FloatingWidgetService';
 
 interface FloatingScoreboardProps {
   match: Match;
@@ -34,6 +43,8 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentCommIdx, setCurrentCommIdx] = useState(0);
   const [notifOverlayActive, setNotifOverlayActive] = useState(false);
+  const [nativeOverlayActive, setNativeOverlayActive] = useState(false);
+  const [pendingOverlayRequest, setPendingOverlayRequest] = useState(false);
 
   // SAFE: Track position with listeners instead of accessing _value
   const position = useRef(new Animated.ValueXY()).current;
@@ -75,6 +86,95 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
       if (notifOverlayActive) disableNotifOverlay();
     };
   }, []);
+
+  // Listen for app returning from settings after permission request
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'active' && pendingOverlayRequest) {
+        // User came back from settings
+        const granted = await checkOverlayPermission();
+        setPendingOverlayRequest(false);
+        
+        if (granted) {
+          // Permission granted! Start the floating widget
+          await startNativeOverlay();
+        }
+      }
+    });
+    return () => subscription.remove();
+  }, [pendingOverlayRequest, match]);
+
+  // Start native floating widget overlay
+  const startNativeOverlay = async () => {
+    if (!isFloatingWidgetAvailable()) {
+      Alert.alert('Not Supported', 'Floating overlay is only available on Android devices.');
+      return;
+    }
+
+    const scoreData = {
+      team1Name: match.teams[0]?.shortName || 'TM1',
+      team2Name: match.teams[1]?.shortName || 'TM2',
+      team1Score: match.teams[0]?.runs !== undefined 
+        ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` 
+        : '-',
+      team2Score: match.teams[1]?.runs !== undefined 
+        ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` 
+        : '-',
+      team1Overs: match.teams[0]?.overs?.toString() || '',
+      team2Overs: match.teams[1]?.overs?.toString() || '',
+      statusText: match.statusText || '',
+      commentary: match.commentary?.[0]?.english || '',
+    };
+
+    const success = await showFloatingWidget(scoreData);
+    if (success) {
+      setNativeOverlayActive(true);
+      Alert.alert(
+        'Floating Widget Active!',
+        'Score will now show over WhatsApp, YouTube and other apps. You can minimize CricApp now!\n\n• Drag widget to move\n• Tap to minimize\n• Tap ✕ to close',
+        [{ text: 'Got it!' }]
+      );
+    }
+  };
+
+  // Handle Pin Score button click - opens native overlay over other apps
+  const handlePinScorePress = async () => {
+    if (!isFloatingWidgetAvailable()) {
+      Alert.alert('Not Supported', 'Floating overlay is only available on Android devices.');
+      return;
+    }
+
+    if (nativeOverlayActive) {
+      // Stop the overlay
+      await hideFloatingWidget();
+      setNativeOverlayActive(false);
+      return;
+    }
+
+    // Check permission
+    const hasPermission = await checkOverlayPermission();
+    
+    if (!hasPermission) {
+      Alert.alert(
+        'Permission Required',
+        'To show live score over WhatsApp, YouTube and other apps, you need to enable "Display over other apps" permission.\n\nTap "Open Settings" and enable it for CricApp.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Open Settings', 
+            onPress: async () => {
+              setPendingOverlayRequest(true);
+              await requestOverlayPermission();
+            }
+          }
+        ]
+      );
+      return;
+    }
+
+    // Permission granted, start overlay
+    await startNativeOverlay();
+  };
 
   // SAFE PanResponder - no _value access
   const panResponder = useRef(
@@ -276,12 +376,25 @@ const FloatingScoreboard: React.FC<FloatingScoreboardProps> = ({
       {/* Pin to Notification Button - More visible */}
       {!isMinimized && !notifOverlayActive && (
         <TouchableOpacity 
-          style={styles.pinButton}
-          onPress={enableNotifOverlay}
+          style={[styles.pinButton, nativeOverlayActive && styles.pinButtonActive]}
+          onPress={handlePinScorePress}
+          data-testid="pin-score-overlay-button"
         >
-          <Ionicons name="push-outline" size={16} color="#FFF" />
-          <Text style={styles.pinButtonText}>Pin Score (View in Other Apps)</Text>
+          <Ionicons name={nativeOverlayActive ? 'layers' : 'push-outline'} size={16} color="#FFF" />
+          <Text style={styles.pinButtonText}>
+            {nativeOverlayActive ? 'Overlay Active (Tap to Stop)' : 'Pin Score (View in Other Apps)'}
+          </Text>
         </TouchableOpacity>
+      )}
+      
+      {/* Native Overlay Active Info */}
+      {!isMinimized && nativeOverlayActive && (
+        <View style={styles.overlayInfo}>
+          <Ionicons name="checkmark-circle" size={14} color="#FF6B00" />
+          <Text style={[styles.overlayText, { color: '#FF6B00' }]}>
+            Floating widget active! Minimize app to see it.
+          </Text>
+        </View>
       )}
 
       {/* Voice controls */}
@@ -408,6 +521,9 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 10,
     alignSelf: 'center',
+  },
+  pinButtonActive: {
+    backgroundColor: '#FF6B00',
   },
   pinButtonText: {
     color: '#FFF',

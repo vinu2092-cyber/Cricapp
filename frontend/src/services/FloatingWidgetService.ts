@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform, Linking } from 'react-native';
 
 const { FloatingWidgetModule } = NativeModules;
 
@@ -49,10 +49,18 @@ export const requestOverlayPermission = async (): Promise<boolean> => {
     return false;
   }
   try {
-    return await FloatingWidgetModule.requestOverlayPermission();
+    const result = await FloatingWidgetModule.requestOverlayPermission();
+    return result;
   } catch (error) {
-    console.warn('[FloatingWidget] requestOverlayPermission error:', error);
-    return false;
+    console.warn('[FloatingWidget] requestOverlayPermission error, trying fallback:', error);
+    // Fallback: Try opening settings via Linking
+    try {
+      await Linking.openSettings();
+      return false;
+    } catch (linkError) {
+      console.warn('[FloatingWidget] Linking.openSettings also failed:', linkError);
+      return false;
+    }
   }
 };
 
