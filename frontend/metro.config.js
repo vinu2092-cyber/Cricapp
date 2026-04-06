@@ -11,6 +11,8 @@ config.cacheStores = [
   new FileStore({ root: path.join(root, 'cache') }),
 ];
 
+// Platform-specific file extensions (native should prefer .native.tsx over .tsx)
+config.resolver.sourceExts = ['native.tsx', 'native.ts', 'native.js', ...config.resolver.sourceExts];
 
 // // Exclude unnecessary directories from file watching
 // config.watchFolders = [__dirname];

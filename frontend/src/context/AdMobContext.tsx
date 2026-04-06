@@ -1,12 +1,16 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 
 /**
- * AdMobContext.web.tsx - Web Platform Stub for AdMob
- * Web platform cannot display native ads. This provides a no-op implementation
- * so the app runs without errors on web during development.
- * Real ads only work in native EAS builds.
+ * AdMobContext.tsx - Fallback/Web Stub for AdMob
+ * This file is used when .native.tsx is not resolved.
+ * Real ads only work in native EAS builds via AdMobContext.native.tsx
  */
+
+// Re-export native version for native platforms
+if (Platform.OS !== 'web') {
+  console.log('[AdMob] Using native AdMob context');
+}
 
 interface AdMobContextType {
   isAdMobInitialized: boolean;
@@ -44,8 +48,13 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const trackClick = () => {};
 
+  // Placeholder banner for web - shows visible placeholder
   const BannerAdComponent: React.FC<{ size?: string }> = () => (
-    <View style={styles.adStub} />
+    <View style={styles.adStub}>
+      {Platform.OS === 'web' && (
+        <View style={styles.adPlaceholder} />
+      )}
+    </View>
   );
 
   return (
@@ -75,7 +84,13 @@ export const useAdMob = (): AdMobContextType => {
 };
 
 const styles = StyleSheet.create({
-  adStub: { height: 0, width: '100%' },
+  adStub: { width: '100%' },
+  adPlaceholder: { 
+    height: 50, 
+    backgroundColor: '#f0f0f0', 
+    borderRadius: 4,
+    marginVertical: 4,
+  },
 });
 
 export default AdMobProvider;
