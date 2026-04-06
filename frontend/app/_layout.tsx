@@ -4,11 +4,8 @@ import { StatusBar } from 'expo-status-bar';
 import { Platform } from 'react-native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import { ProProvider } from '../src/context/ProContext';
-// Platform-specific AdMob - native for Android/iOS
-const AdMobModule = Platform.OS === 'web' 
-  ? require('../src/context/AdMobContext') 
-  : require('../src/context/AdMobContext.native');
-const { AdMobProvider, useAdMob } = AdMobModule;
+// Always import native AdMob for Android builds (web builds use stub via extension resolution)
+import { AdMobProvider, useAdMob } from '../src/context/AdMobContext.native';
 import { NotificationProvider } from '../src/context/NotificationContext';
 import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder';
 import ErrorScreen from '../src/components/ErrorScreen';

@@ -16,10 +16,7 @@ import CommentarySection from '../../src/components/CommentarySection';
 import FloatingScoreboard from '../../src/components/FloatingScoreboard';
 import MatchMoodMeter from '../../src/components/MatchMoodMeter';
 import { usePro } from '../../src/context/ProContext';
-// Platform-specific AdMob
-const { useAdMob } = Platform.OS === 'web' 
-  ? require('../../src/context/AdMobContext') 
-  : require('../../src/context/AdMobContext.native');
+import { useAdMob } from '../../src/context/AdMobContext.native';
 import { useNotifications } from '../../src/context/NotificationContext';
 import {
   isFloatingWidgetAvailable,
@@ -357,6 +354,51 @@ export default function MatchDetail() {
             )}
             
             <View style={styles.headerActions}>
+              {/* Floating Popup Button - Draw over other apps */}
+              <TouchableOpacity
+                style={[styles.actionBtn, nativeOverlayActive && styles.actionBtnActive]}
+                onPress={async () => {
+                  if (nativeOverlayActive) {
+                    // Hide overlay
+                    await hideFloatingWidget();
+                    setNativeOverlayActive(false);
+                  } else {
+                    // Check permission first
+                    const hasPermission = await checkOverlayPermission();
+                    if (!hasPermission) {
+                      Alert.alert(
+                        'Permission Required',
+                        'To show floating scoreboard over other apps, please enable "Display over other apps" permission.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Open Settings', onPress: () => requestOverlayPermission() }
+                        ]
+                      );
+                      return;
+                    }
+                    // Show floating widget
+                    const scoreData = {
+                      team1Name: match.teams[0]?.shortName || 'Team 1',
+                      team2Name: match.teams[1]?.shortName || 'Team 2',
+                      team1Score: match.teams[0]?.runs !== undefined ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` : '-',
+                      team2Score: match.teams[1]?.runs !== undefined ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` : '-',
+                      team1Overs: match.teams[0]?.overs?.toString() || '',
+                      team2Overs: match.teams[1]?.overs?.toString() || '',
+                      statusText: match.statusText || '',
+                      commentary: match.commentary?.[0]?.english || '',
+                    };
+                    await showFloatingWidget(scoreData);
+                    setNativeOverlayActive(true);
+                  }
+                }}
+              >
+                <Ionicons
+                  name={nativeOverlayActive ? 'layers' : 'layers-outline'}
+                  size={18}
+                  color={nativeOverlayActive ? '#4CAF50' : '#AAA'}
+                />
+              </TouchableOpacity>
+
               {/* Notification Toggle */}
               <TouchableOpacity
                 style={[styles.actionBtn, isTracking(id || '') && styles.actionBtnActive]}

@@ -168,15 +168,39 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, [loadRewardedAd, loadInterstitialAd]);
 
   const showAppOpenAd = async (): Promise<void> => {
+    console.log('[AdMob] showAppOpenAd called, SDK initialized:', isAdMobInitialized);
     return new Promise((resolve) => {
       try {
-        const ad = AppOpenAd.createForAdRequest(AD_IDS.appOpen);
-        const timeout = setTimeout(resolve, 6000);
-        ad.addAdEventListener(AdEventType.LOADED, () => ad.show());
-        ad.addAdEventListener(AdEventType.CLOSED, () => { clearTimeout(timeout); resolve(); });
-        ad.addAdEventListener(AdEventType.ERROR, () => { clearTimeout(timeout); resolve(); });
+        console.log('[AdMob] Creating App Open Ad with ID:', AD_IDS.appOpen);
+        const ad = AppOpenAd.createForAdRequest(AD_IDS.appOpen, {
+          requestNonPersonalizedAdsOnly: true,
+        });
+        const timeout = setTimeout(() => {
+          console.log('[AdMob] App Open Ad timeout');
+          resolve();
+        }, 8000);
+        
+        ad.addAdEventListener(AdEventType.LOADED, () => {
+          console.log('[AdMob] App Open Ad LOADED, showing...');
+          ad.show();
+        });
+        ad.addAdEventListener(AdEventType.CLOSED, () => {
+          console.log('[AdMob] App Open Ad CLOSED');
+          clearTimeout(timeout);
+          resolve();
+        });
+        ad.addAdEventListener(AdEventType.ERROR, (error) => {
+          console.log('[AdMob] App Open Ad ERROR:', error);
+          clearTimeout(timeout);
+          resolve();
+        });
+        
+        console.log('[AdMob] Loading App Open Ad...');
         ad.load();
-      } catch { resolve(); }
+      } catch (err) {
+        console.log('[AdMob] App Open Ad exception:', err);
+        resolve();
+      }
     });
   };
 

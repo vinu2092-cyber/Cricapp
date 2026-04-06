@@ -14,10 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { Commentary, Language } from '../types/match';
 import { usePro } from '../context/ProContext';
-// Platform-specific AdMob
-const { useAdMob } = Platform.OS === 'web' 
-  ? require('../context/AdMobContext') 
-  : require('../context/AdMobContext.native');
+import { useAdMob } from '../context/AdMobContext.native';
 
 interface CommentarySectionProps {
   commentary: Commentary[];

@@ -20,10 +20,7 @@ import MatchCard from '../src/components/MatchCard';
 import Header from '../src/components/Header';
 import Footer from '../src/components/Footer';
 import ErrorScreen from '../src/components/ErrorScreen';
-// Platform-specific AdMob
-const { useAdMob } = Platform.OS === 'web' 
-  ? require('../src/context/AdMobContext') 
-  : require('../src/context/AdMobContext.native');
+import { useAdMob } from '../src/context/AdMobContext.native';
 import { usePro } from '../src/context/ProContext';
 import {
   fetchLiveMatches,
