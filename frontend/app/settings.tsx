@@ -108,7 +108,7 @@ export default function Settings() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>API Settings</Text>
+          <Text style={styles.headerTitle}>Settings</Text>
           <View style={{ width: 40 }} />
         </View>
 
@@ -132,7 +132,7 @@ export default function Settings() {
             
             <TextInput
               style={styles.input}
-              placeholder="Enter your RapidAPI Key"
+              placeholder="Enter your API Key"
               placeholderTextColor="#999"
               value={apiKey}
               onChangeText={setApiKey}
@@ -171,7 +171,7 @@ export default function Settings() {
             <View style={[styles.helpTextContainer, { marginTop: 12 }]}>
               <Ionicons name="help-circle-outline" size={20} color="#888" />
               <Text style={styles.helpText}>
-                If user is unable to see the match, then they can generate their own API key by clicking on Get API Key and pasting it in the box above.
+                Optional: Users can add their own API key for enhanced access.
               </Text>
             </View>
           </View>
@@ -200,8 +200,8 @@ export default function Settings() {
               <View style={styles.settingInfo}>
                 <Ionicons name="trophy" size={22} color="#FFD700" />
                 <View style={styles.settingText}>
-                  <Text style={styles.settingTitle}>Auto-Track IPL & International</Text>
-                  <Text style={styles.settingDesc}>Automatically track IPL and International matches</Text>
+                  <Text style={styles.settingTitle}>Auto-Track Major Matches</Text>
+                  <Text style={styles.settingDesc}>Automatically track major league and international matches</Text>
                 </View>
               </View>
               <Switch
@@ -216,7 +216,7 @@ export default function Settings() {
             <View style={styles.notifInfoBox}>
               <Ionicons name="information-circle" size={20} color="#2196F3" />
               <Text style={styles.notifInfoText}>
-                When enabled, you'll automatically receive notifications for all IPL and International matches including:{'\n'}
+                When enabled, you'll automatically receive notifications for major matches including:{'\n'}
                 • Match start reminder (10 min before){'\n'}
                 • Wicket alerts{'\n'}
                 • Boundary alerts (4s & 6s){'\n'}
