@@ -48,25 +48,23 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
-      - name: Copy Existing Release Keystore
-        working-directory: frontend
+      - name: Restore Release Keystore from Base64
+        working-directory: frontend/android/app
         run: |
-          # Copy the existing keystore to android/app folder
-          cp android-keystore/release-keystore.jks android/app/release-keystore.jks
-          echo "Existing release keystore copied successfully"
-          ls -la android/app/release-keystore.jks
+          # Decode the base64 keystore (same keystore used in GemmiApps builds)
+          echo "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" | base64 -d > release-keystore.jks
+          echo "Release keystore restored from base64"
+          ls -la release-keystore.jks
 
       - name: Configure Release Signing in build.gradle
         working-directory: frontend/android/app
         run: |
-          # Create a Python script to properly modify build.gradle
           cat > fix_signing.py << 'PYTHON_SCRIPT'
           import re
 
           with open('build.gradle', 'r') as f:
               content = f.read()
 
-          # New signing configs block with both debug and release
           new_signing_configs = '''    signingConfigs {
               debug {
                   storeFile file('debug.keystore')
@@ -82,11 +80,9 @@ jobs:
               }
           }'''
 
-          # Replace existing signingConfigs block
           pattern = r'signingConfigs\s*\{[^}]*debug\s*\{[^}]*\}[^}]*\}'
           content = re.sub(pattern, new_signing_configs, content)
 
-          # Update release buildType to use signingConfigs.release
           content = re.sub(
               r'(release\s*\{[^}]*signingConfig\s+)signingConfigs\.debug',
               r'\1signingConfigs.release',
@@ -96,14 +92,10 @@ jobs:
           with open('build.gradle', 'w') as f:
               f.write(content)
 
-          print("build.gradle updated successfully with existing keystore")
+          print("build.gradle updated successfully")
           PYTHON_SCRIPT
           
           python3 fix_signing.py
-          
-          # Verify the changes
-          echo "=== Verifying signingConfigs ==="
-          grep -A 15 "signingConfigs {" build.gradle | head -20
 
       - name: Make gradlew executable
         working-directory: frontend/android
@@ -149,14 +141,5 @@ jobs:
       - name: Build Summary
         run: |
           echo "## ✅ Build Complete: ${{ matrix.build-type }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
-          echo "- Platform: Android" >> $GITHUB_STEP_SUMMARY
-          echo "- Type: ${{ matrix.build-type == 'apk' && 'APK (Direct Install)' || 'AAB (Play Store)' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Signing: **RELEASE** (Using existing keystore)" >> $GITHUB_STEP_SUMMARY
-          echo "- Version: 1.0.2" >> $GITHUB_STEP_SUMMARY
-          echo "- Version Code: 2" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔐 Keystore Info" >> $GITHUB_STEP_SUMMARY
-          echo "- Using: **Existing release-keystore.jks**" >> $GITHUB_STEP_SUMMARY
-          echo "- Same key as previous builds ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Signing: RELEASE (Same keystore as GemmiApps builds)" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: 1.0.2 | Code: 2" >> $GITHUB_STEP_SUMMARY
