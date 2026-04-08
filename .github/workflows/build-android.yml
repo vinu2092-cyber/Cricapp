@@ -48,20 +48,13 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
-      - name: Generate Release Keystore
-        working-directory: frontend/android/app
+      - name: Copy Existing Release Keystore
+        working-directory: frontend
         run: |
-          keytool -genkeypair -v \
-            -storetype PKCS12 \
-            -keystore release-keystore.jks \
-            -alias cricapp-release \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass CricApp2026Release \
-            -keypass CricApp2026Release \
-            -dname "CN=CricApp, OU=Mobile, O=GemmiApps, L=Jammu, ST=JK, C=IN"
-          echo "Release keystore generated successfully"
+          # Copy the existing keystore to android/app folder
+          cp android-keystore/release-keystore.jks android/app/release-keystore.jks
+          echo "Existing release keystore copied successfully"
+          ls -la android/app/release-keystore.jks
 
       - name: Configure Release Signing in build.gradle
         working-directory: frontend/android/app
@@ -103,16 +96,14 @@ jobs:
           with open('build.gradle', 'w') as f:
               f.write(content)
 
-          print("build.gradle updated successfully")
+          print("build.gradle updated successfully with existing keystore")
           PYTHON_SCRIPT
           
           python3 fix_signing.py
           
           # Verify the changes
-          echo "=== Checking signingConfigs in build.gradle ==="
-          grep -A 20 "signingConfigs {" build.gradle | head -25
-          echo "=== Checking release buildType ==="
-          grep -A 5 "release {" build.gradle | head -10
+          echo "=== Verifying signingConfigs ==="
+          grep -A 15 "signingConfigs {" build.gradle | head -20
 
       - name: Make gradlew executable
         working-directory: frontend/android
@@ -155,14 +146,6 @@ jobs:
           path: frontend/android/app/build/outputs/bundle/release/*.aab
           retention-days: 30
 
-      - name: Upload Keystore (IMPORTANT - Save this!)
-        if: matrix.build-type == 'aab'
-        uses: actions/upload-artifact@v4
-        with:
-          name: CricApp-Release-Keystore-SAVE-THIS
-          path: frontend/android/app/release-keystore.jks
-          retention-days: 365
-
       - name: Build Summary
         run: |
           echo "## ✅ Build Complete: ${{ matrix.build-type }}" >> $GITHUB_STEP_SUMMARY
@@ -170,14 +153,10 @@ jobs:
           echo "### Build Info" >> $GITHUB_STEP_SUMMARY
           echo "- Platform: Android" >> $GITHUB_STEP_SUMMARY
           echo "- Type: ${{ matrix.build-type == 'apk' && 'APK (Direct Install)' || 'AAB (Play Store)' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Signing: **RELEASE** (Play Store Ready)" >> $GITHUB_STEP_SUMMARY
+          echo "- Signing: **RELEASE** (Using existing keystore)" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: 1.0.2" >> $GITHUB_STEP_SUMMARY
+          echo "- Version Code: 2" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔐 KEYSTORE INFO (SAVE THIS!)" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| File | release-keystore.jks |" >> $GITHUB_STEP_SUMMARY
-          echo "| Password | CricApp2026Release |" >> $GITHUB_STEP_SUMMARY
-          echo "| Alias | cricapp-release |" >> $GITHUB_STEP_SUMMARY
-          echo "| Key Password | CricApp2026Release |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "⚠️ **Download the keystore from Artifacts! You need it for ALL future updates.**" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔐 Keystore Info" >> $GITHUB_STEP_SUMMARY
+          echo "- Using: **Existing release-keystore.jks**" >> $GITHUB_STEP_SUMMARY
+          echo "- Same key as previous builds ✅" >> $GITHUB_STEP_SUMMARY
