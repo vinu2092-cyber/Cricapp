@@ -278,14 +278,20 @@ export default function Index() {
 
       {/* Category Filter */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFilter} contentContainerStyle={styles.categoryFilterContent}>
-        {(['all', 'international', 'league', 'domestic', 'women'] as CategoryType[]).map((category) => (
+        {([
+          { key: 'all', label: 'All' },
+          { key: 'international', label: "Int'l" },
+          { key: 'league', label: 'League' },
+          { key: 'domestic', label: 'Domestic' },
+          { key: 'women', label: 'Women' },
+        ] as { key: CategoryType; label: string }[]).map((category) => (
           <TouchableOpacity
-            key={category}
-            style={[styles.categoryChip, selectedCategory === category && styles.activeCategoryChip]}
-            onPress={() => setSelectedCategory(category)}
+            key={category.key}
+            style={[styles.categoryChip, selectedCategory === category.key && styles.activeCategoryChip]}
+            onPress={() => setSelectedCategory(category.key)}
           >
-            <Text style={[styles.categoryText, selectedCategory === category && styles.activeCategoryText]}>
-              {category.charAt(0).toUpperCase() + category.slice(1)}
+            <Text style={[styles.categoryText, selectedCategory === category.key && styles.activeCategoryText]}>
+              {category.label}
             </Text>
           </TouchableOpacity>
         ))}
@@ -470,27 +476,31 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
-    maxHeight: 52,
+    maxHeight: 56,
   },
   categoryFilterContent: {
     flexDirection: 'row',
-    padding: 12,
-    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    gap: 6,
+    alignItems: 'center',
   },
   categoryChip: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    marginRight: 8,
+    marginRight: 4,
     borderRadius: 20,
     backgroundColor: '#f0f0f0',
+    minWidth: 50,
   },
   activeCategoryChip: {
     backgroundColor: '#4CAF50',
   },
   categoryText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#666',
+    textAlign: 'center',
   },
   activeCategoryText: {
     color: '#fff',
