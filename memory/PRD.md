@@ -1,31 +1,49 @@
-# CricApp - Final PRD
+# CricApp - Production Ready PRD
 
-## App Status: READY FOR PLAY STORE TESTING
+## Status: PRODUCTION BUILD READY ✅
 
-## What's Implemented
-- ✅ Live Cricket Scores with real-time updates
-- ✅ Floating Scoreboard (Draw over other apps) - Native Android Service
-- ✅ App Opening Ad (Google Test ID)
-- ✅ Interstitial Ad (10-15 clicks for non-pro users)
-- ✅ Rewarded Ads (Watch 3 ads for 30 min Pro)
-- ✅ Banner Ads
-- ✅ Pro Features (Voice Commentary, Ad-free)
-- ✅ Match Notifications
-- ✅ Ball-by-ball Commentary
+## Version Info
+- **Version Name:** 1.0.2
+- **Version Code:** 2
+- **Package:** com.cricapp.live
 
-## Key Files
-- `/frontend/src/context/AdMobContext.native.tsx` - Ad logic & IDs
-- `/frontend/plugins/withFloatingWidget.js` - Native overlay plugin
-- `/frontend/app.json` - App config, versions, package name
-- `/PRODUCTION_RELEASE_GUIDE.md` - Complete release guide
+## Real AdMob IDs (Production)
 
-## After 14 Days Testing - Change These:
-1. Ad Unit IDs in `AdMobContext.native.tsx` (Lines 15-22)
-2. App ID in `app.json` (Lines 30 & 73)
-3. Version & versionCode in `app.json` (Lines 5 & 27)
+| Ad Type | Ad Unit ID |
+|---------|------------|
+| App ID | ca-app-pub-9675798593675825~2399929714 |
+| App Open | ca-app-pub-9675798593675825/4826782503 |
+| Banner | ca-app-pub-9675798593675825/8616886104 |
+| Interstitial | ca-app-pub-9675798593675825/8438724452 |
+| Rewarded | ca-app-pub-9675798593675825/6702740458 |
 
-## Tech Stack
-- React Native with Expo SDK 54
-- TypeScript
-- Native Android modules (Java/Kotlin)
-- react-native-google-mobile-ads
+## Changes Made for Production
+
+1. ✅ Test Ad IDs → Real Ad IDs
+2. ✅ Test Device ID removed
+3. ✅ Version updated to 1.0.2
+4. ✅ Version Code set to 2
+5. ✅ app-ads.txt created
+
+## app-ads.txt Content
+```
+google.com, pub-9675798593675825, DIRECT, f08c47fec0942fa0
+```
+
+## GitHub Pages Setup Needed
+User needs to:
+1. Create public repo: app-ads-cricapp
+2. Add app-ads.txt file
+3. Enable GitHub Pages
+4. URL will be: https://gemmiapps-rgb.github.io/app-ads-cricapp/app-ads.txt
+
+## Keystore Info
+- File: release-keystore.jks
+- Password: CricApp2026Release
+- Alias: cricapp-release
+
+## Next Steps
+1. Push to GitHub
+2. Build AAB
+3. Upload to Closed Testing
+4. Create app-ads.txt repo with GitHub Pages

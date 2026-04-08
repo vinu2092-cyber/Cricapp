@@ -12,13 +12,13 @@ import mobileAds, {
 } from 'react-native-google-mobile-ads';
 import { usePro } from './ProContext';
 
-// Google Official Test Ad IDs (for testing/development)
+// Production Ad IDs - Real AdMob IDs
 const AD_IDS = {
-  appOpen: 'ca-app-pub-3940256099942544/9257395921',      // CORRECT App Open Test ID
-  interstitial: 'ca-app-pub-3940256099942544/1033173712', // Interstitial Test ID
-  banner: 'ca-app-pub-3940256099942544/6300978111',       // Banner Test ID
-  rewarded: 'ca-app-pub-3940256099942544/5224354917',     // Rewarded Test ID
-  native: 'ca-app-pub-3940256099942544/2247696110',       // Native Test ID
+  appOpen: 'ca-app-pub-9675798593675825/4826782503',      // Real App Open Ad ID
+  interstitial: 'ca-app-pub-9675798593675825/8438724452', // Real Interstitial Ad ID
+  banner: 'ca-app-pub-9675798593675825/8616886104',       // Real Banner Ad ID
+  rewarded: 'ca-app-pub-9675798593675825/6702740458',     // Real Rewarded Ad ID
+  native: 'ca-app-pub-3940256099942544/2247696110',       // Native Test ID (not used)
 };
 
 interface AdMobContextType {
@@ -145,7 +145,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     mobileAds()
       .setRequestConfiguration({
-        testDeviceIdentifiers: ['553c7721-4821-461b-9f62-8584b1e60745'],
+        testDeviceIdentifiers: [], // Production - no test devices
       })
       .then(() => mobileAds().initialize())
       .then(() => {
