@@ -525,52 +525,28 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
           for (let i = 0; i < Math.min(12, commentary.length); i++) {
             const comm = commentary[i];
             if (comm.over && comm.over !== '0' && /\d/.test(comm.over)) {
-              // Detect ball result from commentary text
-              const text = (comm.english || '').toLowerCase();
-              
-              // PRECISE wicket detection - avoid false positives from field positions
-              // "mid-wicket" is a field position, NOT a wicket
-              // "outside" is a ball position, NOT "out"
-              const isWicket = (
-                text.includes('out!') ||
-                text.includes('wicket!') ||
-                /\bcaught (?:by|and|behind|at)\b/.test(text) ||
-                /\brun\s*out\b/.test(text) ||
-                /\blbw\b/.test(text) ||
-                /\bstumped\b/.test(text) ||
-                (/\bbowled\b/.test(text) && !text.includes('bowled over') && (text.includes('bowled!') || text.includes('bowled him') || text.includes('bowled her') || text.includes('clean bowled')))
-              );
-              
-              // PRECISE wide detection - "wide of off stump" is NOT a wide delivery
-              const isWide = (
-                /\bthat's a wide\b/.test(text) ||
-                /\bwide ball\b/.test(text) ||
-                /\bcalled wide\b/.test(text) ||
-                (/\bwide\b/.test(text) && !text.includes('wide of') && !text.includes('wide outside') && text.length < 50)
-              );
-              
-              if (isWicket) {
+              // USE event field FIRST - most reliable for FOUR/SIX/WICKET detection
+              // The event field is parsed from Cricbuzz API event data, NOT from text
+              if (comm.event === 'wicket') {
                 recentBalls.push('WKT');
-              } else if (text.includes('six') || text.includes('sixer')) {
+              } else if (comm.event === 'six') {
                 recentBalls.push('6');
-              } else if (text.includes('four') || text.includes('boundary')) {
+              } else if (comm.event === 'four') {
                 recentBalls.push('4');
-              } else if (isWide) {
+              } else if (comm.event === 'wide') {
                 recentBalls.push('Wd');
-              } else if (text.includes('no ball') || text.includes('no-ball')) {
-                recentBalls.push('Nb');
-              } else if (text.includes('no run') || text.includes('dot')) {
-                recentBalls.push('0');
-              } else if (text.includes('single') || text.includes('one run') || text.includes('1 run')) {
-                recentBalls.push('1');
-              } else if (text.includes('two') || text.includes('2 run')) {
-                recentBalls.push('2');
-              } else if (text.includes('three') || text.includes('3 run')) {
-                recentBalls.push('3');
               } else {
-                // Default - extract number if present
-                const numMatch = text.match(/(\d) run/);
-                recentBalls.push(numMatch ? numMatch[1] : '•');
+                // Fallback: extract from text for runs/dots/no-balls
+                const text = (comm.english || '').toLowerCase();
+                if (text.includes('no ball') || text.includes('no-ball')) {
+                  recentBalls.push('Nb');
+                } else if (text.includes('no run') || text.includes(', 0 run')) {
+                  recentBalls.push('0');
+                } else {
+                  // Extract run count from text
+                  const runMatch = text.match(/(\d)\s*run/);
+                  recentBalls.push(runMatch ? runMatch[1] : '0');
+                }
               }
             }
           }

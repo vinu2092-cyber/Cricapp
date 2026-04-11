@@ -437,11 +437,10 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const BannerAdComponent: React.FC = () => {
     try {
       return (
-        <View style={{ minHeight: 50, alignItems: 'center', justifyContent: 'center', marginVertical: 10, width: '100%' }}>
+        <View style={{ minHeight: 60, alignItems: 'center', justifyContent: 'center', marginVertical: 10, width: '100%' }}>
           <BannerAd
             unitId={AD_IDS.banner}
-            size={BannerAdSize.BANNER}
-            requestOptions={{}}
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
             onAdFailedToLoad={(error) => console.log('[AdMob] Banner failed:', error)}
           />
         </View>
