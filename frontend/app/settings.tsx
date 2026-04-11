@@ -267,7 +267,7 @@ export default function Settings() {
               <Ionicons name="information-circle-outline" size={22} color="#4CAF50" />
               <View style={styles.settingText}>
                 <Text style={styles.aboutTitle}>About CricApp</Text>
-                <Text style={styles.aboutDesc}>App info, version & Privacy and Terms & Conditions</Text>
+                <Text style={styles.aboutDesc}>App info, Version, Privacy & Terms</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#666" />
             </TouchableOpacity>
