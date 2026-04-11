@@ -16,6 +16,7 @@ interface AdMobContextType {
   showAppOpenAd: () => Promise<void>;
   showInterstitialAd: () => Promise<boolean>;
   showRewardedAd: () => Promise<boolean>;
+  showPrivacyOptionsForm: () => Promise<void>;
   isRewardedAdReady: boolean;
   BannerAdComponent: React.FC<{ size?: string }>;
 }
@@ -31,6 +32,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const showAppOpenAd = async (): Promise<void> => {};
   const showInterstitialAd = async (): Promise<boolean> => false;
+  const showPrivacyOptionsForm = async (): Promise<void> => {};
   const showRewardedAd = async (): Promise<boolean> => {
     // Simulate ad completion for web dev testing
     return new Promise((resolve) => setTimeout(() => resolve(true), 500));
@@ -52,6 +54,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         showAppOpenAd,
         showInterstitialAd,
         showRewardedAd,
+        showPrivacyOptionsForm,
         isRewardedAdReady: true,
         BannerAdComponent,
       }}

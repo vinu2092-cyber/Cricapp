@@ -36,6 +36,8 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
   
   // Cricbuzz recentOvsStr format: "23.6 1, 24.1 4, 24.2 W, 24.3 4" (ball-number result pairs)
   // Also handle simple format: "1 4 W 0 2 6" or "1|4|W|0|2|6"
+  // IMPORTANT: In Cricbuzz recentOvsStr, "W" means WIDE (not wicket!)
+  // Wickets are represented as "WKT", "OUT", or "WICKET"
   
   let balls: string[] = [];
   
@@ -59,14 +61,14 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
         
         // Normalize the result
         const r = result.toUpperCase().trim();
-        if (r.includes('WICKET') || r === 'W' || r.includes('OUT')) {
-          balls.push('W');
+        if (r.includes('WICKET') || r === 'WKT' || r.includes('OUT') || r === 'OW') {
+          balls.push('WKT'); // Explicit wicket markers only
+        } else if (r === 'W' || r.includes('WIDE') || r === 'WD') {
+          balls.push('Wd'); // W in Cricbuzz = Wide, not wicket
         } else if (r === '6' || r.includes('SIX')) {
           balls.push('6');
         } else if (r === '4' || r.includes('FOUR')) {
           balls.push('4');
-        } else if (r.includes('WIDE') || r === 'WD') {
-          balls.push('Wd');
         } else if (r.includes('NO BALL') || r === 'NB') {
           balls.push('Nb');
         } else if (r === '0' || r.includes('NO RUN') || r === '.' || r === '•') {
@@ -78,12 +80,28 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
         }
       } else if (parts.length === 1) {
         // Just a result without ball number
-        balls.push(parts[0].toUpperCase());
+        const val = parts[0].toUpperCase();
+        if (val === 'W') {
+          balls.push('Wd'); // W = Wide in Cricbuzz
+        } else if (val === 'WKT' || val === 'OUT' || val === 'WICKET') {
+          balls.push('WKT');
+        } else {
+          balls.push(val);
+        }
       }
     }
   } else {
     // Simple space/pipe separated format: "1 4 W 0 2 6 | 0 1"
-    balls = summary.split(/[\s]+/).filter(b => b.trim()).map(b => b.trim().toUpperCase());
+    // In Cricbuzz recentOvsStr: W = Wide, WKT/OUT = Wicket
+    const rawBalls = summary.split(/[\s]+/).filter(b => b.trim());
+    balls = rawBalls.map(b => {
+      const val = b.trim().toUpperCase();
+      // Convert W to Wd (wide) - Cricbuzz uses W for wide in recentOvsStr
+      if (val === 'W') return 'Wd';
+      // Keep explicit wicket markers
+      if (val === 'WKT' || val === 'OUT' || val === 'WICKET') return 'WKT';
+      return val;
+    });
   }
   
   let ballCount = 0;
@@ -115,15 +133,15 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
     // Style based on ball type
     let style: any = { marginHorizontal: 4, fontSize: 15, fontWeight: '700' };
     
-    if (b === 'W' || b === 'WKT' || b === 'WICKET') {
+    if (b === 'WKT' || b === 'WICKET' || b === 'OUT') {
       style = { ...style, color: '#FF0000', fontWeight: 'bold', fontSize: 16 };
     } else if (b === '6') {
       style = { ...style, color: '#9C27B0', fontWeight: 'bold', fontSize: 16 };
     } else if (b === '4') {
       style = { ...style, color: '#00E676', fontWeight: 'bold', fontSize: 16 };
-    } else if (b === 'WD' || b === 'WIDE') {
+    } else if (b === 'WD' || b === 'Wd' || b === 'WIDE' || b === 'W') {
       style = { ...style, color: '#FF9800', fontSize: 13 };
-    } else if (b === 'NB' || b === 'NOBALL') {
+    } else if (b === 'NB' || b === 'Nb' || b === 'NOBALL') {
       style = { ...style, color: '#FF9800', fontSize: 13 };
     } else if (b === '0' || b === '.' || b === '•') {
       style = { ...style, color: '#888' };
@@ -131,9 +149,15 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
       style = { ...style, color: '#FFF' };
     }
     
+    // Display text
+    let displayText = b;
+    if (b === '.' || b === '•') displayText = '0';
+    if (b === 'WKT') displayText = 'W';
+    if (b === 'Wd') displayText = 'WD';
+    
     elements.push(
       <Text key={`ball-${idx}`} style={style}>
-        {b === '.' || b === '•' ? '0' : b}
+        {displayText}
       </Text>
     );
     

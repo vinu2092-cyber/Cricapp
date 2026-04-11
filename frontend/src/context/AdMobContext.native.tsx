@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback } from 'react';
 import { Alert, Platform, View } from 'react-native';
 import mobileAds, {
+  AdsConsent,
+  AdsConsentStatus,
   BannerAd,
   BannerAdSize,
   InterstitialAd,
@@ -17,16 +19,9 @@ const AD_IDS = {
   appOpen: 'ca-app-pub-9675798593675825/4826782503',
   interstitial: 'ca-app-pub-9675798593675825/8438724452',
   banner: 'ca-app-pub-9675798593675825/8616886104',
-  rewarded: 'ca-app-pub-9675798593675825/6702740458',
+  rewarded: 'ca-app-pub-9675798593675825/6702704058',
 };
 
-// ============================================================
-// CRITICAL: Create RewardedAd instance OUTSIDE the component
-// This prevents re-creation on every render (documentation pattern)
-// ============================================================
-let rewardedAdInstance = RewardedAd.createForAdRequest(AD_IDS.rewarded, {
-  requestNonPersonalizedAdsOnly: true,
-});
 // Track if SDK is initialized (for load gating)
 let sdkInitialized = false;
 
@@ -37,6 +32,7 @@ interface AdMobContextType {
   showAppOpenAd: () => Promise<void>;
   showInterstitialAd: () => Promise<boolean>;
   showRewardedAd: () => Promise<boolean>;
+  showPrivacyOptionsForm: () => Promise<void>;
   isRewardedAdReady: boolean;
   BannerAdComponent: React.FC;
 }
@@ -55,13 +51,21 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const interstitialLoadingRef = useRef(false);
   const interstitialUnsubsRef = useRef<(() => void)[]>([]);
 
-  // Rewarded ad state
+  // Rewarded ad refs - using ref instead of module-level variable
+  // so listeners can be properly re-registered after each ad close
   const rewardResolverRef = useRef<((result: boolean) => void) | null>(null);
   const rewardEarnedRef = useRef(false);
+  const rewardedAdRef = useRef<ReturnType<typeof RewardedAd.createForAdRequest> | null>(null);
+  const rewardedListenersRef = useRef<(() => void)[]>([]);
 
   const cleanupInterstitialListeners = () => {
     interstitialUnsubsRef.current.forEach(u => { try { u(); } catch {} });
     interstitialUnsubsRef.current = [];
+  };
+
+  const cleanupRewardedListeners = () => {
+    rewardedListenersRef.current.forEach(u => { try { u(); } catch {} });
+    rewardedListenersRef.current = [];
   };
 
   // Pre-load interstitial ad (existing working pattern - untouched)
@@ -74,9 +78,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     cleanupInterstitialListeners();
 
     try {
-      const ad = InterstitialAd.createForAdRequest(AD_IDS.interstitial, {
-        requestNonPersonalizedAdsOnly: true,
-      });
+      const ad = InterstitialAd.createForAdRequest(AD_IDS.interstitial, {});
 
       const unsub1 = ad.addAdEventListener(AdEventType.LOADED, () => {
         console.log('[AdMob] Interstitial ad PRE-LOADED');
@@ -106,124 +108,166 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, [isPro]);
 
   // ============================================================
-  // REWARDED AD - Following exact documentation pattern:
-  // Instance declared outside component, listeners in useEffect
+  // REWARDED AD - Fixed pattern:
+  // Creates fresh instance with fresh listeners each time.
+  // Called after SDK init and again after each ad close.
   // ============================================================
-  useEffect(() => {
-    console.log('[AdMob] Setting up Rewarded Ad event listeners on singleton instance');
+  const setupAndLoadRewardedAd = useCallback(() => {
+    try {
+      // Clean up any previous instance listeners
+      cleanupRewardedListeners();
 
-    const unsubLoaded = rewardedAdInstance.addAdEventListener(
-      RewardedAdEventType.LOADED,
-      () => {
-        console.log('[AdMob] REWARDED AD LOADED! Ad Unit:', AD_IDS.rewarded);
+      console.log('[AdMob] Creating fresh rewarded ad instance. Ad Unit:', AD_IDS.rewarded);
+      const ad = RewardedAd.createForAdRequest(AD_IDS.rewarded, {});
+      rewardedAdRef.current = ad;
+
+      const unsubs: (() => void)[] = [];
+
+      unsubs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        console.log('[AdMob] REWARDED AD LOADED SUCCESSFULLY! Ad Unit:', AD_IDS.rewarded);
         setIsRewardedAdReady(true);
-      }
-    );
+      }));
 
-    const unsubEarned = rewardedAdInstance.addAdEventListener(
-      RewardedAdEventType.EARNED_REWARD,
-      (reward) => {
+      unsubs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, (reward: any) => {
         console.log('[AdMob] REWARD EARNED! Type:', reward?.type, 'Amount:', reward?.amount);
         rewardEarnedRef.current = true;
-      }
-    );
+      }));
 
-    const unsubClosed = rewardedAdInstance.addAdEventListener(
-      AdEventType.CLOSED,
-      () => {
+      unsubs.push(ad.addAdEventListener(AdEventType.CLOSED, () => {
         console.log('[AdMob] Rewarded ad CLOSED. Earned:', rewardEarnedRef.current);
         const earned = rewardEarnedRef.current;
         rewardEarnedRef.current = false;
         setIsRewardedAdReady(false);
 
-        // Resolve the promise from showRewardedAd
         if (rewardResolverRef.current) {
           rewardResolverRef.current(earned);
           rewardResolverRef.current = null;
         }
 
-        // Recreate and reload for next time
-        console.log('[AdMob] Recreating rewarded ad instance for next load');
-        rewardedAdInstance = RewardedAd.createForAdRequest(AD_IDS.rewarded, {
-          requestNonPersonalizedAdsOnly: true,
-        });
-        // Re-register listeners on new instance is handled by re-running this effect
-        // But since the instance is outside, we need to manually load
-        setTimeout(() => {
-          rewardedAdInstance.load();
-          console.log('[AdMob] Reloaded rewarded ad after close');
-        }, 1000);
-      }
-    );
+        // Create fresh instance with fresh listeners for next ad
+        setTimeout(() => setupAndLoadRewardedAd(), 1000);
+      }));
 
-    const unsubError = rewardedAdInstance.addAdEventListener(
-      AdEventType.ERROR,
-      (error: any) => {
-        console.warn('[AdMob] Rewarded ad ERROR:', error?.message || error?.code || JSON.stringify(error));
+      unsubs.push(ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
+        const errCode = error?.code || 'unknown';
+        const errMsg = error?.message || 'No details';
+        console.warn(`[AdMob] Rewarded preload ERROR: code=${errCode}, msg=${errMsg}, full=${JSON.stringify(error)}`);
         setIsRewardedAdReady(false);
-        // Retry loading after 5 seconds (only if SDK is initialized)
+        // Retry with exponential backoff - up to 30 seconds
+        const retryDelay = Math.min(5000 * (1 + Math.random()), 30000);
         setTimeout(() => {
           if (sdkInitialized) {
-            console.log('[AdMob] Retrying rewarded ad load after error...');
-            try {
-              rewardedAdInstance.load();
-            } catch (e) {
-              console.warn('[AdMob] Retry load failed:', e);
-            }
+            console.log(`[AdMob] Retrying rewarded ad load after ${retryDelay}ms...`);
+            try { ad.load(); } catch (e) { console.warn('[AdMob] Retry load failed:', e); }
           }
-        }, 5000);
-      }
-    );
+        }, retryDelay);
+      }));
 
-    // Do NOT load here - wait for SDK initialization
-    // load() is called from the SDK init useEffect
-    console.log('[AdMob] Rewarded ad listeners registered, waiting for SDK init to load...');
+      rewardedListenersRef.current = unsubs;
 
+      console.log('[AdMob] Loading rewarded ad...');
+      ad.load();
+    } catch (err) {
+      console.warn('[AdMob] setupAndLoadRewardedAd EXCEPTION:', err);
+      // Retry after delay
+      setTimeout(() => {
+        if (sdkInitialized) setupAndLoadRewardedAd();
+      }, 5000);
+    }
+  }, []);
+
+  // Cleanup rewarded ad listeners on unmount
+  useEffect(() => {
     return () => {
-      unsubLoaded();
-      unsubEarned();
-      unsubClosed();
-      unsubError();
+      cleanupRewardedListeners();
     };
   }, []);
 
-  // ========== SDK INIT ==========
+  // ========== SDK INIT WITH UMP CONSENT ==========
   useEffect(() => {
-    mobileAds()
-      .setRequestConfiguration({
-        testDeviceIdentifiers: [],
-      })
-      .then(() => mobileAds().initialize())
-      .then((adapterStatuses) => {
+    const initWithConsent = async () => {
+      // Step 1: Try UMP consent (non-blocking - won't prevent ad loading)
+      try {
+        console.log('[AdMob] Requesting UMP consent info update...');
+        // Try newer API first, fallback to older API with publisher IDs
+        let consentInfo: any;
+        try {
+          consentInfo = await AdsConsent.requestInfoUpdate();
+        } catch {
+          // Fallback for older v14.x API that requires publisher IDs
+          console.log('[AdMob] Trying consent with publisher IDs...');
+          consentInfo = await (AdsConsent as any).requestInfoUpdate(['pub-9675798593675825']);
+        }
+        console.log('[AdMob] Consent info:', JSON.stringify(consentInfo));
+
+        // Show consent form if required (EEA users)
+        const status = consentInfo?.status;
+        if (status === AdsConsentStatus?.REQUIRED || status === 'REQUIRED' || status === 2) {
+          console.log('[AdMob] Consent required - showing form...');
+          try {
+            await AdsConsent.loadAndShowConsentFormIfRequired();
+            console.log('[AdMob] Consent form completed');
+          } catch (formErr) {
+            console.warn('[AdMob] Consent form error (non-fatal):', formErr);
+          }
+        } else {
+          console.log('[AdMob] Consent not required, status:', status);
+        }
+      } catch (consentErr) {
+        console.warn('[AdMob] UMP consent error (non-fatal, proceeding):', consentErr);
+      }
+
+      // Step 2: Always initialize SDK regardless of consent result
+      try {
+        await mobileAds().setRequestConfiguration({
+          testDeviceIdentifiers: [],
+        });
+        const adapterStatuses = await mobileAds().initialize();
         console.log('[AdMob] SDK initialized successfully');
         if (adapterStatuses) {
           console.log('[AdMob] Adapter statuses:', JSON.stringify(adapterStatuses));
         }
         sdkInitialized = true;
         setIsAdMobInitialized(true);
-        // NOW load the rewarded ad (after SDK is ready)
-        console.log('[AdMob] SDK ready - loading rewarded ad...');
-        try {
-          rewardedAdInstance.load();
-        } catch (e) {
-          console.warn('[AdMob] Initial rewarded load failed:', e);
-        }
+
+        // Step 3: Load ads
+        console.log('[AdMob] SDK ready - setting up rewarded ad. Ad Unit:', AD_IDS.rewarded);
+        console.log('[AdMob] All Ad Units:', JSON.stringify(AD_IDS));
+        setupAndLoadRewardedAd();
         loadInterstitialAd();
-      })
-      .catch((err) => {
-        console.warn('[AdMob] SDK init failed:', err);
-        sdkInitialized = true; // Still allow ad attempts
+      } catch (initErr) {
+        console.warn('[AdMob] SDK init failed:', initErr);
+        sdkInitialized = true;
         setIsAdMobInitialized(true);
-        setTimeout(() => {
-          try { rewardedAdInstance.load(); } catch {}
-        }, 2000);
+        setTimeout(() => setupAndLoadRewardedAd(), 2000);
         setTimeout(loadInterstitialAd, 3000);
-      });
+      }
+    };
+
+    initWithConsent();
 
     return () => {
       cleanupInterstitialListeners();
     };
-  }, [loadInterstitialAd]);
+  }, [loadInterstitialAd, setupAndLoadRewardedAd]);
+
+  // ========== PRIVACY OPTIONS FORM (for Settings page) ==========
+  const showPrivacyOptionsForm = async (): Promise<void> => {
+    try {
+      console.log('[AdMob] Showing privacy options form...');
+      await AdsConsent.showPrivacyOptionsForm();
+      console.log('[AdMob] Privacy options form closed');
+    } catch (err) {
+      console.warn('[AdMob] Privacy options form error:', err);
+      // Fallback: try to show regular consent form
+      try {
+        await AdsConsent.loadAndShowConsentFormIfRequired();
+      } catch (fallbackErr) {
+        console.warn('[AdMob] Fallback consent form also failed:', fallbackErr);
+        Alert.alert('Privacy Settings', 'Unable to load privacy settings. Please try again later.');
+      }
+    }
+  };
 
   // ========== APP OPEN AD ==========
   const showAppOpenAd = async (): Promise<void> => {
@@ -234,9 +278,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     return new Promise((resolve) => {
       try {
-        const ad = AppOpenAd.createForAdRequest(AD_IDS.appOpen, {
-          requestNonPersonalizedAdsOnly: true,
-        });
+        const ad = AppOpenAd.createForAdRequest(AD_IDS.appOpen, {});
 
         const timeout = setTimeout(() => {
           console.log('[AdMob] App Open Ad timeout after 15s');
@@ -262,13 +304,12 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const showRewardedAd = async (): Promise<boolean> => {
     console.log('[AdMob] showRewardedAd called, isReady:', isRewardedAdReady);
 
-    if (isRewardedAdReady) {
+    if (isRewardedAdReady && rewardedAdRef.current) {
       // Ad is pre-loaded, show it directly
       return new Promise((resolve) => {
         rewardResolverRef.current = resolve;
         rewardEarnedRef.current = false;
 
-        // Safety timeout
         const safetyTimeout = setTimeout(() => {
           console.log('[AdMob] showRewardedAd safety timeout (25s)');
           if (rewardResolverRef.current) {
@@ -278,10 +319,10 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }, 25000);
 
         try {
-          console.log('[AdMob] Calling rewardedAdInstance.show()...');
-          rewardedAdInstance.show();
+          console.log('[AdMob] Showing pre-loaded rewarded ad...');
+          rewardedAdRef.current!.show();
         } catch (err) {
-          console.warn('[AdMob] rewardedAdInstance.show() failed:', err);
+          console.warn('[AdMob] rewardedAd.show() failed:', err);
           clearTimeout(safetyTimeout);
           rewardResolverRef.current = null;
           resolve(false);
@@ -289,7 +330,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
     }
 
-    // Ad not ready - try on-demand load
+    // Ad not ready - try on-demand load with real ad unit
     console.log('[AdMob] Rewarded ad not ready, attempting on-demand load...');
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
@@ -302,40 +343,27 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }, 15000);
 
       try {
-        // Create a fresh on-demand instance
-        const onDemandAd = RewardedAd.createForAdRequest(AD_IDS.rewarded, {
-          requestNonPersonalizedAdsOnly: true,
-        });
-
+        const onDemandAd = RewardedAd.createForAdRequest(AD_IDS.rewarded, {});
         let handled = false;
 
         onDemandAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
           if (handled) return;
           handled = true;
-          console.log('[AdMob] On-demand rewarded ad LOADED, showing...');
+          console.log('[AdMob] On-demand rewarded ad LOADED!');
           clearTimeout(timeout);
 
-          // Set up reward tracking for this on-demand ad
           let rewarded = false;
-
           onDemandAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
             console.log('[AdMob] On-demand: REWARD EARNED!');
             rewarded = true;
           });
-
           onDemandAd.addAdEventListener(AdEventType.CLOSED, () => {
             console.log('[AdMob] On-demand: ad CLOSED, rewarded:', rewarded);
             resolve(rewarded);
-            // Reload the singleton for next time
-            rewardedAdInstance = RewardedAd.createForAdRequest(AD_IDS.rewarded, {
-              requestNonPersonalizedAdsOnly: true,
-            });
-            setTimeout(() => rewardedAdInstance.load(), 1000);
+            setTimeout(() => setupAndLoadRewardedAd(), 1000);
           });
 
-          try {
-            onDemandAd.show();
-          } catch (showErr) {
+          try { onDemandAd.show(); } catch (showErr) {
             console.warn('[AdMob] On-demand show failed:', showErr);
             resolve(false);
           }
@@ -344,7 +372,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         onDemandAd.addAdEventListener(AdEventType.ERROR, (error: any) => {
           if (handled) return;
           handled = true;
-          console.warn('[AdMob] On-demand rewarded ERROR:', error?.message || error);
+          console.warn('[AdMob] On-demand ERROR:', error?.message, error?.code);
           clearTimeout(timeout);
           Alert.alert('Ad Not Available', 'No ad available right now. Please try again later.');
           resolve(false);
@@ -385,9 +413,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     loadInterstitialAd();
     return new Promise((resolve) => {
       try {
-        const fallbackAd = InterstitialAd.createForAdRequest(AD_IDS.interstitial, {
-          requestNonPersonalizedAdsOnly: true,
-        });
+        const fallbackAd = InterstitialAd.createForAdRequest(AD_IDS.interstitial, {});
         const timeout = setTimeout(() => resolve(false), 10000);
         fallbackAd.addAdEventListener(AdEventType.LOADED, () => fallbackAd.show());
         fallbackAd.addAdEventListener(AdEventType.CLOSED, () => { clearTimeout(timeout); resolve(true); });
@@ -415,7 +441,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           <BannerAd
             unitId={AD_IDS.banner}
             size={BannerAdSize.BANNER}
-            requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+            requestOptions={{}}
             onAdFailedToLoad={(error) => console.log('[AdMob] Banner failed:', error)}
           />
         </View>
@@ -429,7 +455,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   return (
     <AdMobContext.Provider value={{
       isAdMobInitialized, isPro, trackClick,
-      showAppOpenAd, showInterstitialAd, showRewardedAd, isRewardedAdReady,
+      showAppOpenAd, showInterstitialAd, showRewardedAd, showPrivacyOptionsForm, isRewardedAdReady,
       BannerAdComponent,
     }}>
       {children}

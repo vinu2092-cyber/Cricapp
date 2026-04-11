@@ -527,14 +527,35 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
             if (comm.over && comm.over !== '0' && /\d/.test(comm.over)) {
               // Detect ball result from commentary text
               const text = (comm.english || '').toLowerCase();
-              if (text.includes('wicket') || text.includes('out') || text.includes('bowled') || 
-                  text.includes('caught') || text.includes('lbw') || text.includes('stumped')) {
-                recentBalls.push('W');
+              
+              // PRECISE wicket detection - avoid false positives from field positions
+              // "mid-wicket" is a field position, NOT a wicket
+              // "outside" is a ball position, NOT "out"
+              const isWicket = (
+                text.includes('out!') ||
+                text.includes('wicket!') ||
+                /\bcaught (?:by|and|behind|at)\b/.test(text) ||
+                /\brun\s*out\b/.test(text) ||
+                /\blbw\b/.test(text) ||
+                /\bstumped\b/.test(text) ||
+                (/\bbowled\b/.test(text) && !text.includes('bowled over') && (text.includes('bowled!') || text.includes('bowled him') || text.includes('bowled her') || text.includes('clean bowled')))
+              );
+              
+              // PRECISE wide detection - "wide of off stump" is NOT a wide delivery
+              const isWide = (
+                /\bthat's a wide\b/.test(text) ||
+                /\bwide ball\b/.test(text) ||
+                /\bcalled wide\b/.test(text) ||
+                (/\bwide\b/.test(text) && !text.includes('wide of') && !text.includes('wide outside') && text.length < 50)
+              );
+              
+              if (isWicket) {
+                recentBalls.push('WKT');
               } else if (text.includes('six') || text.includes('sixer')) {
                 recentBalls.push('6');
               } else if (text.includes('four') || text.includes('boundary')) {
                 recentBalls.push('4');
-              } else if (text.includes('wide')) {
+              } else if (isWide) {
                 recentBalls.push('Wd');
               } else if (text.includes('no ball') || text.includes('no-ball')) {
                 recentBalls.push('Nb');
