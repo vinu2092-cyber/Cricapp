@@ -92,7 +92,7 @@ export default function AboutScreen() {
             onPress={openPrivacyPolicy}
           >
             <Ionicons name="document-text" size={20} color="#2196F3" />
-            <Text style={styles.linkText}>Privacy Policy</Text>
+            <Text style={styles.linkText}>Privacy Policy & Terms & Conditions</Text>
             <Ionicons name="open-outline" size={16} color="#2196F3" />
           </TouchableOpacity>
         </View>
