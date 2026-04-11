@@ -5,58 +5,57 @@ Android native cricket live score app (React Native / Expo). Issues: Rewarded Ad
 
 ## Architecture
 - **Frontend**: React Native (Expo SDK 54) with TypeScript
-- **Backend**: FastAPI Python (for any server-side needs)
+- **Backend**: FastAPI Python
 - **Ads**: AdMob (react-native-google-mobile-ads v14.11.0) + Unity Ads Mediation
-- **Data**: Cricbuzz RapidAPI (unofficial)
-- **Build**: EAS Build (Expo Application Services)
+- **Data**: Cricbuzz RapidAPI
+- **Build**: EAS Build
 - **Package**: com.cricapp.live
 
 ## What's Been Implemented
 
-### Session 1: Rewarded Ads Singleton Fix
-- Root Cause: Module-level singleton rewardedAdInstance reassigned after close but listeners stayed on old instance
-- Fix: Ref-based pattern with `setupAndLoadRewardedAd()` that creates fresh instance + listeners
+### Rewarded Ads Fix (Session 1)
+- Fixed broken singleton pattern → ref-based pattern with `setupAndLoadRewardedAd()`
 
-### Session 2: Personalized Ads + UMP Consent
-- Removed `requestNonPersonalizedAdsOnly: true` from all 6 ad locations
-- Added UMP consent flow (AdsConsent API) before SDK init
-- GDPR message published in AdMob console
+### Personalized Ads + UMP Consent (Session 2)
+- Removed `requestNonPersonalizedAdsOnly: true` from all ad locations
+- Added UMP consent flow
 
-### Session 3: Recent Overs Fix + Better Ad Diagnostics
-**Bug: Wrong Wicket Markers (W)**
-- Root Cause: Cricbuzz `recentOvsStr` uses `W` for WIDE (not wicket!), but code treated `W` as RED wicket
-- Evidence: Score 77/1 (1 wicket) but Recent Overs showed 2 red `W` markers = impossible
-- Fix: `W` → orange "WD" (wide), only `WKT`/`OUT`/`WICKET` → red "W" (real wicket)
+### Recent Overs Fix + Diagnostics (Session 3-4)
+**Bug: W = Wide, not Wicket**
+- Cricbuzz `recentOvsStr` uses `W` for WIDE. Code was showing as RED wicket.
+- Fix: `W` → orange "WD" (wide), `WKT`/`OUT` → red "W" (wicket)
 
-**Improved Rewarded Ad Diagnostics**
-- Error alerts now show actual AdMob error code and message
-- Consent flow split into non-blocking steps (consent failure won't prevent SDK init)
-- Better logging for debugging fill rate issues
+**Rewarded Ad Deep Diagnostic**
+- Added `tryTestRewardedAd()` - loads Google's official test ad (`ca-app-pub-3940256099942544/5224354917`)
+- On error, user sees actual error code + "Try Test Ad" button
+- If test ad works → code is correct, issue is fill rate/ad unit config
+- If test ad fails → SDK configuration issue
+- Consent flow made v14.x compatible (publisher IDs fallback)
+- Added try-catch wrapper around setupAndLoadRewardedAd
+- Added exponential backoff retry
 
-**Files Changed (Total)**:
-1. `frontend/src/context/AdMobContext.native.tsx` - Rewarded fix + UMP consent + error diagnostics
-2. `frontend/src/context/AdMobContext.tsx` - type sync (web stub)
-3. `frontend/src/context/AdMobContext.web.tsx` - type sync (web stub)
-4. `frontend/app/match/[id].tsx` - formatOverSummary W=Wide fix
+**Files Changed:**
+1. `frontend/src/context/AdMobContext.native.tsx` - All ad fixes + diagnostics
+2. `frontend/src/context/AdMobContext.tsx` - type sync
+3. `frontend/src/context/AdMobContext.web.tsx` - type sync
+4. `frontend/app/match/[id].tsx` - W=Wide fix in formatOverSummary
 5. `frontend/app.json` - version 1.0.3, versionCode 3
 6. `frontend/android/app/build.gradle` - versionCode 3, versionName 1.0.3
 
-**Files NOT Changed**: settings.tsx, index.tsx, ProContext, api.ts, Header, plugins, Android native files
+**NOT Changed:** settings.tsx, index.tsx, ProContext, api.ts, Header, plugins, Android native files
 
-## Ad Unit IDs
-- App Open: ca-app-pub-9675798593675825/4826782503
-- Interstitial: ca-app-pub-9675798593675825/8438724452
-- Banner: ca-app-pub-9675798593675825/8616886104
-- Rewarded: ca-app-pub-9675798593675825/6702740458
-- Unity Game ID: 6087835
-
-## Build & Deploy
-- EAS Build: `preview` (APK), `production` (AAB)
-- Play Store: closed testing track
-- Version: 1.0.3 (versionCode 3)
+## Diagnostic Decision Tree
+1. Click "Watch Ad" → If "Ad Not Available" with error code:
+   - Click "Try Test Ad"
+   - If TEST ad shows → Real ad unit has no fill (AdMob console issue)
+   - If TEST ad fails → SDK/configuration issue
+2. Check error codes:
+   - Code 3 (No fill) → AdMob doesn't have ads for this unit/region
+   - Code 1 (Invalid request) → Ad unit ID issue
+   - Code 2 (Network) → Internet issue
+   - "null-activity" → App lifecycle issue
 
 ## Backlog
-- P0: Build APK/AAB and test both fixes on device
-- P1: Check actual error code from rewarded ad on device (displayed in new error dialog)
-- P2: If error is "No fill" (code 3), check AdMob mediation configuration
-- P3: Consider adding rewarded interstitial as fallback ad format
+- P0: Deploy and test diagnostic on device
+- P1: Based on diagnostic results, fix either ad unit config or SDK issue
+- P2: Consider rewarded interstitial as fallback
