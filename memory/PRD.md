@@ -1,6 +1,6 @@
 # CricApp - Production Ready PRD
 
-## Status: PRODUCTION BUILD READY ✅
+## Status: PRODUCTION BUILD READY
 
 ## Version Info
 - **Version Name:** 1.0.2
@@ -19,31 +19,56 @@
 
 ## Changes Made for Production
 
-1. ✅ Test Ad IDs → Real Ad IDs
-2. ✅ Test Device ID removed
-3. ✅ Version updated to 1.0.2
-4. ✅ Version Code set to 2
-5. ✅ app-ads.txt created
-
-## app-ads.txt Content
-```
-google.com, pub-9675798593675825, DIRECT, f08c47fec0942fa0
-```
-
-## GitHub Pages Setup Needed
-User needs to:
-1. Create public repo: app-ads-cricapp
-2. Add app-ads.txt file
-3. Enable GitHub Pages
-4. URL will be: https://gemmiapps-rgb.github.io/app-ads-cricapp/app-ads.txt
+1. Test Ad IDs replaced with Real Ad IDs
+2. Test Device ID removed
+3. Version updated to 1.0.2
+4. Version Code set to 2
+5. app-ads.txt created
 
 ## Keystore Info
 - File: release-keystore.jks
 - Password: CricApp2026Release
 - Alias: cricapp-release
 
-## Next Steps
-1. Push to GitHub
-2. Build AAB
-3. Upload to Closed Testing
-4. Create app-ads.txt repo with GitHub Pages
+## V2 Bug Fixes (Feb 2026)
+
+### Fix 1: Overlay + Unlock Button Merge
+- Removed separate "Unlock" button from match header
+- Overlay (layers) button now gates non-pro users through Pro Modal (rewarded ad flow)
+- Pro users get direct overlay toggle
+- Files: `app/match/[id].tsx`
+
+### Fix 2: Rewarded Ad Preloading
+- Increased retry attempts from 3 to 6 with shorter delays
+- Added 20-second periodic health check to ensure ad stays preloaded
+- After all retries exhausted, auto-resets and retries after 30s
+- Files: `src/context/AdMobContext.native.tsx`
+
+### Fix 3: Scoreboard Compact UI
+- Reduced score header padding, font sizes, and margins
+- Team score: 22px -> 18px, batsmen name/score smaller
+- Over summary section more compact
+- Files: `app/match/[id].tsx`
+
+### Fix 4: About Button Moved to Settings
+- Removed About button from Footer (was hidden behind phone nav bar)
+- Added "About CricApp" section in Settings screen
+- Footer now just decorative grass bar (30px)
+- Files: `src/components/Footer.tsx`, `app/settings.tsx`
+
+## Architecture
+- Frontend: React Native, Expo Router, Expo Config Plugins
+- Backend: External RapidAPI (Cricbuzz) - No local DB
+- Native Android: Foreground Services (SYSTEM_ALERT_WINDOW) via Java Bridge
+- CI/CD: GitHub Actions for release AAB builds
+
+## Completed Features
+- Live/Recent/Upcoming match listings with category filters
+- Match detail with commentary, cricket field visualization
+- Floating Scoreboard (in-app + native overlay)
+- Voice Commentary (TTS)
+- Push Notifications for match events
+- Google AdMob (App Open, Banner, Interstitial, Rewarded)
+- Pro unlock via 3 rewarded ads (30-min access)
+- GitHub Actions CI/CD for AAB builds
+- Play Store production readiness

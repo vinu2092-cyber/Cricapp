@@ -127,10 +127,18 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         console.warn('[AdMob] Rewarded ad error:', error?.message || error);
         loadingRef.current = false;
 
-        if (retryRef.current < 3) {
+        if (retryRef.current < 6) {
           retryRef.current++;
-          const delay = 5000 * retryRef.current; // 5s, 10s, 15s
+          const delay = 3000 * retryRef.current; // 3s, 6s, 9s, 12s, 15s, 18s
+          console.log(`[AdMob] Rewarded ad retry ${retryRef.current}/6 in ${delay}ms`);
           setTimeout(loadRewardedAd, delay);
+        } else {
+          // Reset retry counter after 30s and try again
+          console.log('[AdMob] Rewarded ad all retries exhausted, will retry in 30s');
+          setTimeout(() => {
+            retryRef.current = 0;
+            loadRewardedAd();
+          }, 30000);
         }
       });
 
@@ -161,9 +169,22 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setTimeout(loadInterstitialAd, 3000);
       });
 
+    // Periodic health check: ensure rewarded ad stays preloaded
+    const healthCheck = setInterval(() => {
+      if (!rewardedRef.current && !loadingRef.current) {
+        console.log('[AdMob] Health check: no rewarded ad ready, preloading...');
+        retryRef.current = 0;
+        loadRewardedAd();
+      }
+      if (!interstitialRef.current && !interstitialLoadingRef.current && !isPro) {
+        loadInterstitialAd();
+      }
+    }, 20000); // Check every 20 seconds
+
     return () => {
       cleanupListeners();
       cleanupInterstitialListeners();
+      clearInterval(healthCheck);
     };
   }, [loadRewardedAd, loadInterstitialAd]);
 

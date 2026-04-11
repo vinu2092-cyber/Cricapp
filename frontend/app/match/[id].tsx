@@ -51,30 +51,30 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
     // Add simple pipe separator every 6 balls
     if (ballCount > 0 && ballCount % 6 === 0) {
       elements.push(
-        <Text key={`sep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 8, fontWeight: 'bold', fontSize: 20 }}>
+        <Text key={`sep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
           |
         </Text>
       );
     }
     
-    // Style based on ball type - BIGGER SIZE
-    let style: any = { marginHorizontal: 5, fontSize: 18, fontWeight: '700' };
+    // Style based on ball type
+    let style: any = { marginHorizontal: 4, fontSize: 15, fontWeight: '700' };
     
     if (b === 'W' || b === 'WKT' || b === 'WICKET') {
       // Wicket - RED and BOLD
-      style = { ...style, color: '#FF0000', fontWeight: 'bold', fontSize: 20 };
+      style = { ...style, color: '#FF0000', fontWeight: 'bold', fontSize: 16 };
     } else if (b === '6') {
       // SIX - Purple Bold
-      style = { ...style, color: '#9C27B0', fontWeight: 'bold', fontSize: 20 };
+      style = { ...style, color: '#9C27B0', fontWeight: 'bold', fontSize: 16 };
     } else if (b === '4') {
       // FOUR - Green Bold
-      style = { ...style, color: '#00E676', fontWeight: 'bold', fontSize: 20 };
+      style = { ...style, color: '#00E676', fontWeight: 'bold', fontSize: 16 };
     } else if (b === 'WD' || b === 'WIDE') {
       // Wide - Orange
-      style = { ...style, color: '#FF9800', fontSize: 16 };
+      style = { ...style, color: '#FF9800', fontSize: 13 };
     } else if (b === 'NB' || b === 'NOBALL') {
       // No Ball - Orange
-      style = { ...style, color: '#FF9800', fontSize: 16 };
+      style = { ...style, color: '#FF9800', fontSize: 13 };
     } else if (b === '0' || b === '.' || b === '•') {
       // Dot ball - Grey
       style = { ...style, color: '#888' };
@@ -390,19 +390,18 @@ export default function MatchDetail() {
             </TouchableOpacity>
             <Text style={styles.seriesName} numberOfLines={1}>{match.seriesName}</Text>
             
-            {/* Unlock Button - Compact in header */}
-            {!effectiveIsPro && (
-              <TouchableOpacity style={styles.unlockBtnHeader} onPress={() => setShowProModal(true)}>
-                <Ionicons name="lock-open" size={11} color="#FFD700" />
-                <Text style={styles.unlockTxtHeader}>Unlock</Text>
-              </TouchableOpacity>
-            )}
-            
             <View style={styles.headerActions}>
-              {/* Pin Score Button - Draw over other apps */}
+              {/* Overlay Button - Non-Pro: opens Pro Modal, Pro: toggles overlay */}
               <TouchableOpacity
                 style={[styles.actionBtn, nativeOverlayActive && styles.actionBtnActive]}
                 onPress={async () => {
+                  // Non-Pro users: show Pro Modal to watch ads first
+                  if (!effectiveIsPro) {
+                    setShowProModal(true);
+                    return;
+                  }
+                  
+                  // Pro users: toggle overlay directly
                   if (nativeOverlayActive) {
                     await hideFloatingWidget();
                     setNativeOverlayActive(false);
@@ -730,52 +729,36 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
   loadingText: { color: '#999', marginTop: 12, fontSize: 14 },
-  scoreHeader: { backgroundColor: 'rgba(34,34,34,0.85)', padding: 14, borderBottomWidth: 2, borderBottomColor: '#4CAF50' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  backBtn: { padding: 6, marginRight: 8 },
-  seriesName: { color: '#ffd700', fontSize: 12, flex: 1 },
-  headerActions: { flexDirection: 'row', gap: 8 },
-  unlockBtnHeader: {
-    backgroundColor: 'rgba(255, 215, 0, 0.2)',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 215, 0, 0.5)',
-    marginRight: 8,
-  },
-  unlockTxtHeader: { 
-    color: '#FFD700', 
-    fontWeight: 'bold', 
-    fontSize: 10,
-  },
+  scoreHeader: { backgroundColor: 'rgba(34,34,34,0.85)', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, borderBottomWidth: 2, borderBottomColor: '#4CAF50' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  backBtn: { padding: 4, marginRight: 6 },
+  seriesName: { color: '#ffd700', fontSize: 11, flex: 1 },
+  headerActions: { flexDirection: 'row', gap: 6 },
   actionBtn: {
-    padding: 8,
-    borderRadius: 20,
+    padding: 7,
+    borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
   actionBtnActive: { backgroundColor: 'rgba(76,175,80,0.2)' },
-  teamRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 8 },
+  teamRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 4 },
   teamBlock: { alignItems: 'center', flex: 1 },
-  teamName: { color: '#CCC', fontSize: 13, fontWeight: '600' },
-  teamScore: { color: '#FFF', fontSize: 22, fontWeight: 'bold' },
-  overs: { color: '#999', fontSize: 11, marginTop: 2 },
-  statusTxt: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginBottom: 6, fontStyle: 'italic' },
-  // Live match batsmen section
+  teamName: { color: '#CCC', fontSize: 12, fontWeight: '600' },
+  teamScore: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  overs: { color: '#999', fontSize: 10, marginTop: 1 },
+  statusTxt: { color: '#4CAF50', fontSize: 11, textAlign: 'center', marginBottom: 4, fontStyle: 'italic' },
+  // Live match batsmen section - compact
   batsmenContainer: {
     backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 8,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 4,
   },
   batsmenTitle: {
     color: '#4CAF50',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
-    marginBottom: 6,
+    marginBottom: 3,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -789,7 +772,7 @@ const styles = StyleSheet.create({
   },
   batsmanName: {
     color: '#CCC',
-    fontSize: 12,
+    fontSize: 11,
   },
   strikerName: {
     color: '#FFD700',
@@ -797,41 +780,42 @@ const styles = StyleSheet.create({
   },
   batsmanScore: {
     color: '#FFF',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: 'bold',
-    marginTop: 2,
+    marginTop: 1,
   },
-  // Over summary section - BIGGER & PROMINENT
+  // Over summary section - compact
   overSummaryContainer: {
     backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: 'rgba(76, 175, 80, 0.4)',
   },
   overSummaryTitle: {
     color: '#4CAF50',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '700',
-    marginBottom: 10,
+    marginBottom: 5,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   overSummaryScroll: {
-    minHeight: 40,
+    minHeight: 30,
     backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    borderRadius: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
   },
   overSummaryScrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingRight: 20,
-    gap: 2,
+    paddingRight: 16,
+    gap: 1,
   },
-  proRow: { alignItems: 'center', marginTop: 6 },
+  proRow: { alignItems: 'center', marginTop: 4 },
   unlockBtn: {
     backgroundColor: 'rgba(51,51,51,0.9)',
     paddingVertical: 8,

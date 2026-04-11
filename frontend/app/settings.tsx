@@ -256,6 +256,22 @@ export default function Settings() {
               </View>
             </TouchableOpacity>
           </View>
+
+          {/* Section 5: About */}
+          <View style={styles.section}>
+            <TouchableOpacity 
+              style={styles.aboutBtn}
+              onPress={() => router.push('/about')}
+              data-testid="about-btn"
+            >
+              <Ionicons name="information-circle-outline" size={22} color="#4CAF50" />
+              <View style={styles.settingText}>
+                <Text style={styles.aboutTitle}>About CricApp</Text>
+                <Text style={styles.aboutDesc}>App info, version & credits</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#666" />
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -438,6 +454,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   clearCacheDesc: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  aboutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E1E1E',
+    padding: 16,
+    borderRadius: 10,
+    gap: 12,
+  },
+  aboutTitle: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  aboutDesc: {
     color: '#888',
     fontSize: 12,
     marginTop: 2,
