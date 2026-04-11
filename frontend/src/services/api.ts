@@ -515,8 +515,9 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
           match.batsmen = batsmen;
         }
 
-        // Extract over summary (o_summary or recentovsummary)
-        let oSummary = ms.o_summary || ms.recentovsummary || ms.oversummary || ms.recentOvs || ms.lastWicket || '';
+        // Extract over summary - use correct Cricbuzz field names
+        // recentOvsStr is the primary field from Cricbuzz miniscore for ball-by-ball
+        let oSummary = ms.recentOvsStr || ms.recentovsstr || ms.o_summary || ms.recentovsummary || ms.oversummary || ms.recentOvs || '';
         
         // If no oSummary from API, build from recent commentary
         if (!oSummary && commentary && commentary.length > 0) {

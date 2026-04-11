@@ -27,6 +27,8 @@ const AD_IDS = {
 let rewardedAdInstance = RewardedAd.createForAdRequest(AD_IDS.rewarded, {
   requestNonPersonalizedAdsOnly: true,
 });
+// Track if SDK is initialized (for load gating)
+let sdkInitialized = false;
 
 interface AdMobContextType {
   isAdMobInitialized: boolean;
@@ -159,21 +161,23 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       (error: any) => {
         console.warn('[AdMob] Rewarded ad ERROR:', error?.message || error?.code || JSON.stringify(error));
         setIsRewardedAdReady(false);
-        // Retry loading after 5 seconds
+        // Retry loading after 5 seconds (only if SDK is initialized)
         setTimeout(() => {
-          console.log('[AdMob] Retrying rewarded ad load after error...');
-          try {
-            rewardedAdInstance.load();
-          } catch (e) {
-            console.warn('[AdMob] Retry load failed:', e);
+          if (sdkInitialized) {
+            console.log('[AdMob] Retrying rewarded ad load after error...');
+            try {
+              rewardedAdInstance.load();
+            } catch (e) {
+              console.warn('[AdMob] Retry load failed:', e);
+            }
           }
         }, 5000);
       }
     );
 
-    // Load the rewarded ad immediately
-    console.log('[AdMob] Loading rewarded ad with ID:', AD_IDS.rewarded);
-    rewardedAdInstance.load();
+    // Do NOT load here - wait for SDK initialization
+    // load() is called from the SDK init useEffect
+    console.log('[AdMob] Rewarded ad listeners registered, waiting for SDK init to load...');
 
     return () => {
       unsubLoaded();
@@ -195,12 +199,24 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (adapterStatuses) {
           console.log('[AdMob] Adapter statuses:', JSON.stringify(adapterStatuses));
         }
+        sdkInitialized = true;
         setIsAdMobInitialized(true);
+        // NOW load the rewarded ad (after SDK is ready)
+        console.log('[AdMob] SDK ready - loading rewarded ad...');
+        try {
+          rewardedAdInstance.load();
+        } catch (e) {
+          console.warn('[AdMob] Initial rewarded load failed:', e);
+        }
         loadInterstitialAd();
       })
       .catch((err) => {
         console.warn('[AdMob] SDK init failed:', err);
+        sdkInitialized = true; // Still allow ad attempts
         setIsAdMobInitialized(true);
+        setTimeout(() => {
+          try { rewardedAdInstance.load(); } catch {}
+        }, 2000);
         setTimeout(loadInterstitialAd, 3000);
       });
 

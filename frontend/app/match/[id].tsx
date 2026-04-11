@@ -34,24 +34,79 @@ const MATCH_CACHE_FLUSH = 1800000; // 30 minutes
 const formatOverSummary = (summary: string, currentOver?: number): React.ReactNode[] => {
   const elements: React.ReactNode[] = [];
   
-  // Parse the summary - can be like "1 4 W 0 2 6" or "1|4|W|0|2|6" or comma separated
-  const balls = summary.split(/[\s|,]+/).filter(b => b.trim());
+  // Cricbuzz recentOvsStr format: "23.6 1, 24.1 4, 24.2 W, 24.3 4" (ball-number result pairs)
+  // Also handle simple format: "1 4 W 0 2 6" or "1|4|W|0|2|6"
+  
+  let balls: string[] = [];
+  
+  if (summary.includes(',')) {
+    // Cricbuzz comma-separated format: "23.6 1, 24.1 4, 24.2 W"
+    const entries = summary.split(',').map(s => s.trim()).filter(Boolean);
+    let prevOver = -1;
+    
+    for (const entry of entries) {
+      const parts = entry.split(/\s+/);
+      if (parts.length >= 2) {
+        const ballNum = parts[0]; // e.g. "24.3"
+        const result = parts.slice(1).join(' '); // e.g. "4" or "W" or "no run"
+        
+        // Detect over change for separator
+        const overNum = Math.floor(parseFloat(ballNum) || 0);
+        if (prevOver >= 0 && overNum !== prevOver) {
+          balls.push('|'); // Over separator
+        }
+        prevOver = overNum;
+        
+        // Normalize the result
+        const r = result.toUpperCase().trim();
+        if (r.includes('WICKET') || r === 'W' || r.includes('OUT')) {
+          balls.push('W');
+        } else if (r === '6' || r.includes('SIX')) {
+          balls.push('6');
+        } else if (r === '4' || r.includes('FOUR')) {
+          balls.push('4');
+        } else if (r.includes('WIDE') || r === 'WD') {
+          balls.push('Wd');
+        } else if (r.includes('NO BALL') || r === 'NB') {
+          balls.push('Nb');
+        } else if (r === '0' || r.includes('NO RUN') || r === '.' || r === '•') {
+          balls.push('0');
+        } else if (/^\d+$/.test(r)) {
+          balls.push(r);
+        } else {
+          balls.push('•');
+        }
+      } else if (parts.length === 1) {
+        // Just a result without ball number
+        balls.push(parts[0].toUpperCase());
+      }
+    }
+  } else {
+    // Simple space/pipe separated format: "1 4 W 0 2 6 | 0 1"
+    balls = summary.split(/[\s]+/).filter(b => b.trim()).map(b => b.trim().toUpperCase());
+  }
   
   let ballCount = 0;
   
-  balls.forEach((ball, idx) => {
-    const b = ball.trim().toUpperCase();
+  balls.forEach((b, idx) => {
     if (!b) return;
     
-    // Check if it's a new over marker text - skip it
-    if (b.includes('OVER') || b === '|') {
+    if (b.includes('OVER')) return;
+    
+    // Handle pipe separator
+    if (b === '|') {
+      elements.push(
+        <Text key={`sep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
+          |
+        </Text>
+      );
       return;
     }
     
-    // Add simple pipe separator every 6 balls
-    if (ballCount > 0 && ballCount % 6 === 0) {
+    // Auto-add separator every 6 balls (only for non-comma format)
+    if (!summary.includes(',') && ballCount > 0 && ballCount % 6 === 0) {
       elements.push(
-        <Text key={`sep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
+        <Text key={`autosep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
           |
         </Text>
       );
@@ -61,25 +116,18 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
     let style: any = { marginHorizontal: 4, fontSize: 15, fontWeight: '700' };
     
     if (b === 'W' || b === 'WKT' || b === 'WICKET') {
-      // Wicket - RED and BOLD
       style = { ...style, color: '#FF0000', fontWeight: 'bold', fontSize: 16 };
     } else if (b === '6') {
-      // SIX - Purple Bold
       style = { ...style, color: '#9C27B0', fontWeight: 'bold', fontSize: 16 };
     } else if (b === '4') {
-      // FOUR - Green Bold
       style = { ...style, color: '#00E676', fontWeight: 'bold', fontSize: 16 };
     } else if (b === 'WD' || b === 'WIDE') {
-      // Wide - Orange
       style = { ...style, color: '#FF9800', fontSize: 13 };
     } else if (b === 'NB' || b === 'NOBALL') {
-      // No Ball - Orange
       style = { ...style, color: '#FF9800', fontSize: 13 };
     } else if (b === '0' || b === '.' || b === '•') {
-      // Dot ball - Grey
       style = { ...style, color: '#888' };
     } else {
-      // Other runs (1, 2, 3) - White
       style = { ...style, color: '#FFF' };
     }
     
