@@ -1,102 +1,55 @@
-# CricApp - Production Ready PRD
+# CricApp - PRD & Progress Tracker
 
-## Status: PRODUCTION BUILD READY
-
-## Version Info
-- **Version Name:** 1.0.2
-- **Version Code:** 2
-- **Package:** com.cricapp.live
-
-## Real AdMob IDs (Production)
-
-| Ad Type | Ad Unit ID |
-|---------|------------|
-| App ID | ca-app-pub-9675798593675825~2399929714 |
-| App Open | ca-app-pub-9675798593675825/4826782503 |
-| Banner | ca-app-pub-9675798593675825/8616886104 |
-| Interstitial | ca-app-pub-9675798593675825/8438724452 |
-| Rewarded | ca-app-pub-9675798593675825/6702740458 |
-
-## Changes Made for Production
-
-1. Test Ad IDs replaced with Real Ad IDs
-2. Test Device ID removed
-3. Version updated to 1.0.2
-4. Version Code set to 2
-5. app-ads.txt created
-
-## Keystore Info
-- File: release-keystore.jks
-- Password: CricApp2026Release
-- Alias: cricapp-release
-
-## V2 Bug Fixes (Feb 2026)
-
-### Fix 1: Overlay + Unlock Button Merge
-- Removed separate "Unlock" button from match header
-- Overlay (layers) button now gates non-pro users through Pro Modal (rewarded ad flow)
-- Pro users get direct overlay toggle
-- Files: `app/match/[id].tsx`
-
-### Fix 2: Rewarded Ad - COMPLETE REWRITE
-**Root cause**: `loadingRef.current` was getting permanently stuck at `true` because neither LOADED nor ERROR event callbacks fired from the native bridge. This caused:
-- All retry attempts to be silently skipped
-- Health check to skip (checked `!loadingRef.current`)
-- Zero ad requests reaching Google AdMob
-
-**Three critical fixes applied:**
-1. **Loading timeout (12s)**: If neither LOADED nor ERROR fires within 12 seconds, `loadingRef.current` is force-reset and retry scheduled
-2. **On-demand fallback**: When user clicks "Watch Ad" and no preloaded ad exists, creates a NEW RewardedAd on-the-fly, loads it, and shows it immediately (15s timeout) - same pattern as interstitial fallback
-3. **Health check fix**: Health check now force-resets stuck `loadingRef.current = true` before attempting preload
-4. **Button always clickable**: "Watch Ad" button no longer shows "Loading Ad..." disabled state - always clickable with on-demand loading
-- Files: `src/context/AdMobContext.native.tsx`, `app/match/[id].tsx`
-
-### Fix 3: Scoreboard Compact UI
-- Reduced score header padding, font sizes, and margins
-- Team score: 22px -> 18px, batsmen name/score smaller
-- Over summary section more compact
-- Files: `app/match/[id].tsx`
-
-### Fix 4: About Button Moved to Settings
-- Removed About button from Footer (was hidden behind phone nav bar)
-- Added "About CricApp" section in Settings screen
-- Footer now just decorative grass bar (30px)
-- Files: `src/components/Footer.tsx`, `app/settings.tsx`
-
-## Unity Ads Mediation Integration (Feb 2026)
-
-### What was added:
-- **Expo Config Plugin**: `plugins/withUnityAdsMediation.js` - Injects Unity Ads SDK + AdMob Unity Mediation Adapter as native Android dependencies
-- **ProGuard rules**: Keep rules for `com.unity3d.ads` and `com.google.ads.mediation.unity` classes
-- **app-ads.txt**: Added Unity ownership line `unity3d.com, 6087835, DIRECT, 13469908642400`
-
-### Unity Ads Details:
-- Unity Game ID: 6087835
-- Organization Core ID: 13469908642400
-- Placement IDs: Banner_Android, Interstitial_Android, Rewarded_Android
-- SDK: `com.unity3d.ads:unity-ads:4.12.4`
-- Adapter: `com.google.ads.mediation:unity:4.12.5.0`
-- Mode: Bidding (configured in AdMob Console)
-
-### How it works:
-- AdMob SDK automatically discovers the Unity Ads adapter at runtime
-- When AdMob has no fill, it falls back to Unity Ads via mediation
-- All mediation group priorities are managed in AdMob Console
-- No code changes needed in AdMobContext - mediation is transparent to the app
+## Original Problem Statement
+Android native cricket live score app (React Native / Expo). Main issue: Rewarded Ads not showing when "Unlock" button is pressed. App already on Play Store (closed testing, 2nd version). Need to fix rewarded ads and push 3rd version update.
 
 ## Architecture
-- Frontend: React Native, Expo Router, Expo Config Plugins
-- Backend: External RapidAPI (Cricbuzz) - No local DB
-- Native Android: Foreground Services (SYSTEM_ALERT_WINDOW) via Java Bridge
-- CI/CD: GitHub Actions for release AAB builds
+- **Frontend**: React Native (Expo SDK 54) with TypeScript
+- **Backend**: FastAPI Python
+- **Ads**: AdMob (react-native-google-mobile-ads v14.11.0) + Unity Ads Mediation
+- **Build**: EAS Build (Expo Application Services)
+- **Package**: com.cricapp.live
 
-## Completed Features
-- Live/Recent/Upcoming match listings with category filters
-- Match detail with commentary, cricket field visualization
-- Floating Scoreboard (in-app + native overlay)
-- Voice Commentary (TTS)
-- Push Notifications for match events
-- Google AdMob (App Open, Banner, Interstitial, Rewarded)
-- Pro unlock via 3 rewarded ads (30-min access)
-- GitHub Actions CI/CD for AAB builds
-- Play Store production readiness
+## Core Requirements
+- Live cricket scores
+- Banner Ads, App Open Ads, Interstitial Ads (all working)
+- Rewarded Ads for Pro unlock (was broken, NOW FIXED)
+- Unity Ads mediation via AdMob
+
+## What's Been Implemented (2026-04-11)
+
+### Rewarded Ads Fix
+**Root Cause**: Singleton pattern in `AdMobContext.native.tsx` was broken.
+- Module-level `rewardedAdInstance` was reassigned after ad close, but event listeners stayed on OLD instance
+- New instance had no listeners -> `isRewardedAdReady` never became `true` -> "Ad Not Available"
+
+**Fix Applied**:
+- Replaced module-level singleton with `useRef` pattern (`rewardedAdRef`, `rewardedListenersRef`)
+- Created `setupAndLoadRewardedAd()` function that creates fresh instance + registers fresh listeners each time
+- On ad CLOSE: Properly recreates instance with fresh listeners via `setupAndLoadRewardedAd()`
+- On ERROR: Retries on same instance (listeners still attached)
+- On-demand fallback also uses `setupAndLoadRewardedAd()` for post-show reload
+
+**Files Changed**:
+1. `frontend/src/context/AdMobContext.native.tsx` - Rewarded ad logic fix
+2. `frontend/app.json` - version 1.0.3, versionCode 3
+3. `frontend/android/app/build.gradle` - versionCode 3, versionName 1.0.3
+
+**Files NOT Changed**: Everything else - Banner, Interstitial, App Open, ProContext, UI, etc.
+
+## Ad Unit IDs
+- App Open: ca-app-pub-9675798593675825/4826782503
+- Interstitial: ca-app-pub-9675798593675825/8438724452
+- Banner: ca-app-pub-9675798593675825/8616886104
+- Rewarded: ca-app-pub-9675798593675825/6702740458
+- Unity Game ID: 6087835
+
+## Build & Deploy
+- EAS Build profile: `production` for AAB, `preview` for APK
+- Play Store: closed testing track
+- Version: 1.0.3 (versionCode 3)
+
+## Backlog
+- P0: Verify rewarded ads work on real device after EAS build
+- P1: Monitor AdMob dashboard for rewarded ad requests
+- P2: Consider removing `requestNonPersonalizedAdsOnly: true` for better fill rates
