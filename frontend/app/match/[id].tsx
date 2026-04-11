@@ -99,7 +99,7 @@ export default function MatchDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { isPro: globalIsPro, setProFromAdMob } = usePro();
-  const { trackClick, showRewardedAd, showInterstitialAd, isRewardedAdReady, BannerAdComponent } = useAdMob();
+  const { trackClick, showRewardedAd, showInterstitialAd, BannerAdComponent } = useAdMob();
   const { isTracking, toggleTracking, notificationsEnabled, enableNotifications } = useNotifications();
 
   const [match, setMatch] = useState<Match | null>(null);
@@ -693,14 +693,12 @@ export default function MatchDetail() {
             </View>
 
             <TouchableOpacity
-              style={[styles.watchBtn, !isRewardedAdReady && styles.watchBtnDisabled]}
+              style={styles.watchBtn}
               onPress={handleWatchAd}
             >
               <Ionicons name="play-circle" size={22} color="#FFF" />
               <Text style={styles.watchBtnTxt}>
-                {isRewardedAdReady
-                  ? `Watch Ad ${adsWatchedCount + 1} of 3`
-                  : 'Loading Ad...'}
+                {`Watch Ad ${adsWatchedCount + 1} of 3`}
               </Text>
             </TouchableOpacity>
 
@@ -859,7 +857,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 10,
   },
-  watchBtnDisabled: { backgroundColor: '#999' },
   watchBtnTxt: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
   laterTxt: { marginTop: 8, color: '#999', fontSize: 14 },
 });

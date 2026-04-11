@@ -38,11 +38,18 @@
 - Pro users get direct overlay toggle
 - Files: `app/match/[id].tsx`
 
-### Fix 2: Rewarded Ad Preloading
-- Increased retry attempts from 3 to 6 with shorter delays
-- Added 20-second periodic health check to ensure ad stays preloaded
-- After all retries exhausted, auto-resets and retries after 30s
-- Files: `src/context/AdMobContext.native.tsx`
+### Fix 2: Rewarded Ad - COMPLETE REWRITE
+**Root cause**: `loadingRef.current` was getting permanently stuck at `true` because neither LOADED nor ERROR event callbacks fired from the native bridge. This caused:
+- All retry attempts to be silently skipped
+- Health check to skip (checked `!loadingRef.current`)
+- Zero ad requests reaching Google AdMob
+
+**Three critical fixes applied:**
+1. **Loading timeout (12s)**: If neither LOADED nor ERROR fires within 12 seconds, `loadingRef.current` is force-reset and retry scheduled
+2. **On-demand fallback**: When user clicks "Watch Ad" and no preloaded ad exists, creates a NEW RewardedAd on-the-fly, loads it, and shows it immediately (15s timeout) - same pattern as interstitial fallback
+3. **Health check fix**: Health check now force-resets stuck `loadingRef.current = true` before attempting preload
+4. **Button always clickable**: "Watch Ad" button no longer shows "Loading Ad..." disabled state - always clickable with on-demand loading
+- Files: `src/context/AdMobContext.native.tsx`, `app/match/[id].tsx`
 
 ### Fix 3: Scoreboard Compact UI
 - Reduced score header padding, font sizes, and margins
