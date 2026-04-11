@@ -358,6 +358,26 @@ function mapEvent(e?: string): Commentary['event'] {
   return 'normal';
 }
 
+// Extract numeric runs from raw commentary data
+function extractRuns(c: any): number | undefined {
+  // Cricbuzz fields for runs scored on a ball
+  const r = c.runs ?? c.batRuns ?? c.batruns ?? c.score ?? c.totalRuns;
+  if (r !== undefined && r !== null) return Number(r);
+  return undefined;
+}
+
+// Extract extras type from raw commentary data
+function extractExtras(c: any): string | undefined {
+  const e = c.extras ?? c.extrasType ?? c.extraType;
+  if (e) return String(e).toLowerCase();
+  // Check boolean flags
+  if (c.isWide || c.wide) return 'wide';
+  if (c.isNoBall || c.noball || c.noBall) return 'noball';
+  if (c.isLegBye || c.legbye) return 'legbye';
+  if (c.isBye || c.bye) return 'bye';
+  return undefined;
+}
+
 function parseCommentary(data: any, matchId: string): Commentary[] {
   if (!data) return [];
   const out: Commentary[] = [];
@@ -380,6 +400,8 @@ function parseCommentary(data: any, matchId: string): Commentary[] {
             over: String(c.overnum ?? c.overNumber ?? '0.0'),
             english: text,
             event: mapEvent(c.eventtype || c.event),
+            runs: extractRuns(c),
+            extras: extractExtras(c),
           });
         }
       }
@@ -393,6 +415,8 @@ function parseCommentary(data: any, matchId: string): Commentary[] {
               over: String(c[j].overnum ?? c[j].overNumber ?? '0.0'),
               english: text,
               event: mapEvent(c[j].eventtype || c[j].event),
+              runs: extractRuns(c[j]),
+              extras: extractExtras(c[j]),
             });
           }
         }
@@ -411,6 +435,8 @@ function parseCommentary(data: any, matchId: string): Commentary[] {
           over: String(c.overNumber ?? c.overnum ?? '0.0'),
           english: text,
           event: mapEvent(c.event || c.eventtype),
+          runs: extractRuns(c),
+          extras: extractExtras(c),
         });
       }
     }
@@ -519,33 +545,43 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
         // recentOvsStr is the primary field from Cricbuzz miniscore for ball-by-ball
         let oSummary = ms.recentOvsStr || ms.recentovsstr || ms.o_summary || ms.recentovsummary || ms.oversummary || ms.recentOvs || '';
         
-        // If no oSummary from API, build from recent commentary
+        // If no oSummary from API, build from recent commentary STRUCTURED DATA
+        // Priority: runs/event/extras fields FIRST, text matching NEVER
         if (!oSummary && commentary && commentary.length > 0) {
           const recentBalls: string[] = [];
           for (let i = 0; i < Math.min(12, commentary.length); i++) {
             const comm = commentary[i];
             if (comm.over && comm.over !== '0' && /\d/.test(comm.over)) {
-              // USE event field FIRST - most reliable for FOUR/SIX/WICKET detection
-              // The event field is parsed from Cricbuzz API event data, NOT from text
+              // PRIORITY 1: Use event field (most reliable for special deliveries)
               if (comm.event === 'wicket') {
                 recentBalls.push('WKT');
+              } else if (comm.extras === 'wide') {
+                recentBalls.push('Wd');
+              } else if (comm.extras === 'noball') {
+                recentBalls.push('Nb');
               } else if (comm.event === 'six') {
                 recentBalls.push('6');
               } else if (comm.event === 'four') {
                 recentBalls.push('4');
-              } else if (comm.event === 'wide') {
-                recentBalls.push('Wd');
+              // PRIORITY 2: Use numeric runs field
+              } else if (comm.runs !== undefined && comm.runs !== null) {
+                const r = Number(comm.runs);
+                if (r === 6) recentBalls.push('6');
+                else if (r === 4) recentBalls.push('4');
+                else recentBalls.push(String(r));
+              // PRIORITY 3: Use event field for dots
+              } else if (comm.event === 'dot') {
+                recentBalls.push('0');
+              // PRIORITY 4: Last resort - extract number from text
               } else {
-                // Fallback: extract from text for runs/dots/no-balls
                 const text = (comm.english || '').toLowerCase();
-                if (text.includes('no ball') || text.includes('no-ball')) {
-                  recentBalls.push('Nb');
-                } else if (text.includes('no run') || text.includes(', 0 run')) {
+                const runMatch = text.match(/(\d)\s*run/);
+                if (runMatch) {
+                  recentBalls.push(runMatch[1]);
+                } else if (text.includes('no run')) {
                   recentBalls.push('0');
                 } else {
-                  // Extract run count from text
-                  const runMatch = text.match(/(\d)\s*run/);
-                  recentBalls.push(runMatch ? runMatch[1] : '0');
+                  recentBalls.push('0');
                 }
               }
             }

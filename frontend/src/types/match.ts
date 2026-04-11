@@ -19,6 +19,8 @@ export interface Commentary {
   english: string;
   hindi?: string;
   event?: 'wicket' | 'four' | 'six' | 'dot' | 'wide' | 'normal';
+  runs?: number;       // Actual runs scored on this ball (from API structured data)
+  extras?: string;     // 'wide' | 'noball' | 'legbye' | 'bye' | undefined
 }
 
 export type Language = 'english' | 'hindi';
