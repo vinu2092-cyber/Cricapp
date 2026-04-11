@@ -1,7 +1,7 @@
 # CricApp - PRD & Progress Tracker
 
 ## Original Problem Statement
-Android native cricket live score app (React Native / Expo). Main issue: Rewarded Ads not showing when "Unlock" button is pressed. App already on Play Store (closed testing, 2nd version). Need to fix rewarded ads and push 3rd version update.
+Android native cricket live score app (React Native / Expo). Main issue: Rewarded Ads not showing when "Unlock" button is pressed. Need to fix rewarded ads, enable personalized ads with UMP consent, and push 3rd version update.
 
 ## Architecture
 - **Frontend**: React Native (Expo SDK 54) with TypeScript
@@ -13,29 +13,33 @@ Android native cricket live score app (React Native / Expo). Main issue: Rewarde
 ## Core Requirements
 - Live cricket scores
 - Banner Ads, App Open Ads, Interstitial Ads (all working)
-- Rewarded Ads for Pro unlock (was broken, NOW FIXED)
+- Rewarded Ads for Pro unlock (FIXED)
 - Unity Ads mediation via AdMob
+- UMP Consent for personalized ads (IMPLEMENTED)
 
-## What's Been Implemented (2026-04-11)
+## What's Been Implemented
 
-### Rewarded Ads Fix
-**Root Cause**: Singleton pattern in `AdMobContext.native.tsx` was broken.
-- Module-level `rewardedAdInstance` was reassigned after ad close, but event listeners stayed on OLD instance
-- New instance had no listeners -> `isRewardedAdReady` never became `true` -> "Ad Not Available"
+### Session 1 (2026-04-11): Rewarded Ads Fix
+**Root Cause**: Singleton pattern in `AdMobContext.native.tsx` was broken - module-level `rewardedAdInstance` was reassigned after ad close but event listeners stayed on OLD instance.
+**Fix**: Replaced with ref-based pattern (`rewardedAdRef` + `setupAndLoadRewardedAd()`) that creates fresh instance + fresh listeners each time.
 
-**Fix Applied**:
-- Replaced module-level singleton with `useRef` pattern (`rewardedAdRef`, `rewardedListenersRef`)
-- Created `setupAndLoadRewardedAd()` function that creates fresh instance + registers fresh listeners each time
-- On ad CLOSE: Properly recreates instance with fresh listeners via `setupAndLoadRewardedAd()`
-- On ERROR: Retries on same instance (listeners still attached)
-- On-demand fallback also uses `setupAndLoadRewardedAd()` for post-show reload
+### Session 2 (2026-04-11): Personalized Ads + UMP Consent
+1. **Removed `requestNonPersonalizedAdsOnly: true`** from all 6 ad request locations (Rewarded, Interstitial, App Open, Banner, On-demand variants)
+2. **Integrated UMP Consent Flow** using `AdsConsent` API from react-native-google-mobile-ads:
+   - `AdsConsent.requestInfoUpdate()` on app launch
+   - `AdsConsent.loadAndShowConsentFormIfRequired()` for EEA users
+   - `AdsConsent.getConsentInfo()` to verify consent status
+   - `showPrivacyOptionsForm()` available in context for future use
+3. **GDPR message already published** in AdMob console by user
 
-**Files Changed**:
-1. `frontend/src/context/AdMobContext.native.tsx` - Rewarded ad logic fix
-2. `frontend/app.json` - version 1.0.3, versionCode 3
-3. `frontend/android/app/build.gradle` - versionCode 3, versionName 1.0.3
+**Files Changed (Total)**:
+1. `frontend/src/context/AdMobContext.native.tsx` - Rewarded fix + UMP consent + personalized ads
+2. `frontend/src/context/AdMobContext.tsx` - type sync (web stub)
+3. `frontend/src/context/AdMobContext.web.tsx` - type sync (web stub)
+4. `frontend/app.json` - version 1.0.3, versionCode 3
+5. `frontend/android/app/build.gradle` - versionCode 3, versionName 1.0.3
 
-**Files NOT Changed**: Everything else - Banner, Interstitial, App Open, ProContext, UI, etc.
+**Files NOT Changed**: settings.tsx, index.tsx, ProContext, Header, AdModal, all Android native files, all plugins, etc.
 
 ## Ad Unit IDs
 - App Open: ca-app-pub-9675798593675825/4826782503
@@ -45,11 +49,11 @@ Android native cricket live score app (React Native / Expo). Main issue: Rewarde
 - Unity Game ID: 6087835
 
 ## Build & Deploy
-- EAS Build profile: `production` for AAB, `preview` for APK
+- EAS Build: `preview` (APK), `production` (AAB)
 - Play Store: closed testing track
 - Version: 1.0.3 (versionCode 3)
 
 ## Backlog
-- P0: Verify rewarded ads work on real device after EAS build
-- P1: Monitor AdMob dashboard for rewarded ad requests
-- P2: Consider removing `requestNonPersonalizedAdsOnly: true` for better fill rates
+- P0: Build APK/AAB via EAS and test on real device
+- P1: Verify consent form appears for EEA users
+- P2: Monitor AdMob dashboard for rewarded ad fill rates with personalized ads
