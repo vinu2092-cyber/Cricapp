@@ -1,28 +1,22 @@
 # CricApp - PRD & Progress Tracker
 
-## Original Problem Statement
-Android native cricket app. Issues: Rewarded Ads not loading, Recent Overs wrong W markers.
+## ROOT CAUSE #1: Wrong Ad Unit ID (FIXED)
+- Code had: `6702740458` (digits transposed)
+- Correct: `6702704058` (matching AdMob console)
 
-## ROOT CAUSE FOUND: Wrong Ad Unit ID!
-- **Code had:** `ca-app-pub-9675798593675825/6702740458` (WRONG - digits transposed)
-- **AdMob Console:** `ca-app-pub-9675798593675825/6702704058` (CORRECT)
-- Difference: `...70**40**58` vs `...74**04**58` → digits swapped!
-- This caused ALL rewarded ad requests to fail because Google couldn't find the ad unit
+## ROOT CAUSE #2: Commentary Fallback False Positives (FIXED)
+- `text.includes('wicket')` matched "mid-wicket" (field position)
+- `text.includes('out')` matched "outside" (ball position)
+- Fix: Precise regex patterns with word boundaries and exclusions
 
-## All Fixes Applied
-1. **Ad Unit ID FIXED** → `6702704058` (correct, matching AdMob console)
-2. **Singleton pattern fixed** → ref-based with fresh listeners after each ad close
-3. **W = Wide fix** → In Recent Overs, `W` shown as orange wide, `WKT` as red wicket
-4. **Personalized ads** → `requestNonPersonalizedAdsOnly` removed
-5. **UMP Consent** → Added on app launch (v14.x compatible)
-6. **Version 1.0.3** (versionCode 3) for Play Store
-7. **NO test ad code** - all removed per user request
+## ROOT CAUSE #3: Cricbuzz W = Wide, not Wicket (FIXED)
+- Cricbuzz recentOvsStr uses W for WIDE delivery
+- Evidence: CSK 212/2 had 6 W markers but only 2 wickets
+- Fix: formatOverSummary converts W→Wd (orange wide display)
 
-## Files Changed
-1. `AdMobContext.native.tsx` - All ad fixes
-2. `AdMobContext.tsx` / `AdMobContext.web.tsx` - type sync
-3. `match/[id].tsx` - W=Wide fix
-4. `app.json` + `build.gradle` - version 1.0.3
-
-## NOT Changed
-settings.tsx, index.tsx, ProContext, api.ts, Header, plugins, Android native files
+## All Changed Files
+1. `AdMobContext.native.tsx` - Ad ID fix + singleton fix + UMP consent
+2. `AdMobContext.tsx/web.tsx` - type sync
+3. `match/[id].tsx` - formatOverSummary W=Wide fix
+4. `api.ts` - Commentary fallback false positive fix
+5. `app.json` + `build.gradle` - version 1.0.3
