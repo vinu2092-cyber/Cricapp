@@ -185,8 +185,12 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         testDeviceIdentifiers: [], // Production - no test devices
       })
       .then(() => mobileAds().initialize())
-      .then(() => {
+      .then((adapterStatuses) => {
         console.log('[AdMob] SDK initialized successfully');
+        // Log adapter statuses to verify Unity Ads mediation is loaded
+        if (adapterStatuses) {
+          console.log('[AdMob] Adapter statuses:', JSON.stringify(adapterStatuses));
+        }
         setIsAdMobInitialized(true);
         loadRewardedAd();
         loadInterstitialAd();

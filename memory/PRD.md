@@ -63,6 +63,27 @@
 - Footer now just decorative grass bar (30px)
 - Files: `src/components/Footer.tsx`, `app/settings.tsx`
 
+## Unity Ads Mediation Integration (Feb 2026)
+
+### What was added:
+- **Expo Config Plugin**: `plugins/withUnityAdsMediation.js` - Injects Unity Ads SDK + AdMob Unity Mediation Adapter as native Android dependencies
+- **ProGuard rules**: Keep rules for `com.unity3d.ads` and `com.google.ads.mediation.unity` classes
+- **app-ads.txt**: Added Unity ownership line `unity3d.com, 6087835, DIRECT, 13469908642400`
+
+### Unity Ads Details:
+- Unity Game ID: 6087835
+- Organization Core ID: 13469908642400
+- Placement IDs: Banner_Android, Interstitial_Android, Rewarded_Android
+- SDK: `com.unity3d.ads:unity-ads:4.12.4`
+- Adapter: `com.google.ads.mediation:unity:4.12.5.0`
+- Mode: Bidding (configured in AdMob Console)
+
+### How it works:
+- AdMob SDK automatically discovers the Unity Ads adapter at runtime
+- When AdMob has no fill, it falls back to Unity Ads via mediation
+- All mediation group priorities are managed in AdMob Console
+- No code changes needed in AdMobContext - mediation is transparent to the app
+
 ## Architecture
 - Frontend: React Native, Expo Router, Expo Config Plugins
 - Backend: External RapidAPI (Cricbuzz) - No local DB
