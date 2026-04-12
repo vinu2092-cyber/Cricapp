@@ -9,6 +9,7 @@ import {
   scheduleMatchReminder,
   AlertType,
 } from '../services/NotificationService';
+import { getFirebaseKey, initFirebaseKeyFetch } from '../services/FirebaseKeyService';
 
 const TRACKED_MATCHES_KEY = 'cricapp_tracked_matches';
 const AUTO_TRACK_ENABLED_KEY = 'cricapp_auto_track_enabled';
@@ -17,8 +18,12 @@ const POLL_INTERVAL_ACTIVE = 30000;    // 30s when app is active for real-time a
 const POLL_INTERVAL_BACKGROUND = 60000; // 60s when app is in background
 const AUTO_TRACK_CHECK_INTERVAL = 300000; // Check for new IPL/International matches every 5 min
 
-// Direct RapidAPI keys - ALL KEYS (limits refresh periodically)
-const RAPIDAPI_KEYS = [
+// Start Firebase key fetch
+initFirebaseKeyFetch();
+
+// ---- Provider 1: cricbuzz-cricket (Original - 19 keys) ----
+const RAPIDAPI_HOST_1 = "cricbuzz-cricket.p.rapidapi.com";
+const RAPIDAPI_KEYS_P1 = [
   "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
   "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
   "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",
@@ -39,8 +44,20 @@ const RAPIDAPI_KEYS = [
   "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
   "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
 ];
-const RAPIDAPI_HOST = "cricbuzz-cricket.p.rapidapi.com";
+
+// ---- Provider 2: free-cricbuzz-cricket-api (New - 6 keys) ----
+const RAPIDAPI_HOST_2 = "free-cricbuzz-cricket-api.p.rapidapi.com";
+const RAPIDAPI_KEYS_P2 = [
+  "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",
+  "60879faad9msh89b61d15d1973d2p179cc2jsn14d1545f0248",
+  "015297ae4cmsh74b2c66b2201689p1d04dajsnfdca916f695f",
+  "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
+  "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
+  "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
+];
+
 let notifKeyIndex = 0;
+let notifP2KeyIndex = 0;
 
 // IPL and International series identifiers
 const IPL_KEYWORDS = ['ipl', 'indian premier league', 'tata ipl'];
@@ -80,11 +97,24 @@ const isIPLOrInternational = (seriesName: string): boolean => {
   return IPL_KEYWORDS.some(k => lower.includes(k)) || INTERNATIONAL_KEYWORDS.some(k => lower.includes(k));
 };
 
-// Helper: Get next API key
-const getNextKey = (): string => {
-  const key = RAPIDAPI_KEYS[notifKeyIndex % RAPIDAPI_KEYS.length];
+// Helper: Get next API key and host (Firebase first, then rotation)
+const getNextKeyAndHost = (): { key: string; host: string } => {
+  // Firebase priority
+  const firebaseKey = getFirebaseKey();
+  if (firebaseKey) {
+    return { key: firebaseKey.apiKey, host: firebaseKey.apiHost };
+  }
+  // Provider 1 rotation (19 keys)
+  const key = RAPIDAPI_KEYS_P1[notifKeyIndex % RAPIDAPI_KEYS_P1.length];
   notifKeyIndex++;
-  return key;
+  return { key, host: RAPIDAPI_HOST_1 };
+};
+
+// Helper: Get Provider 2 key and host (fallback)
+const getNextP2KeyAndHost = (): { key: string; host: string } => {
+  const key = RAPIDAPI_KEYS_P2[notifP2KeyIndex % RAPIDAPI_KEYS_P2.length];
+  notifP2KeyIndex++;
+  return { key, host: RAPIDAPI_HOST_2 };
 };
 
 // Helper: Detect event type from commentary text
@@ -164,19 +194,43 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     if (!autoTrackEnabled || !notificationsEnabled) return;
 
     try {
-      const key = getNextKey();
+      const { key: key1, host: host1 } = getNextKeyAndHost();
+      const { key: key2, host: host2 } = getNextKeyAndHost();
       
       // Fetch live and upcoming matches
       const [liveRes, upcomingRes] = await Promise.all([
-        fetch(`https://${RAPIDAPI_HOST}/matches/v1/live`, {
-          headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': RAPIDAPI_HOST },
+        fetch(`https://${host1}/matches/v1/live`, {
+          headers: { 'X-RapidAPI-Key': key1, 'X-RapidAPI-Host': host1 },
           signal: AbortSignal.timeout(10000),
-        }),
-        fetch(`https://${RAPIDAPI_HOST}/matches/v1/upcoming`, {
-          headers: { 'X-RapidAPI-Key': getNextKey(), 'X-RapidAPI-Host': RAPIDAPI_HOST },
+        }).catch(() => null),
+        fetch(`https://${host2}/matches/v1/upcoming`, {
+          headers: { 'X-RapidAPI-Key': key2, 'X-RapidAPI-Host': host2 },
           signal: AbortSignal.timeout(10000),
-        }),
+        }).catch(() => null),
       ]);
+
+      // If primary provider failed, try Provider 2
+      let finalLiveRes = liveRes;
+      let finalUpcomingRes = upcomingRes;
+      
+      if (!liveRes || !liveRes.ok) {
+        const { key: p2k, host: p2h } = getNextP2KeyAndHost();
+        try {
+          finalLiveRes = await fetch(`https://${p2h}/matches/v1/live`, {
+            headers: { 'X-RapidAPI-Key': p2k, 'X-RapidAPI-Host': p2h },
+            signal: AbortSignal.timeout(10000),
+          });
+        } catch { /* silent */ }
+      }
+      if (!upcomingRes || !upcomingRes.ok) {
+        const { key: p2k, host: p2h } = getNextP2KeyAndHost();
+        try {
+          finalUpcomingRes = await fetch(`https://${p2h}/matches/v1/upcoming`, {
+            headers: { 'X-RapidAPI-Key': p2k, 'X-RapidAPI-Host': p2h },
+            signal: AbortSignal.timeout(10000),
+          });
+        } catch { /* silent */ }
+      }
 
       const processMatches = async (data: any, isLive: boolean) => {
         const typeMatches = data?.typeMatches || [];
@@ -226,8 +280,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         return newMatches;
       };
 
-      const liveData = liveRes.ok ? await liveRes.json() : null;
-      const upcomingData = upcomingRes.ok ? await upcomingRes.json() : null;
+      const liveData = finalLiveRes?.ok ? await finalLiveRes.json() : null;
+      const upcomingData = finalUpcomingRes?.ok ? await finalUpcomingRes.json() : null;
       
       const liveMatches = liveData ? await processMatches(liveData, true) : [];
       const upcomingMatches = upcomingData ? await processMatches(upcomingData, false) : [];
@@ -250,15 +304,24 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     for (const tracked of activeMatches) {
       try {
-        const key = getNextKey();
+        const { key, host } = getNextKeyAndHost();
         
         // Fetch commentary for this match
-        const commRes = await fetch(`https://${RAPIDAPI_HOST}/mcenter/v1/${tracked.matchId}/comm`, {
-          headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': RAPIDAPI_HOST },
+        let commRes = await fetch(`https://${host}/mcenter/v1/${tracked.matchId}/comm`, {
+          headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': host },
           signal: AbortSignal.timeout(10000),
-        });
+        }).catch(() => null);
         
-        if (!commRes.ok) continue;
+        // Fallback to Provider 2 if primary failed
+        if (!commRes || !commRes.ok) {
+          const { key: p2k, host: p2h } = getNextP2KeyAndHost();
+          commRes = await fetch(`https://${p2h}/mcenter/v1/${tracked.matchId}/comm`, {
+            headers: { 'X-RapidAPI-Key': p2k, 'X-RapidAPI-Host': p2h },
+            signal: AbortSignal.timeout(10000),
+          }).catch(() => null);
+        }
+        
+        if (!commRes || !commRes.ok) continue;
         
         const commData = await commRes.json();
         const ms = commData.miniscore || {};

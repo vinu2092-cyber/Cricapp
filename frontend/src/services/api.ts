@@ -2,11 +2,17 @@ import axios from 'axios';
 import { Match, Commentary } from '../types/match';
 import { Linking, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getFirebaseKey, initFirebaseKeyFetch } from './FirebaseKeyService';
 
 // ============ API KEY MANAGEMENT ============
 const API_KEY_STORAGE = 'cricapp_user_api_key';
 
-// ALL API KEYS - kept in rotation (limits refresh periodically)
+// Start Firebase key fetch immediately (background, non-blocking)
+initFirebaseKeyFetch();
+
+// ---- Provider 1: cricbuzz-cricket (Original) ----
+const HOST_1 = "cricbuzz-cricket.p.rapidapi.com";
+
 // Keys for commentary endpoint
 const COMM_KEYS = [
   "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
@@ -16,8 +22,8 @@ const COMM_KEYS = [
   "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
 ];
 
-// All keys for match endpoints (19 total - limits refresh daily)
-const MATCH_KEYS = [
+// All keys for match endpoints (19 keys - Provider 1)
+const MATCH_KEYS_P1 = [
   // Original keys
   "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
   "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
@@ -42,9 +48,23 @@ const MATCH_KEYS = [
   "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
 ];
 
-const HOST = "cricbuzz-cricket.p.rapidapi.com";
+// ---- Provider 2: free-cricbuzz-cricket-api (New - 6 keys) ----
+const HOST_2 = "free-cricbuzz-cricket-api.p.rapidapi.com";
+const MATCH_KEYS_P2 = [
+  "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",
+  "60879faad9msh89b61d15d1973d2p179cc2jsn14d1545f0248",
+  "015297ae4cmsh74b2c66b2201689p1d04dajsnfdca916f695f",
+  "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
+  "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
+  "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
+];
+
+// Combined MATCH_KEYS for backward-compatible references (25 total)
+const MATCH_KEYS = [...MATCH_KEYS_P1, ...MATCH_KEYS_P2];
+
 let matchKeyIdx = 0;
 let commKeyIdx = 0;
+let p2KeyIdx = 0;
 
 // Get user's custom API key (if set)
 async function getUserApiKey(): Promise<string | null> {
@@ -56,33 +76,60 @@ async function getUserApiKey(): Promise<string | null> {
 }
 
 // ============ API CALL HELPERS ============
+
+// Try a single API call with given key and host
+async function tryApiCall(endpoint: string, apiKey: string, apiHost: string): Promise<any> {
+  const res = await axios.get(`https://${apiHost}${endpoint}`, {
+    headers: { 'X-RapidAPI-Key': apiKey, 'X-RapidAPI-Host': apiHost },
+    timeout: 12000,
+  });
+  if (res.data && !res.data.message) return res.data;
+  return null;
+}
+
 async function callApi(endpoint: string, keys: string[], maxTries: number = 5): Promise<any> {
-  // First try user's custom API key if available
+  // ===== PRIORITY 1: Firebase Key (Dynamic, fetched from Firestore) =====
+  const firebaseKey = getFirebaseKey();
+  if (firebaseKey) {
+    try {
+      const result = await tryApiCall(endpoint, firebaseKey.apiKey, firebaseKey.apiHost);
+      if (result) return result;
+    } catch (e) {
+      console.log('[API] Firebase key failed, falling back to hardcoded');
+    }
+  }
+
+  // ===== PRIORITY 2: User's Custom API Key =====
   const userKey = await getUserApiKey();
   if (userKey) {
     try {
-      const res = await axios.get(`https://${HOST}${endpoint}`, {
-        headers: { 'X-RapidAPI-Key': userKey, 'X-RapidAPI-Host': HOST },
-        timeout: 12000,
-      });
-      if (res.data && !res.data.message) return res.data;
+      const result = await tryApiCall(endpoint, userKey, HOST_1);
+      if (result) return result;
     } catch (e) {
-      // User key failed, continue with default keys
       console.log('[API] User key failed, trying default keys');
     }
   }
 
-  // Try default keys
-  for (let i = 0; i < Math.min(maxTries, keys.length); i++) {
-    const idx = (endpoint.includes('/comm') ? commKeyIdx++ : matchKeyIdx++) % keys.length;
+  // ===== PRIORITY 3: Provider 1 Keys (19 keys - cricbuzz-cricket) =====
+  const isComm = endpoint.includes('/comm');
+  const p1Keys = isComm ? COMM_KEYS : MATCH_KEYS_P1;
+  for (let i = 0; i < Math.min(maxTries, p1Keys.length); i++) {
+    const idx = (isComm ? commKeyIdx++ : matchKeyIdx++) % p1Keys.length;
     try {
-      const res = await axios.get(`https://${HOST}${endpoint}`, {
-        headers: { 'X-RapidAPI-Key': keys[idx % keys.length], 'X-RapidAPI-Host': HOST },
-        timeout: 12000,
-      });
-      if (res.data && !res.data.message) return res.data;
+      const result = await tryApiCall(endpoint, p1Keys[idx], HOST_1);
+      if (result) return result;
     } catch (e) { continue; }
   }
+
+  // ===== PRIORITY 4: Provider 2 Keys (6 keys - free-cricbuzz-cricket-api) =====
+  for (let i = 0; i < Math.min(3, MATCH_KEYS_P2.length); i++) {
+    const idx = p2KeyIdx++ % MATCH_KEYS_P2.length;
+    try {
+      const result = await tryApiCall(endpoint, MATCH_KEYS_P2[idx], HOST_2);
+      if (result) return result;
+    } catch (e) { continue; }
+  }
+
   return null;
 }
 

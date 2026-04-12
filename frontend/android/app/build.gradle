@@ -92,8 +92,8 @@ android {
         applicationId 'com.cricapp.live'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.0.3"
+        versionCode 4
+        versionName "1.0.4"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -153,6 +153,9 @@ android {
 }
 
 dependencies {
+    // Unity Ads Mediation for AdMob (added by withUnityAdsMediation plugin)
+    implementation 'com.unity3d.ads:unity-ads:4.12.4'
+    implementation 'com.google.ads.mediation:unity:4.12.5.0'
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
