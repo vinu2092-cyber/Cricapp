@@ -113,3 +113,12 @@ frontend/android/.gradle/
 
 # Android project clones
 android-project/
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
