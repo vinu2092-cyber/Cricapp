@@ -1,68 +1,52 @@
-# CricApp - Product Requirements Document
+# CricApp - PRD (Product Requirements Document)
 
 ## Original Problem Statement
-Android Native Cricket App (com.cricapp.live) - Firebase Dynamic API Key integration, hardcoded API key rotation expansion, and version upgrade for Play Store update.
+Fix Firebase fetching & cleansing, make app Provider-Agnostic, and repair Fallback & Rotation Logic for CricApp Android Native app.
 
 ## Architecture
-- **Platform**: React Native + Expo (Android)
-- **API**: RapidAPI Cricbuzz Cricket APIs (2 providers)
-- **Firebase**: JS SDK for Firestore config fetch
-- **State**: AsyncStorage for caching
+- **Platform**: Android Native (React Native + Expo)
+- **Repo**: https://github.com/vinu2092-cyber/Cricapp.git
+- **Status**: Live in Google Play Close Testing
+- **Build**: GitHub Actions (APK/AAB auto-build on push)
 
-## What's Been Implemented (April 12, 2026)
+## Core Requirements
+1. Firebase Firestore fetches `api_key`, `api_host`, `current_provider` from `app_config/settings`
+2. Provider-Agnostic Factory Pattern for 3 providers (cricbuzz-cricket, free-cricbuzz-cricket, cricket-live-data)
+3. Fallback chain: Firebase (5s timeout) → User key → Random rotation of 25 hardcoded keys
+4. All fetched values trimmed of whitespace
+5. No UI/structure changes allowed
 
-### Task 1: Firebase Integration (Dynamic API Key)
-- Created `src/services/FirebaseKeyService.ts` - Firebase JS SDK initialization
-- Fetches `api_key` and `api_host` from Firestore path: `app_config/settings`
-- Background non-blocking fetch on app startup (5s timeout)
-- Cached results for instant subsequent access
-- `google-services.json` placed in `android/app/`
+## What's Been Implemented (Jan 2026)
+### FirebaseKeyService.ts
+- Added `current_provider` field fetch from Firestore
+- Added `.trim()` cleansing on all fetched values (api_key, api_host, current_provider)
+- Added validation (non-empty, min 10 chars for api_key)
+- Updated all exports to include `provider` field
+- `waitForFirebaseKey()` timeout set to 5 seconds
 
-### Task 2: Hardcoded API Rotation (6 New Keys Added)
-- Added 6 new keys with Provider 2 host: `free-cricbuzz-cricket-api.p.rapidapi.com`
-- Total keys: 19 (Provider 1) + 6 (Provider 2) = 25
-- Updated both `api.ts` and `NotificationContext.tsx`
-- New keys: 49895f57cb..., 60879faad9..., 015297ae4c..., 3b5c50ff5f..., 948dd6c539..., efa0ba9303...
+### api.ts
+- **Provider Factory Pattern**: `PROVIDERS` record with configs for 3 providers
+  - `cricbuzz-cricket`: HOST_1 endpoints + Cricbuzz parsers
+  - `free-cricbuzz-cricket`: HOST_2 endpoints + Cricbuzz parsers (same format)
+  - `cricket-live-data`: HOST_3 endpoints + Cricket Live Data parsers
+- **Fallback chain** via `fetchData()`:
+  - Priority 1: Firebase key (waits up to 5s via `waitForFirebaseKey`)
+  - Priority 2: User custom API key
+  - Priority 3: Random rotation (Fisher-Yates shuffle) of all 25 hardcoded keys across both Cricbuzz hosts
+- **Cricket Live Data parsers**: `extractAllCricketLiveData`, `transformDetailCricketLiveData`, `parseCommentaryCricketLiveData`
+- **isCricbuzzLike flag**: Controls Cricbuzz-specific rich data extraction (miniscore, batsmen, oSummary) in `fetchMatchById`
+- All existing exports preserved: `fetchLiveMatches`, `fetchRecentMatches`, `fetchUpcomingMatches`, `fetchMatchById`, `openExternalScorecard`, `clearAllCache`, `clearExpiredCache`
 
-### Firebase Priority & Fallback Logic
-- **Priority 1**: Firebase Firestore key (dynamic)
-- **Priority 2**: User's custom API key
-- **Priority 3**: Provider 1 (19 keys - cricbuzz-cricket.p.rapidapi.com)
-- **Priority 4**: Provider 2 (6 keys - free-cricbuzz-cricket-api.p.rapidapi.com)
+### Files Modified (2 only)
+- `frontend/src/services/FirebaseKeyService.ts`
+- `frontend/src/services/api.ts`
 
-### Task 3: Version Upgrade
-- `app.json`: versionCode 3→4, version "1.0.3"→"1.0.4"
-- `build.gradle`: versionCode 4, versionName "1.0.4"
+### Files NOT Modified (as required)
+- All UI components, layouts, screens, contexts, types, native modules
 
-### GitHub Actions Workflow
-- `.github/workflows/build-android.yml` - Auto builds APK + AAB on push
-- Creates GitHub Release with download artifacts
-
-## Files Changed
-1. `frontend/src/services/FirebaseKeyService.ts` (NEW)
-2. `frontend/src/services/api.ts` (MODIFIED - Firebase + 6 new keys)
-3. `frontend/src/context/NotificationContext.tsx` (MODIFIED - Firebase + 6 new keys)
-4. `frontend/app.json` (MODIFIED - version 4)
-5. `frontend/android/app/build.gradle` (MODIFIED - version 4)
-6. `frontend/android/app/google-services.json` (NEW)
-7. `frontend/package.json` (MODIFIED - firebase dependency)
-8. `.github/workflows/build-android.yml` (MODIFIED - build workflow)
-
-## Existing UI - NOT CHANGED
-- No changes to any UI components
-- Header, MatchCard, TabBar, etc. all untouched
-
-## P0 Done
-- [x] Firebase dynamic key fetch
-- [x] 6 new API keys added
-- [x] Firebase-first priority logic
-- [x] Hardcoded fallback (no crash)
-- [x] Version upgrade 3→4
-
-## P1 (User mentioned - not in scope)
-- [ ] Notification button in header not working (user reported separately)
-
-## Next Actions
-- Push to GitHub via "Save to GitHub"
-- GitHub Actions will auto-build APK + AAB
-- Download from GitHub Releases page
+## Backlog / Next Tasks
+- P0: Push to GitHub via "Save to GitHub" → triggers GitHub Actions build
+- P1: Test APK on real device with Firebase live data
+- P2: Add more Cricket Live Data provider response field mappings once real API responses are observed
+- P2: Monitor API key usage during high-traffic events (IPL)
+- P3: Add analytics/logging for provider switching events
