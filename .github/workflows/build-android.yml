@@ -31,7 +31,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: yarn install --frozen-lockfile
+        run: yarn install
 
       - name: Expo Prebuild (Android)
         working-directory: frontend
