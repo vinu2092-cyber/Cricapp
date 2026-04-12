@@ -13,6 +13,7 @@ import ErrorScreen from '../../src/components/ErrorScreen';
 import LiveIndicator, { MatchStatusBadge } from '../../src/components/LiveIndicator';
 import CricketField from '../../src/components/CricketField';
 import CommentarySection from '../../src/components/CommentarySection';
+import ScorecardSection from '../../src/components/ScorecardSection';
 import FloatingScoreboard from '../../src/components/FloatingScoreboard';
 import MatchMoodMeter from '../../src/components/MatchMoodMeter';
 import { usePro } from '../../src/context/ProContext';
@@ -179,6 +180,9 @@ export default function MatchDetail() {
   const [error, setError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [showOverlay, setShowOverlay] = useState(false);
+
+  // Content tab: 'commentary' or 'scorecard'
+  const [activeDetailTab, setActiveDetailTab] = useState<'commentary' | 'scorecard'>('commentary');
 
   // Mood event for emotional animations
   const [moodEvent, setMoodEvent] = useState<'wicket' | 'four' | 'six' | 'dot' | 'wide' | 'normal' | null>(null);
@@ -694,45 +698,72 @@ export default function MatchDetail() {
           )}
         </View>
 
-        {/* Cricket Field */}
-        <CricketField
-          lastCommentary={match.commentary?.[0]}
-          battingTeam={match.teams[0].shortName}
-          bowlingTeam={match.teams[1].shortName}
-        />
+        {/* Content Tab Bar - Commentary / Scorecard */}
+        <View style={styles.contentTabBar} data-testid="content-tab-bar">
+          <TouchableOpacity
+            style={[styles.contentTab, activeDetailTab === 'commentary' && styles.contentTabActive]}
+            onPress={() => setActiveDetailTab('commentary')}
+            data-testid="tab-commentary"
+          >
+            <Ionicons name="chatbox-outline" size={14} color={activeDetailTab === 'commentary' ? '#FFF' : '#999'} />
+            <Text style={[styles.contentTabText, activeDetailTab === 'commentary' && styles.contentTabTextActive]}>Commentary</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.contentTab, activeDetailTab === 'scorecard' && styles.contentTabActive]}
+            onPress={() => setActiveDetailTab('scorecard')}
+            data-testid="tab-scorecard"
+          >
+            <Ionicons name="stats-chart-outline" size={14} color={activeDetailTab === 'scorecard' ? '#FFF' : '#999'} />
+            <Text style={[styles.contentTabText, activeDetailTab === 'scorecard' && styles.contentTabTextActive]}>Scorecard</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Commentary - with error boundary */}
-        {match.commentary && match.commentary.length > 0 ? (
-          <React.Suspense fallback={<View style={styles.noComm}><ActivityIndicator color="#4CAF50" /></View>}>
-            <CommentarySection
-              commentary={match.commentary}
-              matchId={id}
-              isLive={match.status === 'live'}
-              matchStatus={match.status as 'live' | 'recent' | 'upcoming'}
-            />
-          </React.Suspense>
+        {/* Content Area - Toggle between Commentary and Scorecard */}
+        {activeDetailTab === 'scorecard' ? (
+          <ScorecardSection matchId={id || ''} isLive={match.status === 'live'} />
         ) : (
-          <View style={styles.noComm}>
-            <Ionicons name="chatbox-outline" size={40} color="#999" />
-            <Text style={styles.noCommText}>
-              {match.status === 'upcoming' ? 'Match has not started yet' : 'Commentary not available'}
-            </Text>
+          <>
+            {/* Cricket Field */}
+            <CricketField
+              lastCommentary={match.commentary?.[0]}
+              battingTeam={match.teams[0].shortName}
+              bowlingTeam={match.teams[1].shortName}
+            />
 
-            {/* Banner Ad 1 */}
-            <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
-              <BannerAdComponent />
-            </View>
+            {/* Commentary - with error boundary */}
+            {match.commentary && match.commentary.length > 0 ? (
+              <React.Suspense fallback={<View style={styles.noComm}><ActivityIndicator color="#4CAF50" /></View>}>
+                <CommentarySection
+                  commentary={match.commentary}
+                  matchId={id}
+                  isLive={match.status === 'live'}
+                  matchStatus={match.status as 'live' | 'recent' | 'upcoming'}
+                />
+              </React.Suspense>
+            ) : (
+              <View style={styles.noComm}>
+                <Ionicons name="chatbox-outline" size={40} color="#999" />
+                <Text style={styles.noCommText}>
+                  {match.status === 'upcoming' ? 'Match has not started yet' : 'Commentary not available'}
+                </Text>
 
-            <TouchableOpacity style={styles.externalBtn} onPress={() => openExternalScorecard(id || '')}>
-              <Ionicons name="open-outline" size={16} color="#FFF" />
-              <Text style={styles.externalTxt}>View Full Scorecard</Text>
-            </TouchableOpacity>
+                {/* Banner Ad 1 */}
+                <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
+                  <BannerAdComponent />
+                </View>
 
-            {/* Banner Ad 2 */}
-            <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
-              <BannerAdComponent />
-            </View>
-          </View>
+                <TouchableOpacity style={styles.externalBtn} onPress={() => openExternalScorecard(id || '')}>
+                  <Ionicons name="open-outline" size={16} color="#FFF" />
+                  <Text style={styles.externalTxt}>View Full Scorecard</Text>
+                </TouchableOpacity>
+
+                {/* Banner Ad 2 */}
+                <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
+                  <BannerAdComponent />
+                </View>
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -886,6 +917,35 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   proRow: { alignItems: 'center', marginTop: 4 },
+  // Content tab bar (Commentary / Scorecard)
+  contentTabBar: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(34,34,34,0.9)',
+    marginHorizontal: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(76,175,80,0.3)',
+  },
+  contentTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    gap: 6,
+  },
+  contentTabActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: '#4CAF50',
+    backgroundColor: 'rgba(76,175,80,0.1)',
+  },
+  contentTabText: {
+    color: '#999',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  contentTabTextActive: {
+    color: '#FFF',
+  },
   unlockBtn: {
     backgroundColor: 'rgba(51,51,51,0.9)',
     paddingVertical: 8,

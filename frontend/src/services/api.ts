@@ -26,53 +26,38 @@ const API_KEY_STORAGE = 'cricapp_user_api_key';
 // ---- Provider 1: cricbuzz-cricket (Original) ----
 const HOST_1 = "cricbuzz-cricket.p.rapidapi.com";
 
-// Keys for commentary endpoint
+// Keys for commentary endpoint (cleaned: removed NOT_SUBSCRIBED keys)
 const COMM_KEYS = [
   "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
   "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
   "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
-  "be681ef5f4mshf8eb5972bbbe7abp1d55d8jsn54464cbad4d4",
   "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
 ];
 
-// All keys for match endpoints (19 keys - Provider 1)
+// All keys for match endpoints (cleaned: removed NOT_SUBSCRIBED keys, kept QUOTA_EXCEEDED + WORKS)
 const MATCH_KEYS_P1 = [
-  // Original keys
   "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
   "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
   "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",
   "59b9249be3mshcab753fe794baa3p14e78cjsne1da55eef3aa",
-  "c651c7e717msh7d7c4d05cae7b6dp17500bjsn1e00d9cf8d61",
-  "4223543bdbmsh7962a0ecb8d4e7fp1132a3jsn8f9a656e2b32",
-  "ba8052cb25msh6ea2297ebf719dcp14bc6ejsn51e281c87482",
-  "db67e8004emsh40add8626f58e58p183678jsne28298b94c3b",
-  "2a21f65881msh680271f280de7p182fbdjsn151d068c6392",
-  "cd6ae88bddmsh5dcf84f0286d14cp1af3f9jsn7d2de7fe2a03",
-  // Batch 1 keys
-  "39135304c0msh9b36fa9057dbf23p141f77jsnfb140a4c7127",
-  "3151754456msh3821b80e3429ed0p15ac70jsn887be255a4d6",
   "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
-  "1a6681fd59mshb9cbb21cf3aa0f3p127c5djsnc12085b39c27",
-  // Batch 2 keys
-  "be681ef5f4mshf8eb5972bbbe7abp1d55d8jsn54464cbad4d4",
   "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
   "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",
   "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
   "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
 ];
 
-// ---- Provider 2: free-cricbuzz-cricket-api (New - 6 keys) ----
+// ---- Provider 2: free-cricbuzz-cricket-api ----
 const HOST_2 = "free-cricbuzz-cricket-api.p.rapidapi.com";
 const MATCH_KEYS_P2 = [
   "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",
   "60879faad9msh89b61d15d1973d2p179cc2jsn14d1545f0248",
-  "015297ae4cmsh74b2c66b2201689p1d04dajsnfdca916f695f",
   "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
   "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
   "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
 ];
 
-// Combined MATCH_KEYS for backward-compatible references (25 total)
+// Combined MATCH_KEYS (14 total - cleaned)
 const MATCH_KEYS = [...MATCH_KEYS_P1, ...MATCH_KEYS_P2];
 
 // ---- Provider 3: cricket-live-data ----
@@ -99,6 +84,7 @@ interface ProviderConfig {
     upcoming: string;
     matchDetail: (id: string) => string;
     commentary: (id: string) => string;
+    scorecard: (id: string) => string;
   };
   parseMatchList: (data: any) => Match[];
   parseMatchDetail: (raw: any) => Match;
@@ -115,6 +101,7 @@ const PROVIDERS: Record<string, ProviderConfig> = {
       upcoming: '/matches/v1/upcoming',
       matchDetail: (id: string) => `/mcenter/v1/${id}`,
       commentary: (id: string) => `/mcenter/v1/${id}/comm`,
+      scorecard: (id: string) => `/mcenter/v1/${id}/scard`,
     },
     parseMatchList: extractAllCricbuzz,
     parseMatchDetail: transformDetailCricbuzz,
@@ -129,6 +116,7 @@ const PROVIDERS: Record<string, ProviderConfig> = {
       upcoming: '/matches/v1/upcoming',
       matchDetail: (id: string) => `/mcenter/v1/${id}`,
       commentary: (id: string) => `/mcenter/v1/${id}/comm`,
+      scorecard: (id: string) => `/mcenter/v1/${id}/scard`,
     },
     parseMatchList: extractAllCricbuzz,
     parseMatchDetail: transformDetailCricbuzz,
@@ -143,6 +131,7 @@ const PROVIDERS: Record<string, ProviderConfig> = {
       upcoming: '/fixtures',
       matchDetail: (id: string) => `/match/${id}`,
       commentary: (id: string) => `/match/${id}/scorecard`,
+      scorecard: (id: string) => `/match/${id}/scorecard`,
     },
     parseMatchList: extractAllCricketLiveData,
     parseMatchDetail: transformDetailCricketLiveData,
@@ -164,6 +153,7 @@ function getEndpointForType(config: ProviderConfig, type: string, matchId?: stri
     case 'upcoming': return config.endpoints.upcoming;
     case 'detail': return config.endpoints.matchDetail(matchId!);
     case 'comm': return config.endpoints.commentary(matchId!);
+    case 'scard': return config.endpoints.scorecard(matchId!);
     default: return config.endpoints.live;
   }
 }
@@ -198,7 +188,7 @@ async function tryApiCall(endpoint: string, apiKey: string, apiHost: string): Pr
 // Returns { data, providerName } or null
 
 async function fetchData(
-  endpointType: 'live' | 'recent' | 'upcoming' | 'detail' | 'comm',
+  endpointType: 'live' | 'recent' | 'upcoming' | 'detail' | 'comm' | 'scard',
   matchId?: string
 ): Promise<{ data: any; providerName: string } | null> {
 
@@ -943,6 +933,21 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
 
   return match;
 }
+
+// ============ FETCH SCORECARD ============
+export async function fetchScorecard(matchId: string): Promise<any> {
+  const cached = await getCached(`scard_${matchId}`);
+  if (cached) return cached;
+
+  const result = await fetchData('scard', matchId);
+  if (!result || !result.data) return null;
+
+  const data = result.data;
+  // Cache scorecard for 60 seconds
+  await setCache(`scard_${matchId}`, data);
+  return data;
+}
+
 
 // ============ DEEP LINK ============
 
