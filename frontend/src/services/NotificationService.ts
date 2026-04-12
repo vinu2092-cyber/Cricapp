@@ -29,6 +29,18 @@ export async function setupNotificationChannel() {
       importance: Notifications.AndroidImportance.DEFAULT,
       description: 'Periodic score updates for tracked matches',
     });
+
+    // Match reminder channel (high priority with distinct sound)
+    await Notifications.setNotificationChannelAsync('match-reminders', {
+      name: 'Match Reminders',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 300, 200, 300, 200, 300],
+      lightColor: '#FFD700',
+      sound: 'default',
+      description: 'Upcoming match reminders (10 min before)',
+      enableVibrate: true,
+      showBadge: true,
+    });
   }
 }
 
@@ -123,16 +135,21 @@ export async function scheduleMatchReminder(
   // Cancel existing reminder for this match if any
   await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
 
+  // Format match time for display
+  const timeStr = matchStartTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const dateStr = matchStartTime.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
   await Notifications.scheduleNotificationAsync({
     identifier,
     content: {
-      title: `🏏 Match Starting Soon!`,
-      body: `${team1} vs ${team2}\n${seriesName}\nMatch starts in 10 minutes!`,
-      data: { matchId, type: 'match-reminder' },
+      title: `${team1} vs ${team2} - Starting Soon!`,
+      body: `${seriesName}\nMatch starts at ${timeStr}, ${dateStr}\nTap to view match details`,
+      data: { matchId, type: 'match-reminder', screen: 'match-detail' },
       sound: 'default',
+      vibrate: [0, 300, 200, 300, 200, 300],
       ...(Platform.OS === 'android' && {
-        channelId: 'match-alerts',
-        priority: 'high',
+        channelId: 'match-reminders',
+        priority: 'max',
       }),
     },
     trigger: {

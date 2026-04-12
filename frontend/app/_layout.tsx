@@ -1,8 +1,9 @@
 import React, { useEffect, useState, ErrorInfo } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Platform } from 'react-native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import { ProProvider } from '../src/context/ProContext';
 // Always import native AdMob for Android builds (web builds use stub via extension resolution)
 import { AdMobProvider, useAdMob } from '../src/context/AdMobContext.native';
@@ -41,6 +42,42 @@ class AppErrorBoundary extends React.Component<
     }
     return this.props.children;
   }
+}
+
+// Deep link handler: navigates to match detail when user taps a notification
+function NotificationDeepLinkHandler({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Handle notification tap when app is running (foreground/background)
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      if (data?.matchId) {
+        console.log(`[DeepLink] Notification tapped, navigating to match: ${data.matchId}`);
+        // Small delay to ensure navigation is ready
+        setTimeout(() => {
+          router.push(`/match/${data.matchId}`);
+        }, 300);
+      }
+    });
+
+    // Handle notification that launched the app (cold start)
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        const data = response.notification.request.content.data;
+        if (data?.matchId) {
+          console.log(`[DeepLink] App launched from notification, navigating to match: ${data.matchId}`);
+          setTimeout(() => {
+            router.push(`/match/${data.matchId}`);
+          }, 1000);
+        }
+      }
+    });
+
+    return () => responseSubscription.remove();
+  }, []);
+
+  return <>{children}</>;
 }
 
 function AppOpenAdHandler({ children }: { children: React.ReactNode }) {
@@ -92,14 +129,16 @@ function AppWithSplash() {
 
   return (
     <AppOpenAdHandler>
-      <AnimatedGlowBorder>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-          }}
-        />
-      </AnimatedGlowBorder>
+      <NotificationDeepLinkHandler>
+        <AnimatedGlowBorder>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              animation: 'slide_from_right',
+            }}
+          />
+        </AnimatedGlowBorder>
+      </NotificationDeepLinkHandler>
     </AppOpenAdHandler>
   );
 }

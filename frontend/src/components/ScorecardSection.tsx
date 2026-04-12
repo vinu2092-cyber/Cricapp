@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { fetchScorecard } from '../services/api';
 
 interface Props {
   matchId: string;
   isLive: boolean;
+}
+
+// Determine if a batsman actually batted
+function didBat(bat: any): boolean {
+  if (bat.balls > 0 || bat.runs > 0) return true;
+  const dec = (bat.outdec || '').toLowerCase().trim();
+  if (!dec || dec === 'batting') return false;
+  // Valid dismissals: caught, bowled, lbw, stumped, run out, hit wicket, retired, not out, etc.
+  return true;
 }
 
 export default function ScorecardSection({ matchId, isLive }: Props) {
@@ -15,7 +24,6 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
 
   useEffect(() => {
     loadScorecard();
-    // Auto-refresh every 60s for live matches
     if (isLive) {
       const interval = setInterval(loadScorecard, 60000);
       return () => clearInterval(interval);
@@ -28,7 +36,6 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
       if (result) {
         setData(result);
         setError(false);
-        // Default to latest innings
         const innings = result.scorecard || [];
         if (innings.length > 0) setActiveInnings(innings.length - 1);
       } else {
@@ -65,7 +72,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
   const inn = innings[activeInnings];
   if (!inn) return null;
 
-  const batsmen = inn.batsman || [];
+  const allBatsmen = inn.batsman || [];
   const bowlers = inn.bowler || [];
   const extras = inn.extras || {};
   const fowData = inn.fow?.fow || inn.fow || [];
@@ -74,7 +81,11 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
   const totalWickets = inn.wickets ?? '';
   const totalOvers = inn.overs ?? '';
   const runRate = inn.runrate ?? '';
-  const teamName = inn.batteamname || inn.batteamsname || '';
+  const isMatchComplete = data.ismatchcomplete === true || data.ismatchcomplete === 'True';
+
+  // Separate batsmen who actually batted from those who didn't
+  const battedPlayers = allBatsmen.filter((b: any) => didBat(b));
+  const yetToBat = allBatsmen.filter((b: any) => !didBat(b));
 
   return (
     <View style={s.container} data-testid="scorecard-section">
@@ -106,7 +117,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
           <Text style={s.headerCell}>6s</Text>
           <Text style={s.headerCell}>SR</Text>
         </View>
-        {batsmen.map((bat: any, idx: number) => (
+        {battedPlayers.map((bat: any, idx: number) => (
           <View key={idx} style={[s.dataRow, idx % 2 === 0 && s.dataRowAlt]}>
             <View style={s.nameCol}>
               <Text style={s.batName}>
@@ -115,7 +126,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
                 {bat.iskeeper ? ' (wk)' : ''}
               </Text>
               <Text style={s.dismissal} numberOfLines={1}>
-                {bat.outdec || 'batting'}
+                {bat.outdec || 'not out'}
               </Text>
             </View>
             <Text style={[s.statCell, s.runsBold]}>{bat.runs}</Text>
@@ -142,6 +153,23 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
             {totalOvers ? ` (${totalOvers} Ov, RR: ${runRate})` : ''}
           </Text>
         </View>
+
+        {/* Yet to Bat / Did Not Bat */}
+        {yetToBat.length > 0 && (
+          <View style={s.yetToBatSection}>
+            <Text style={s.yetToBatTitle}>
+              {isMatchComplete ? 'Did Not Bat' : 'Yet to Bat'}
+            </Text>
+            <Text style={s.yetToBatNames}>
+              {yetToBat.map((b: any) => {
+                let name = b.name || b.nickname || '';
+                if (b.iscaptain) name += ' (c)';
+                if (b.iskeeper) name += ' (wk)';
+                return name;
+              }).join(', ')}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Bowling Section */}
@@ -228,22 +256,18 @@ const s = StyleSheet.create({
   retryBtn: { backgroundColor: '#4CAF50', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
   retryText: { color: '#FFF', fontWeight: 'bold' },
 
-  // Innings tabs
   inningsRow: { flexDirection: 'row', backgroundColor: '#1B5E20', borderRadius: 8, margin: 12, marginBottom: 0, overflow: 'hidden' },
   inningsTab: { flex: 1, paddingVertical: 10, alignItems: 'center' },
   inningsTabActive: { backgroundColor: '#4CAF50' },
   inningsTabText: { color: 'rgba(255,255,255,0.6)', fontWeight: '600', fontSize: 13 },
   inningsTabTextActive: { color: '#FFF' },
 
-  // Sections
   section: { marginHorizontal: 12, marginTop: 12, backgroundColor: '#FFF', borderRadius: 10, overflow: 'hidden', elevation: 2 },
   sectionTitle: { backgroundColor: '#1B5E20', color: '#FFF', fontSize: 13, fontWeight: '700', paddingVertical: 8, paddingHorizontal: 14, letterSpacing: 0.5 },
 
-  // Table header
   headerRow: { flexDirection: 'row', backgroundColor: '#E8F5E9', paddingVertical: 8, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#C8E6C9' },
   headerCell: { width: 40, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#333' },
 
-  // Data rows
   dataRow: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 0.5, borderBottomColor: '#E0E0E0', alignItems: 'center' },
   dataRowAlt: { backgroundColor: '#FAFAFA' },
   nameCol: { flex: 1, paddingRight: 6 },
@@ -251,31 +275,29 @@ const s = StyleSheet.create({
   runsBold: { fontWeight: 'bold', color: '#222' },
   wicketsBold: { fontWeight: 'bold', color: '#D32F2F' },
 
-  // Batsman
   batName: { fontSize: 14, fontWeight: '600', color: '#1565C0' },
   dismissal: { fontSize: 11, color: '#888', marginTop: 1 },
-
-  // Bowler
   bowlName: { fontSize: 14, fontWeight: '600', color: '#1565C0' },
 
-  // Extras
   extrasRow: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 14, borderBottomWidth: 0.5, borderBottomColor: '#E0E0E0', backgroundColor: '#F5F5F5' },
   extrasLabel: { fontWeight: '600', fontSize: 13, color: '#555', marginRight: 8 },
   extrasDetail: { fontSize: 13, color: '#777' },
 
-  // Total
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 14, backgroundColor: '#1B5E20' },
   totalLabel: { fontWeight: 'bold', fontSize: 14, color: '#FFF' },
   totalScore: { fontWeight: 'bold', fontSize: 14, color: '#FFF' },
 
-  // Fall of Wickets
+  // Yet to Bat / Did Not Bat
+  yetToBatSection: { paddingVertical: 10, paddingHorizontal: 14, backgroundColor: '#FFFDE7', borderTopWidth: 1, borderTopColor: '#FFF9C4' },
+  yetToBatTitle: { fontWeight: '700', fontSize: 13, color: '#F57F17', marginBottom: 4 },
+  yetToBatNames: { fontSize: 13, color: '#555', lineHeight: 20 },
+
   fowContainer: { flexDirection: 'row', flexWrap: 'wrap', padding: 10, gap: 6 },
   fowItem: { backgroundColor: '#F5F5F5', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, alignItems: 'center', minWidth: 70, borderWidth: 1, borderColor: '#E0E0E0' },
   fowScore: { fontSize: 14, fontWeight: 'bold', color: '#D32F2F' },
   fowName: { fontSize: 10, color: '#666', marginTop: 2, maxWidth: 80 },
   fowOver: { fontSize: 10, color: '#888', marginTop: 1 },
 
-  // Partnerships
   partnerRow: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 0.5, borderBottomColor: '#E0E0E0', alignItems: 'center' },
   partnerInfo: { flex: 1 },
   partnerNames: { fontSize: 13, fontWeight: '600', color: '#333' },
@@ -284,7 +306,6 @@ const s = StyleSheet.create({
   partnerRuns: { fontSize: 16, fontWeight: 'bold', color: '#1B5E20' },
   partnerBalls: { fontSize: 11, color: '#888' },
 
-  // Status
   statusBar: { marginHorizontal: 12, marginTop: 12, backgroundColor: '#1B5E20', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 8 },
   statusText: { color: '#FFF', fontWeight: '600', textAlign: 'center', fontSize: 13 },
 });

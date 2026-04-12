@@ -436,11 +436,20 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const BannerAdComponent: React.FC = () => {
     try {
+      // Use screen width for adaptive banner sizing - fixes "ad not matching" container issue
+      const { width: screenWidth } = require('react-native').Dimensions.get('window');
       return (
-        <View style={{ minHeight: 60, alignItems: 'center', justifyContent: 'center', marginVertical: 10, width: '100%' }}>
+        <View style={{
+          width: screenWidth,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginVertical: 4,
+          overflow: 'hidden',
+        }}>
           <BannerAd
             unitId={AD_IDS.banner}
             size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+            requestOptions={{ requestNonPersonalizedAdsOnly: false }}
             onAdFailedToLoad={(error) => console.log('[AdMob] Banner failed:', error)}
           />
         </View>
