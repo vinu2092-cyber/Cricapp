@@ -37,37 +37,27 @@ except Exception as e:
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-# RapidAPI Cricbuzz Configuration - Correct hosts as per user specs
+# RapidAPI Cricbuzz Configuration - Primary host only (secondary doesn't exist)
 RAPIDAPI_PROVIDERS = [
     {
         "base": "https://cricbuzz-cricket.p.rapidapi.com",
         "host": "cricbuzz-cricket.p.rapidapi.com",
         "name": "Primary"
     },
-    {
-        "base": "https://cricbuzz.p.rapidapi.com",
-        "host": "cricbuzz.p.rapidapi.com",
-        "name": "Secondary"
-    }
 ]
 
-# 14 API Keys with rotation (10 original + 4 new for expanded quota)
+# API Keys cleaned: removed NOT_SUBSCRIBED, kept QUOTA_EXCEEDED + WORKS
 RAPIDAPI_KEYS = [
     "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",
     "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
     "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
     "59b9249be3mshcab753fe794baa3p14e78cjsne1da55eef3aa",
-    "c651c7e717msh7d7c4d05cae7b6dp17500bjsn1e00d9cf8d61",
-    "2a21f65881msh680271f280de7p182fbdjsn151d068c6392",
-    "cd6ae88bddmsh5dcf84f0286d14cp1af3f9jsn7d2de7fe2a03",
-    "4223543bdbmsh7962a0ecb8d4e7fp1132a3jsn8f9a656e2b32",
-    "ba8052cb25msh6ea2297ebf719dcp14bc6ejsn51e281c87482",
-    "db67e8004emsh40add8626f58e58p183678jsne28298b94c3b",
-    # New keys appended for cricbuzz-cricket.p.rapidapi.com
-    "39135304c0msh9b36fa9057dbf23p141f77jsnfb140a4c7127",
-    "3151754456msh3821b80e3429ed0p15ac70jsn887be255a4d6",
     "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
-    "1a6681fd59mshb9cbb21cf3aa0f3p127c5djsnc12085b39c27",
+    "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
+    "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",
+    "60879faad9msh89b61d15d1973d2p179cc2jsn14d1545f0248",
+    "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
+    "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
 ]
 
 current_key_index = 0

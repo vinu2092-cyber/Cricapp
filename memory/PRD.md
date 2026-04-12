@@ -1,52 +1,43 @@
-# CricApp - PRD (Product Requirements Document)
-
-## Original Problem Statement
-Fix Firebase fetching & cleansing, make app Provider-Agnostic, repair Fallback & Rotation Logic, build Scorecard feature.
-
-## Architecture
-- **Platform**: Android Native (React Native + Expo)
-- **Repo**: https://github.com/vinu2092-cyber/Cricapp.git
-- **Build**: GitHub Actions (APK/AAB auto-build on push)
+# CricApp - PRD
 
 ## What's Been Implemented
 
-### Session 1: Firebase + Fallback Fix
-- Firebase fetches `api_key`, `api_host`, `current_provider` from Firestore
-- Provider Factory Pattern for 3 providers
-- Fallback: Firebase (5s) -> User key -> Random rotation on HOST_1
-- Firebase key double-try (HOST_2 -> HOST_1 fallback)
+### Session 3: Scorecard Fix + Banner Ad + Push Notifications
 
-### Session 2: Key Cleanup + Scorecard Feature
-**API Key Cleanup:**
-- Removed 11 NOT_SUBSCRIBED keys from MATCH_KEYS_P1 (19 -> 9 keys)
-- Removed 1 NOT_SUBSCRIBED key from MATCH_KEYS_P2 (6 -> 5 keys)
-- Removed 1 NOT_SUBSCRIBED key from COMM_KEYS (5 -> 4 keys)
-- Kept all QUOTA_EXCEEDED keys (they reset daily)
-- Total active keys: 14 (was 25)
+**Task 1: Scorecard "batting" bug fix**
+- Added `didBat()` function to correctly identify players who actually batted vs DNB
+- Separates batsmen into `battedPlayers` (batted) and `yetToBat` (didn't bat)
+- Shows "Yet to Bat" for live matches, "Did Not Bat" for completed matches
+- Players who didn't bat shown as comma-separated names (not in batting table with 0s)
+- Handles all edge cases: not out, retired hurt, 0(0) with valid dismissal
 
-**Scorecard Feature (NEW):**
-- Added `/mcenter/v1/{id}/scard` endpoint to all provider configs
-- New `fetchScorecard(matchId)` API function with cache support
-- New `ScorecardSection.tsx` component with:
-  - Innings toggle tabs (switch between innings)
-  - Batting table (Batter, R, B, 4s, 6s, SR) with dismissal info
-  - Extras row
-  - Total row (green bar with score, overs, run rate)
-  - Bowling table (Bowler, O, M, R, W, ECO)
-  - Fall of Wickets section (visual chips)
-  - Partnerships section (pair names, individual + total runs)
-- Added Commentary/Scorecard tab bar in match detail page
-- Design matches Cricbuzz style (green theme, white cards)
-- Uses same Firebase + fallback logic as all other API calls
+**Task 2: Banner Ad sizing fix**
+- Changed container from `width: '100%'` with `minHeight: 60` to exact `Dimensions.get('window').width`
+- Removed extra `marginVertical: 10` (was 10, now 4)
+- Added `overflow: 'hidden'` to prevent content bleeding
+- Kept `ANCHORED_ADAPTIVE_BANNER` size (correct choice)
+- Ad Unit ID untouched
+
+**Task 3: Push Notifications + Deep Linking**
+- Added `LEAGUE_KEYWORDS` to auto-track (BBL, PSL, CPL, SA20, Hundred, BPL, ILT20, MLC, County, etc.)
+- Created `match-reminders` notification channel with MAX importance, distinct vibration
+- Updated `scheduleMatchReminder` with formatted time/date and match-reminders channel
+- Added `NotificationDeepLinkHandler` component in _layout.tsx
+- Handles notification tap → navigates to `/match/{matchId}` via expo-router
+- Handles cold start (app launched from notification)
+- Cleaned NOT_SUBSCRIBED keys from NotificationContext.tsx
+- Removed non-existent secondary provider from server.py
 
 ### Files Modified
-- `frontend/src/services/api.ts` - Key cleanup + scorecard endpoint
-- `frontend/src/services/FirebaseKeyService.ts` - Provider support
-- `frontend/app/match/[id].tsx` - Tab bar + ScorecardSection integration
-- `frontend/src/components/ScorecardSection.tsx` - NEW component
+- `frontend/src/components/ScorecardSection.tsx` - DNB fix
+- `frontend/src/context/AdMobContext.native.tsx` - Banner sizing
+- `frontend/src/context/NotificationContext.tsx` - Keys + League auto-track
+- `frontend/src/services/NotificationService.ts` - Reminder channel + content
+- `frontend/app/_layout.tsx` - Deep linking handler
+- `backend/server.py` - Key cleanup + removed dead provider
 
 ## Backlog
-- P0: Push to GitHub -> build APK
-- P1: Monitor key quota; consider adding more subscribed keys
-- P2: Add "Yet to Bat" section in scorecard
-- P3: Provider health monitoring dashboard
+- P1: Add more RapidAPI subscribed keys for reliability
+- P2: Add custom notification sound file (currently uses 'default')
+- P2: Add Scorecard "Yet to Bat" list real-time updates during live innings
+- P3: Server-side scheduled notifications via Firebase Cloud Messaging
