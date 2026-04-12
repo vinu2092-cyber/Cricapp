@@ -44,9 +44,12 @@ jobs:
           fi
           ls -la frontend/android/app/google-services.json
 
-      - name: Make gradlew executable
+      - name: Fix Gradle Wrapper
         working-directory: frontend/android
-        run: chmod +x gradlew
+        run: |
+          chmod +x gradlew
+          # Regenerate gradle wrapper jar (fixes corrupt jar from dev environment)
+          gradle wrapper --gradle-version $(grep distributionUrl gradle/wrapper/gradle-wrapper.properties | sed 's/.*gradle-\(.*\)-bin.zip/\1/')
 
       - name: Build Release APK
         working-directory: frontend/android
