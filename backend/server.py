@@ -16,6 +16,22 @@ import time
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+# Firebase Admin SDK for FCM
+import firebase_admin
+from firebase_admin import credentials, messaging as fcm_messaging
+
+try:
+    service_account_path = ROOT_DIR / 'firebase-service-account.json'
+    if service_account_path.exists():
+        cred = credentials.Certificate(str(service_account_path))
+        firebase_admin.initialize_app(cred)
+        logger_temp = logging.getLogger(__name__)
+        logger_temp.info("Firebase Admin SDK initialized for FCM")
+    else:
+        logging.getLogger(__name__).warning("firebase-service-account.json not found, FCM disabled")
+except Exception as e:
+    logging.getLogger(__name__).warning(f"Firebase Admin SDK init failed: {e}")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -160,6 +176,50 @@ class StatusCheck(BaseModel):
 
 class StatusCheckCreate(BaseModel):
     client_name: str
+
+class FCMSubscribeRequest(BaseModel):
+    token: str
+    topic: str = 'all_users'
+
+@api_router.post("/fcm/subscribe")
+async def fcm_subscribe(req: FCMSubscribeRequest):
+    """Subscribe a device token to an FCM topic for admin broadcasts."""
+    try:
+        response = fcm_messaging.subscribe_to_topic([req.token], req.topic)
+        if response.success_count > 0:
+            logger.info(f"[FCM] Subscribed token to topic '{req.topic}'")
+            return {"status": "subscribed", "topic": req.topic}
+        else:
+            errors = [e.reason for e in response.errors] if response.errors else ['unknown']
+            logger.warning(f"[FCM] Subscribe failed: {errors}")
+            return {"status": "failed", "errors": errors}
+    except Exception as e:
+        logger.error(f"[FCM] Subscribe error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/fcm/broadcast")
+async def fcm_broadcast(title: str = "CricApp Update", body: str = "New update available!", topic: str = "all_users"):
+    """Send a broadcast message to all subscribed users via FCM topic."""
+    try:
+        message = fcm_messaging.Message(
+            notification=fcm_messaging.Notification(title=title, body=body),
+            topic=topic,
+            android=fcm_messaging.AndroidConfig(
+                priority='high',
+                notification=fcm_messaging.AndroidNotification(
+                    channel_id='match-reminders',
+                    sound='default',
+                    priority='max',
+                ),
+            ),
+            data={'type': 'admin-broadcast', 'screen': 'inbox'},
+        )
+        response = fcm_messaging.send(message)
+        logger.info(f"[FCM] Broadcast sent: {response}")
+        return {"status": "sent", "message_id": response}
+    except Exception as e:
+        logger.error(f"[FCM] Broadcast error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/")
 async def root():

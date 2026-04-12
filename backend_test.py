@@ -214,6 +214,80 @@ class CricAppBackendTester:
                 print(f"   Current key index: {health_data['current_key_index']}")
             time.sleep(1)  # Small delay between requests
 
+    def test_fcm_endpoints(self):
+        """Test FCM (Firebase Cloud Messaging) endpoints"""
+        print("\n" + "="*60)
+        print("TESTING FCM ENDPOINTS")
+        print("="*60)
+        
+        # Test FCM Subscribe endpoint
+        test_token = "test_fcm_token_12345"
+        subscribe_payload = {
+            "token": test_token,
+            "topic": "all_users"
+        }
+        
+        try:
+            url = f"{self.base_url}/api/fcm/subscribe"
+            print(f"\n🔍 Testing FCM Subscribe...")
+            print(f"   URL: {url}")
+            print(f"   Payload: {subscribe_payload}")
+            
+            response = requests.post(url, json=subscribe_payload, timeout=30)
+            
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    if 'status' in data:
+                        self.log_test("FCM Subscribe", True, f"Status: {data.get('status')}, Topic: {data.get('topic', 'N/A')}", data)
+                    else:
+                        self.log_test("FCM Subscribe", False, "Missing status in response")
+                except json.JSONDecodeError:
+                    self.log_test("FCM Subscribe", False, "Invalid JSON response")
+            else:
+                self.log_test("FCM Subscribe", False, f"Expected 200, got {response.status_code}")
+                
+        except requests.exceptions.Timeout:
+            self.log_test("FCM Subscribe", False, "Request timeout (30s)")
+        except requests.exceptions.ConnectionError:
+            self.log_test("FCM Subscribe", False, "Connection error")
+        except Exception as e:
+            self.log_test("FCM Subscribe", False, f"Exception: {str(e)}")
+        
+        # Test FCM Broadcast endpoint
+        broadcast_params = {
+            "title": "Test Broadcast",
+            "body": "This is a test admin broadcast message",
+            "topic": "all_users"
+        }
+        
+        try:
+            url = f"{self.base_url}/api/fcm/broadcast"
+            print(f"\n🔍 Testing FCM Broadcast...")
+            print(f"   URL: {url}")
+            print(f"   Params: {broadcast_params}")
+            
+            response = requests.post(url, params=broadcast_params, timeout=30)
+            
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    if 'status' in data:
+                        self.log_test("FCM Broadcast", True, f"Status: {data.get('status')}, Message ID: {data.get('message_id', 'N/A')}", data)
+                    else:
+                        self.log_test("FCM Broadcast", False, "Missing status in response")
+                except json.JSONDecodeError:
+                    self.log_test("FCM Broadcast", False, "Invalid JSON response")
+            else:
+                self.log_test("FCM Broadcast", False, f"Expected 200, got {response.status_code}")
+                
+        except requests.exceptions.Timeout:
+            self.log_test("FCM Broadcast", False, "Request timeout (30s)")
+        except requests.exceptions.ConnectionError:
+            self.log_test("FCM Broadcast", False, "Connection error")
+        except Exception as e:
+            self.log_test("FCM Broadcast", False, f"Exception: {str(e)}")
+
     def test_caching_system(self):
         """Test the caching system"""
         print("\n" + "="*60)
@@ -245,6 +319,7 @@ class CricAppBackendTester:
         
         # Run test suites
         self.test_basic_endpoints()
+        self.test_fcm_endpoints()  # Test FCM functionality first
         match_data = self.test_cricket_endpoints()
         self.test_match_specific_endpoints(match_data)
         self.test_api_key_rotation()

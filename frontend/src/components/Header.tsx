@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { usePro } from '../context/ProContext';
+import { useInbox } from '../context/InboxContext';
 
 interface HeaderProps {
   onUnlockPro?: () => void;
@@ -18,6 +19,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
   const router = useRouter();
   const { isPro, getProTimeRemaining } = usePro();
+  const { unreadCount } = useInbox();
   const [timeRemaining, setTimeRemaining] = useState<string>('');
 
   useEffect(() => {
@@ -54,6 +56,20 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
           />
         </View>
         <View style={styles.rightButtons}>
+          {/* Inbox Button */}
+          <TouchableOpacity
+            style={styles.inboxButton}
+            onPress={() => router.push('/inbox')}
+            activeOpacity={0.8}
+            data-testid="inbox-icon"
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#FFF" />
+            {unreadCount > 0 && (
+              <View style={styles.badge} data-testid="inbox-badge">
+                <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           {/* Settings Button */}
           <TouchableOpacity
             style={styles.settingsButton}
@@ -113,6 +129,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  // Inbox icon with badge
+  inboxButton: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    padding: 8,
+    borderRadius: 20,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFF',
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   settingsButton: {
     backgroundColor: 'rgba(0,0,0,0.3)',

@@ -8,6 +8,7 @@ import { ProProvider } from '../src/context/ProContext';
 // Always import native AdMob for Android builds (web builds use stub via extension resolution)
 import { AdMobProvider, useAdMob } from '../src/context/AdMobContext.native';
 import { NotificationProvider } from '../src/context/NotificationContext';
+import { InboxProvider } from '../src/context/InboxContext';
 import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder';
 import ErrorScreen from '../src/components/ErrorScreen';
 import SplashScreen from '../src/components/SplashScreen';
@@ -54,9 +55,13 @@ function NotificationDeepLinkHandler({ children }: { children: React.ReactNode }
       const data = response.notification.request.content.data;
       if (data?.matchId) {
         console.log(`[DeepLink] Notification tapped, navigating to match: ${data.matchId}`);
-        // Small delay to ensure navigation is ready
         setTimeout(() => {
           router.push(`/match/${data.matchId}`);
+        }, 300);
+      } else if (data?.screen === 'inbox' || data?.type === 'admin-broadcast') {
+        console.log('[DeepLink] Admin broadcast tapped, opening inbox');
+        setTimeout(() => {
+          router.push('/inbox');
         }, 300);
       }
     });
@@ -69,6 +74,11 @@ function NotificationDeepLinkHandler({ children }: { children: React.ReactNode }
           console.log(`[DeepLink] App launched from notification, navigating to match: ${data.matchId}`);
           setTimeout(() => {
             router.push(`/match/${data.matchId}`);
+          }, 1000);
+        } else if (data?.screen === 'inbox' || data?.type === 'admin-broadcast') {
+          console.log('[DeepLink] App launched from admin broadcast, opening inbox');
+          setTimeout(() => {
+            router.push('/inbox');
           }, 1000);
         }
       }
@@ -149,8 +159,10 @@ export default function RootLayout() {
       <ProProvider>
         <AdMobProvider>
           <NotificationProvider>
-            <StatusBar style="light" translucent />
-            <AppWithSplash />
+            <InboxProvider>
+              <StatusBar style="light" translucent />
+              <AppWithSplash />
+            </InboxProvider>
           </NotificationProvider>
         </AdMobProvider>
       </ProProvider>
