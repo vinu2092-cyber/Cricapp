@@ -2,13 +2,23 @@ import axios from 'axios';
 import { Match, Commentary } from '../types/match';
 import { Linking, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getFirebaseKey, initFirebaseKeyFetch } from './FirebaseKeyService';
+
+// ============ FIREBASE - SAFE LAZY LOAD ============
+// Firebase is loaded lazily so if it crashes, API still works with hardcoded keys
+let _getFirebaseKey: (() => { apiKey: string; apiHost: string } | null) | null = null;
+
+try {
+  const fb = require('./FirebaseKeyService');
+  fb.initFirebaseKeyFetch();
+  _getFirebaseKey = fb.getFirebaseKey;
+  console.log('[API] Firebase module loaded successfully');
+} catch (e) {
+  console.warn('[API] Firebase module failed to load, using hardcoded keys only:', e);
+  _getFirebaseKey = null;
+}
 
 // ============ API KEY MANAGEMENT ============
 const API_KEY_STORAGE = 'cricapp_user_api_key';
-
-// Start Firebase key fetch immediately (background, non-blocking)
-initFirebaseKeyFetch();
 
 // ---- Provider 1: cricbuzz-cricket (Original) ----
 const HOST_1 = "cricbuzz-cricket.p.rapidapi.com";
@@ -89,13 +99,15 @@ async function tryApiCall(endpoint: string, apiKey: string, apiHost: string): Pr
 
 async function callApi(endpoint: string, keys: string[], maxTries: number = 5): Promise<any> {
   // ===== PRIORITY 1: Firebase Key (Dynamic, fetched from Firestore) =====
-  const firebaseKey = getFirebaseKey();
-  if (firebaseKey) {
-    try {
-      const result = await tryApiCall(endpoint, firebaseKey.apiKey, firebaseKey.apiHost);
-      if (result) return result;
-    } catch (e) {
-      console.log('[API] Firebase key failed, falling back to hardcoded');
+  if (_getFirebaseKey) {
+    const firebaseKey = _getFirebaseKey();
+    if (firebaseKey) {
+      try {
+        const result = await tryApiCall(endpoint, firebaseKey.apiKey, firebaseKey.apiHost);
+        if (result) return result;
+      } catch (e) {
+        console.log('[API] Firebase key failed, falling back to hardcoded');
+      }
     }
   }
 

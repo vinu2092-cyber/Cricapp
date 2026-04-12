@@ -9,17 +9,23 @@ import {
   scheduleMatchReminder,
   AlertType,
 } from '../services/NotificationService';
-import { getFirebaseKey, initFirebaseKeyFetch } from '../services/FirebaseKeyService';
+
+// Firebase - safe lazy load (won't crash if firebase fails)
+let _getFirebaseKey: (() => { apiKey: string; apiHost: string } | null) | null = null;
+try {
+  const fb = require('../services/FirebaseKeyService');
+  fb.initFirebaseKeyFetch();
+  _getFirebaseKey = fb.getFirebaseKey;
+} catch (e) {
+  _getFirebaseKey = null;
+}
 
 const TRACKED_MATCHES_KEY = 'cricapp_tracked_matches';
 const AUTO_TRACK_ENABLED_KEY = 'cricapp_auto_track_enabled';
 const SCHEDULED_REMINDERS_KEY = 'cricapp_scheduled_reminders';
-const POLL_INTERVAL_ACTIVE = 30000;    // 30s when app is active for real-time alerts
-const POLL_INTERVAL_BACKGROUND = 60000; // 60s when app is in background
-const AUTO_TRACK_CHECK_INTERVAL = 300000; // Check for new IPL/International matches every 5 min
-
-// Start Firebase key fetch
-initFirebaseKeyFetch();
+const POLL_INTERVAL_ACTIVE = 30000;
+const POLL_INTERVAL_BACKGROUND = 60000;
+const AUTO_TRACK_CHECK_INTERVAL = 300000;
 
 // ---- Provider 1: cricbuzz-cricket (Original - 19 keys) ----
 const RAPIDAPI_HOST_1 = "cricbuzz-cricket.p.rapidapi.com";
@@ -100,9 +106,11 @@ const isIPLOrInternational = (seriesName: string): boolean => {
 // Helper: Get next API key and host (Firebase first, then rotation)
 const getNextKeyAndHost = (): { key: string; host: string } => {
   // Firebase priority
-  const firebaseKey = getFirebaseKey();
-  if (firebaseKey) {
-    return { key: firebaseKey.apiKey, host: firebaseKey.apiHost };
+  if (_getFirebaseKey) {
+    const firebaseKey = _getFirebaseKey();
+    if (firebaseKey) {
+      return { key: firebaseKey.apiKey, host: firebaseKey.apiHost };
+    }
   }
   // Provider 1 rotation (19 keys)
   const key = RAPIDAPI_KEYS_P1[notifKeyIndex % RAPIDAPI_KEYS_P1.length];
