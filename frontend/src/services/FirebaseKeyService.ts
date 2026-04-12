@@ -17,14 +17,15 @@ const db = getFirestore(app);
 // Cached Firebase key data
 let cachedApiKey: string | null = null;
 let cachedApiHost: string | null = null;
+let cachedProvider: string | null = null;
 let fetchAttempted = false;
 let fetchPromise: Promise<void> | null = null;
 
 /**
- * Fetch api_key and api_host from Firestore: app_config/settings
- * Returns { apiKey, apiHost } or null if Firebase unavailable
+ * Fetch api_key, api_host, and current_provider from Firestore: app_config/settings
+ * Returns { apiKey, apiHost, provider } or null if Firebase unavailable
  */
-async function fetchFirebaseConfig(): Promise<{ apiKey: string; apiHost: string } | null> {
+async function fetchFirebaseConfig(): Promise<{ apiKey: string; apiHost: string; provider: string } | null> {
   try {
     const docRef = doc(db, 'app_config', 'settings');
     const snapshot = await Promise.race([
@@ -38,16 +39,26 @@ async function fetchFirebaseConfig(): Promise<{ apiKey: string; apiHost: string 
     }
 
     const data = (snapshot as any).data();
-    const apiKey = data?.api_key;
-    const apiHost = data?.api_host;
 
-    if (apiKey && apiHost) {
-      console.log('[Firebase] Config fetched successfully');
-      return { apiKey, apiHost };
+    // Cleanse: trim extra whitespace from all fetched values
+    const apiKey = (data?.api_key || '').trim();
+    const apiHost = (data?.api_host || '').trim();
+    const provider = (data?.current_provider || '').trim();
+
+    // Validate: both api_key and api_host must be non-empty after trimming
+    if (!apiKey || !apiHost) {
+      console.log('[Firebase] Missing or empty api_key/api_host after trimming');
+      return null;
     }
 
-    console.log('[Firebase] Missing api_key or api_host in document');
-    return null;
+    // Reject obviously invalid data (e.g., empty JSON object was returned)
+    if (apiKey.length < 10) {
+      console.log('[Firebase] api_key looks invalid (too short)');
+      return null;
+    }
+
+    console.log(`[Firebase] Config fetched successfully. Provider: ${provider || 'unknown'}, Host: ${apiHost}`);
+    return { apiKey, apiHost, provider: provider || 'cricbuzz-cricket' };
   } catch (error: any) {
     console.warn('[Firebase] Fetch failed:', error?.message || 'Unknown error');
     return null;
@@ -67,6 +78,7 @@ export function initFirebaseKeyFetch(): void {
       if (result) {
         cachedApiKey = result.apiKey;
         cachedApiHost = result.apiHost;
+        cachedProvider = result.provider;
       }
     } catch {
       // Silent fail - fallback to hardcoded keys
@@ -78,21 +90,21 @@ export function initFirebaseKeyFetch(): void {
 }
 
 /**
- * Get Firebase API key and host (non-blocking)
+ * Get Firebase API key, host, and provider (non-blocking)
  * Returns cached values if available, null otherwise
  */
-export function getFirebaseKey(): { apiKey: string; apiHost: string } | null {
+export function getFirebaseKey(): { apiKey: string; apiHost: string; provider: string } | null {
   if (cachedApiKey && cachedApiHost) {
-    return { apiKey: cachedApiKey, apiHost: cachedApiHost };
+    return { apiKey: cachedApiKey, apiHost: cachedApiHost, provider: cachedProvider || 'cricbuzz-cricket' };
   }
   return null;
 }
 
 /**
  * Wait for Firebase fetch to complete (with timeout)
- * Use this when you need to ensure Firebase was checked
+ * Use this when you need to ensure Firebase was checked before falling back
  */
-export async function waitForFirebaseKey(timeoutMs: number = 3000): Promise<{ apiKey: string; apiHost: string } | null> {
+export async function waitForFirebaseKey(timeoutMs: number = 5000): Promise<{ apiKey: string; apiHost: string; provider: string } | null> {
   // If already fetched, return immediately
   if (fetchAttempted) return getFirebaseKey();
 

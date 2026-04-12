@@ -5,16 +5,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ============ FIREBASE - SAFE LAZY LOAD ============
 // Firebase is loaded lazily so if it crashes, API still works with hardcoded keys
-let _getFirebaseKey: (() => { apiKey: string; apiHost: string } | null) | null = null;
+let _getFirebaseKey: (() => { apiKey: string; apiHost: string; provider: string } | null) | null = null;
+let _waitForFirebaseKey: ((timeoutMs?: number) => Promise<{ apiKey: string; apiHost: string; provider: string } | null>) | null = null;
 
 try {
   const fb = require('./FirebaseKeyService');
   fb.initFirebaseKeyFetch();
   _getFirebaseKey = fb.getFirebaseKey;
+  _waitForFirebaseKey = fb.waitForFirebaseKey;
   console.log('[API] Firebase module loaded successfully');
 } catch (e) {
   console.warn('[API] Firebase module failed to load, using hardcoded keys only:', e);
   _getFirebaseKey = null;
+  _waitForFirebaseKey = null;
 }
 
 // ============ API KEY MANAGEMENT ============
@@ -72,9 +75,8 @@ const MATCH_KEYS_P2 = [
 // Combined MATCH_KEYS for backward-compatible references (25 total)
 const MATCH_KEYS = [...MATCH_KEYS_P1, ...MATCH_KEYS_P2];
 
-let matchKeyIdx = 0;
-let commKeyIdx = 0;
-let p2KeyIdx = 0;
+// ---- Provider 3: cricket-live-data ----
+const HOST_3 = "cricket-live-data.p.rapidapi.com";
 
 // Get user's custom API key (if set)
 async function getUserApiKey(): Promise<string | null> {
@@ -83,6 +85,97 @@ async function getUserApiKey(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+// ============ PROVIDER FACTORY PATTERN ============
+// Each provider defines its own endpoint paths and response parsers.
+// Switch provider from Firebase without updating the app.
+
+interface ProviderConfig {
+  host: string;
+  endpoints: {
+    live: string;
+    recent: string;
+    upcoming: string;
+    matchDetail: (id: string) => string;
+    commentary: (id: string) => string;
+  };
+  parseMatchList: (data: any) => Match[];
+  parseMatchDetail: (raw: any) => Match;
+  parseCommentary: (data: any, matchId: string) => Commentary[];
+  isCricbuzzLike: boolean; // true = supports miniscore/batsmen/oSummary in comm
+}
+
+const PROVIDERS: Record<string, ProviderConfig> = {
+  'cricbuzz-cricket': {
+    host: HOST_1,
+    endpoints: {
+      live: '/matches/v1/live',
+      recent: '/matches/v1/recent',
+      upcoming: '/matches/v1/upcoming',
+      matchDetail: (id: string) => `/mcenter/v1/${id}`,
+      commentary: (id: string) => `/mcenter/v1/${id}/comm`,
+    },
+    parseMatchList: extractAllCricbuzz,
+    parseMatchDetail: transformDetailCricbuzz,
+    parseCommentary: parseCommentaryCricbuzz,
+    isCricbuzzLike: true,
+  },
+  'free-cricbuzz-cricket': {
+    host: HOST_2,
+    endpoints: {
+      live: '/matches/v1/live',
+      recent: '/matches/v1/recent',
+      upcoming: '/matches/v1/upcoming',
+      matchDetail: (id: string) => `/mcenter/v1/${id}`,
+      commentary: (id: string) => `/mcenter/v1/${id}/comm`,
+    },
+    parseMatchList: extractAllCricbuzz,
+    parseMatchDetail: transformDetailCricbuzz,
+    parseCommentary: parseCommentaryCricbuzz,
+    isCricbuzzLike: true,
+  },
+  'cricket-live-data': {
+    host: HOST_3,
+    endpoints: {
+      live: '/fixtures',
+      recent: '/results',
+      upcoming: '/fixtures',
+      matchDetail: (id: string) => `/match/${id}`,
+      commentary: (id: string) => `/match/${id}/scorecard`,
+    },
+    parseMatchList: extractAllCricketLiveData,
+    parseMatchDetail: transformDetailCricketLiveData,
+    parseCommentary: parseCommentaryCricketLiveData,
+    isCricbuzzLike: false,
+  },
+};
+
+const DEFAULT_PROVIDER = 'cricbuzz-cricket';
+
+function getProviderConfig(name: string): ProviderConfig {
+  return PROVIDERS[name] || PROVIDERS[DEFAULT_PROVIDER];
+}
+
+function getEndpointForType(config: ProviderConfig, type: string, matchId?: string): string {
+  switch (type) {
+    case 'live': return config.endpoints.live;
+    case 'recent': return config.endpoints.recent;
+    case 'upcoming': return config.endpoints.upcoming;
+    case 'detail': return config.endpoints.matchDetail(matchId!);
+    case 'comm': return config.endpoints.commentary(matchId!);
+    default: return config.endpoints.live;
+  }
+}
+
+// ============ RANDOM SHUFFLE (Fisher-Yates) ============
+function shuffleArray<T>(arr: T[]): T[] {
+  const shuffled = [...arr];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 }
 
 // ============ API CALL HELPERS ============
@@ -97,51 +190,99 @@ async function tryApiCall(endpoint: string, apiKey: string, apiHost: string): Pr
   return null;
 }
 
-async function callApi(endpoint: string, keys: string[], maxTries: number = 5): Promise<any> {
-  // ===== PRIORITY 1: Firebase Key (Dynamic, fetched from Firestore) =====
-  if (_getFirebaseKey) {
-    const firebaseKey = _getFirebaseKey();
-    if (firebaseKey) {
+// ============ MAIN DATA FETCHER (Provider-Agnostic with Fallback) ============
+// Priority 1: Firebase Key (wait up to 5s)
+// Priority 2: User custom key
+// Priority 3: Random rotation of 25 hardcoded keys across both Cricbuzz hosts
+//
+// Returns { data, providerName } or null
+
+async function fetchData(
+  endpointType: 'live' | 'recent' | 'upcoming' | 'detail' | 'comm',
+  matchId?: string
+): Promise<{ data: any; providerName: string } | null> {
+
+  // ===== PRIORITY 1: Firebase Key (wait up to 5 seconds) =====
+  let fb = _getFirebaseKey ? _getFirebaseKey() : null;
+  if (!fb && _waitForFirebaseKey) {
+    console.log('[API] Waiting for Firebase key (max 5s)...');
+    fb = await _waitForFirebaseKey(5000);
+  }
+
+  if (fb && fb.apiKey && fb.apiHost) {
+    const providerName = fb.provider || DEFAULT_PROVIDER;
+    const config = getProviderConfig(providerName);
+    const endpoint = getEndpointForType(config, endpointType, matchId);
+
+    // Try 1: Firebase key with its configured host
+    try {
+      const result = await tryApiCall(endpoint, fb.apiKey, fb.apiHost);
+      if (result) {
+        console.log(`[API] Firebase key SUCCESS (provider: ${providerName})`);
+        return { data: result, providerName };
+      }
+      console.log('[API] Firebase key returned empty/invalid on configured host');
+    } catch (e: any) {
+      console.log(`[API] Firebase key FAILED on ${fb.apiHost}: ${e?.message || 'unknown'}`);
+    }
+
+    // Try 2: If Firebase host is NOT HOST_1, retry Firebase key on HOST_1 (cricbuzz-cricket)
+    // This handles the case where key is subscribed to cricbuzz-cricket but stored with a different host
+    if (fb.apiHost !== HOST_1) {
+      const fallbackConfig = PROVIDERS[DEFAULT_PROVIDER];
+      const fallbackEndpoint = getEndpointForType(fallbackConfig, endpointType, matchId);
       try {
-        const result = await tryApiCall(endpoint, firebaseKey.apiKey, firebaseKey.apiHost);
-        if (result) return result;
-      } catch (e) {
-        console.log('[API] Firebase key failed, falling back to hardcoded');
+        const result = await tryApiCall(fallbackEndpoint, fb.apiKey, HOST_1);
+        if (result) {
+          console.log(`[API] Firebase key SUCCESS on HOST_1 fallback`);
+          return { data: result, providerName: DEFAULT_PROVIDER };
+        }
+      } catch (e: any) {
+        console.log(`[API] Firebase key also FAILED on HOST_1: ${e?.message || 'unknown'}`);
       }
     }
+  } else {
+    console.log('[API] Firebase unavailable or timed out, switching to fallback');
   }
 
-  // ===== PRIORITY 2: User's Custom API Key =====
+  // ===== PRIORITY 2: User Custom API Key =====
   const userKey = await getUserApiKey();
   if (userKey) {
+    const config = PROVIDERS[DEFAULT_PROVIDER];
+    const endpoint = getEndpointForType(config, endpointType, matchId);
     try {
       const result = await tryApiCall(endpoint, userKey, HOST_1);
-      if (result) return result;
-    } catch (e) {
-      console.log('[API] User key failed, trying default keys');
+      if (result) {
+        console.log('[API] User custom key SUCCESS');
+        return { data: result, providerName: DEFAULT_PROVIDER };
+      }
+    } catch {
+      console.log('[API] User custom key failed, trying hardcoded keys');
     }
   }
 
-  // ===== PRIORITY 3: Provider 1 Keys (19 keys - cricbuzz-cricket) =====
-  const isComm = endpoint.includes('/comm');
-  const p1Keys = isComm ? COMM_KEYS : MATCH_KEYS_P1;
-  for (let i = 0; i < Math.min(maxTries, p1Keys.length); i++) {
-    const idx = (isComm ? commKeyIdx++ : matchKeyIdx++) % p1Keys.length;
+  // ===== PRIORITY 3: Random rotation of ALL 25 hardcoded keys on HOST_1 =====
+  // HOST_1 (cricbuzz-cricket.p.rapidapi.com) is the primary and most reliable host.
+  // HOST_2 (free-cricbuzz-cricket) has different/unknown endpoints, so HOST_1 is prioritized.
+  console.log('[API] Using hardcoded key rotation (random) on HOST_1');
+  const fallbackCricbuzzConfig = PROVIDERS[DEFAULT_PROVIDER];
+  const fallbackEndpoint = getEndpointForType(fallbackCricbuzzConfig, endpointType, matchId);
+
+  const shuffledKeys = shuffleArray(MATCH_KEYS);
+  for (let i = 0; i < Math.min(15, shuffledKeys.length); i++) {
+    const key = shuffledKeys[i];
+
+    // Try with Host 1 (cricbuzz-cricket.p.rapidapi.com) - primary
     try {
-      const result = await tryApiCall(endpoint, p1Keys[idx], HOST_1);
-      if (result) return result;
-    } catch (e) { continue; }
+      const result = await tryApiCall(fallbackEndpoint, key, HOST_1);
+      if (result) {
+        console.log(`[API] Hardcoded key #${i} SUCCESS on HOST_1`);
+        return { data: result, providerName: 'cricbuzz-cricket' };
+      }
+    } catch {}
   }
 
-  // ===== PRIORITY 4: Provider 2 Keys (6 keys - free-cricbuzz-cricket-api) =====
-  for (let i = 0; i < Math.min(3, MATCH_KEYS_P2.length); i++) {
-    const idx = p2KeyIdx++ % MATCH_KEYS_P2.length;
-    try {
-      const result = await tryApiCall(endpoint, MATCH_KEYS_P2[idx], HOST_2);
-      if (result) return result;
-    } catch (e) { continue; }
-  }
-
+  console.log('[API] ALL keys exhausted for:', endpointType);
   return null;
 }
 
@@ -260,8 +401,10 @@ function stopCacheCleanup(): void {
 // Initialize cache cleanup on module load
 startCacheCleanup();
 
-// ============ MATCH TRANSFORMATION ============
+// ============ CRICBUZZ MATCH TRANSFORMATION ============
+// Used by both cricbuzz-cricket and free-cricbuzz-cricket providers.
 // Match list API uses camelCase inside matchInfo wrapper
+
 function transformListMatch(m: any): Match {
   const info = m.matchInfo || {};
   const score = m.matchScore || {};
@@ -289,7 +432,7 @@ function transformListMatch(m: any): Match {
 }
 
 // Match detail API uses lowercase, FLAT (no matchInfo wrapper)
-function transformDetailMatch(raw: any): Match {
+function transformDetailCricbuzz(raw: any): Match {
   const t1 = raw.team1 || {};
   const t2 = raw.team2 || {};
   const venue = raw.venueinfo || raw.venueInfo || {};
@@ -329,8 +472,8 @@ function formatTs(ts?: number | string): string {
   } catch { return ''; }
 }
 
-// Extract matches from nested API structure (handles ALL depth levels)
-function extractAll(data: any): Match[] {
+// Extract matches from nested Cricbuzz API structure (handles ALL depth levels)
+function extractAllCricbuzz(data: any): Match[] {
   if (!data?.typeMatches) return [];
   const out: Match[] = [];
   for (const typeMatch of data.typeMatches) {
@@ -354,47 +497,116 @@ function extractAll(data: any): Match[] {
   return out;
 }
 
-// ============ PUBLIC: FETCH MATCH LISTS ============
+// ============ CRICKET LIVE DATA TRANSFORMATION ============
+// Used by cricket-live-data provider (different JSON format)
 
-export async function fetchLiveMatches(): Promise<Match[]> {
-  // Check cache first
-  const cached = await getCached('live');
-  if (cached) return cached;
-
-  const data = await callApi('/matches/v1/live', MATCH_KEYS, 5);
-  if (!data) return [];
-  const all = extractAll(data);
-  // STRICT: Only matches that are NOT complete and NOT preview
-  const live = all.filter(m => m.status === 'live');
-  await setCache('live', live);
-  return live;
+function classifyStateCricketLiveData(status?: string): 'live' | 'recent' | 'upcoming' {
+  if (!status) return 'upcoming';
+  const s = status.toLowerCase();
+  if (s.includes('complete') || s.includes('result') || s.includes('ended') || s.includes('won') || s.includes('draw') || s.includes('tied')) return 'recent';
+  if (s.includes('upcoming') || s.includes('scheduled') || s.includes('not started') || s.includes('preview')) return 'upcoming';
+  return 'live'; // In Progress, Live, etc.
 }
 
-export async function fetchRecentMatches(): Promise<Match[]> {
-  const cached = await getCached('recent');
-  if (cached) return cached;
+function extractAllCricketLiveData(data: any): Match[] {
+  // Cricket Live Data returns { results: [...] } or { fixtures: [...] } or { matches: [...] }
+  const matches = data?.results || data?.fixtures || data?.matches || [];
+  if (!Array.isArray(matches)) return [];
 
-  const data = await callApi('/matches/v1/recent', MATCH_KEYS, 5);
-  if (!data) return [];
-  const all = extractAll(data);
-  const recent = all.filter(m => m.status === 'recent');
-  await setCache('recent', recent);
-  return recent;
+  return matches.map((m: any): Match => {
+    const homeScoreRaw = m.home?.scores || m.home?.score || m.team_a_scores || '';
+    const awayScoreRaw = m.away?.scores || m.away?.score || m.team_b_scores || '';
+
+    // Parse "150/3 (18.2)" style scores
+    const parseScore = (raw: string) => {
+      if (!raw) return {};
+      const match = String(raw).match(/(\d+)(?:\/(\d+))?(?:\s*\((\d+\.?\d*)\s*\))?/);
+      if (!match) return {};
+      return {
+        runs: match[1] ? parseInt(match[1]) : undefined,
+        wickets: match[2] ? parseInt(match[2]) : undefined,
+        overs: match[3] ? parseFloat(match[3]) : undefined,
+      };
+    };
+
+    const homeScore = parseScore(homeScoreRaw);
+    const awayScore = parseScore(awayScoreRaw);
+
+    return {
+      matchId: String(m.id || m.match_id || m.matchId || ''),
+      seriesName: m.series || m.tournament || m.league || '',
+      matchDesc: m.match_title || m.title || m.description || '',
+      matchType: m.match_type || m.format || m.type || '',
+      status: classifyStateCricketLiveData(m.status || m.match_status || m.state),
+      statusText: m.status_note || m.result || m.status_str || m.status || '',
+      venue: m.venue?.name || m.venue || '',
+      city: m.venue?.location || m.venue?.city || '',
+      startTime: m.date || m.datetime || m.start_date || '',
+      teams: [
+        {
+          name: m.home?.name || m.team_a || m.home_team || '?',
+          shortName: m.home?.code || m.team_a_short || m.home_team_short || '?',
+          runs: homeScore.runs,
+          wickets: homeScore.wickets,
+          overs: homeScore.overs,
+        },
+        {
+          name: m.away?.name || m.team_b || m.away_team || '?',
+          shortName: m.away?.code || m.team_b_short || m.away_team_short || '?',
+          runs: awayScore.runs,
+          wickets: awayScore.wickets,
+          overs: awayScore.overs,
+        },
+      ],
+    };
+  });
 }
 
-export async function fetchUpcomingMatches(): Promise<Match[]> {
-  const cached = await getCached('upcoming');
-  if (cached) return cached;
-
-  const data = await callApi('/matches/v1/upcoming', MATCH_KEYS, 5);
-  if (!data) return [];
-  const all = extractAll(data);
-  const upcoming = all.filter(m => m.status === 'upcoming');
-  await setCache('upcoming', upcoming);
-  return upcoming;
+function transformDetailCricketLiveData(raw: any): Match {
+  const m = raw?.match || raw?.data || raw;
+  return {
+    matchId: String(m.id || m.match_id || ''),
+    seriesName: m.series || m.tournament || '',
+    matchDesc: m.match_title || m.title || '',
+    matchType: m.match_type || m.format || '',
+    status: classifyStateCricketLiveData(m.status || m.match_status),
+    statusText: m.status_note || m.result || m.status_str || '',
+    venue: m.venue?.name || m.venue || '',
+    city: m.venue?.location || '',
+    teams: [
+      { name: m.home?.name || m.team_a || '?', shortName: m.home?.code || m.team_a_short || '?' },
+      { name: m.away?.name || m.team_b || '?', shortName: m.away?.code || m.team_b_short || '?' },
+    ],
+  };
 }
 
-// ============ COMMENTARY PARSING ============
+function parseCommentaryCricketLiveData(data: any, matchId: string): Commentary[] {
+  // Cricket Live Data may not have ball-by-ball commentary
+  // Parse from scorecard or commentary array if available
+  const balls = data?.scorecard?.balls || data?.commentary || data?.ball_by_ball || [];
+  if (!Array.isArray(balls)) return [];
+
+  return balls.map((b: any, i: number): Commentary => ({
+    id: `${matchId}-cld-${i}`,
+    over: String(b.over || b.ball || b.overNumber || '0.0'),
+    english: b.text || b.description || b.comment || b.commText || '',
+    event: mapEventCricketLiveData(b.event || b.type || b.event_type),
+    runs: b.runs !== undefined ? Number(b.runs) : undefined,
+  })).filter((c: Commentary) => c.english);
+}
+
+function mapEventCricketLiveData(e?: string): Commentary['event'] {
+  if (!e) return 'normal';
+  const s = e.toLowerCase();
+  if (s.includes('wicket') || s.includes('out')) return 'wicket';
+  if (s.includes('six')) return 'six';
+  if (s.includes('four') || s.includes('boundary')) return 'four';
+  if (s.includes('wide')) return 'wide';
+  if (s.includes('dot')) return 'dot';
+  return 'normal';
+}
+
+// ============ CRICBUZZ COMMENTARY PARSING ============
 // comwrapper[i].commentary is a SINGLE DICT (one ball), not a list!
 
 function cleanText(raw: string): string {
@@ -437,7 +649,7 @@ function extractExtras(c: any): string | undefined {
   return undefined;
 }
 
-function parseCommentary(data: any, matchId: string): Commentary[] {
+function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
   if (!data) return [];
   const out: Commentary[] = [];
 
@@ -504,8 +716,53 @@ function parseCommentary(data: any, matchId: string): Commentary[] {
   return out;
 }
 
+// ============ PUBLIC: FETCH MATCH LISTS ============
+
+export async function fetchLiveMatches(): Promise<Match[]> {
+  // Check cache first
+  const cached = await getCached('live');
+  if (cached) return cached;
+
+  const result = await fetchData('live');
+  if (!result) return [];
+
+  const config = getProviderConfig(result.providerName);
+  const all = config.parseMatchList(result.data);
+  // STRICT: Only matches that are NOT complete and NOT preview
+  const live = all.filter(m => m.status === 'live');
+  await setCache('live', live);
+  return live;
+}
+
+export async function fetchRecentMatches(): Promise<Match[]> {
+  const cached = await getCached('recent');
+  if (cached) return cached;
+
+  const result = await fetchData('recent');
+  if (!result) return [];
+
+  const config = getProviderConfig(result.providerName);
+  const all = config.parseMatchList(result.data);
+  const recent = all.filter(m => m.status === 'recent');
+  await setCache('recent', recent);
+  return recent;
+}
+
+export async function fetchUpcomingMatches(): Promise<Match[]> {
+  const cached = await getCached('upcoming');
+  if (cached) return cached;
+
+  const result = await fetchData('upcoming');
+  if (!result) return [];
+
+  const config = getProviderConfig(result.providerName);
+  const all = config.parseMatchList(result.data);
+  const upcoming = all.filter(m => m.status === 'upcoming');
+  await setCache('upcoming', upcoming);
+  return upcoming;
+}
+
 // ============ FETCH MATCH BY ID ============
-const MATCH_CACHE_TTL = 30000; // 30 seconds cache for match details (live data)
 
 export async function fetchMatchById(id: string): Promise<Match | null> {
   // Check cache first (shorter TTL for live matches)
@@ -515,157 +772,164 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
   let match: Match | null = null;
   let commentary: Commentary[] = [];
 
-  // 1. Get match info from /mcenter/v1/{id} (flat lowercase structure)
+  // 1. Get match info
   try {
-    const raw = await callApi(`/mcenter/v1/${id}`, MATCH_KEYS, 4);
-    if (raw && !raw.message) {
-      match = transformDetailMatch(raw);
+    const detailResult = await fetchData('detail', id);
+    if (detailResult && !detailResult.data.message) {
+      const config = getProviderConfig(detailResult.providerName);
+      match = config.parseMatchDetail(detailResult.data);
     }
   } catch {}
 
-  // 2. Get commentary from /mcenter/v1/{id}/comm (try ALL comm keys)
+  // 2. Get commentary
   try {
-    const commData = await callApi(`/mcenter/v1/${id}/comm`, COMM_KEYS, COMM_KEYS.length);
-    if (commData && !commData.message) {
-      commentary = parseCommentary(commData, id);
+    const commResult = await fetchData('comm', id);
+    if (commResult && !commResult.data.message) {
+      const config = getProviderConfig(commResult.providerName);
+      commentary = config.parseCommentary(commResult.data, id);
 
-      // Extract team names from matchheaders (lowercase keys)
-      const mh = commData.matchheaders || {};
-      const t1h = mh.team1 || {};
-      const t2h = mh.team2 || {};
+      // Cricbuzz-specific: extract rich data from comm response (team names, scores, batsmen, oSummary)
+      if (config.isCricbuzzLike) {
+        const commData = commResult.data;
 
-      if (!match) {
-        match = {
-          matchId: id,
-          seriesName: mh.seriesname || mh.seriesName || 'Match',
-          status: classifyState(mh.state),
-          statusText: mh.status || '',
-          teams: [
-            { name: t1h.teamname || '?', shortName: t1h.teamsname || '?' },
-            { name: t2h.teamname || '?', shortName: t2h.teamsname || '?' },
-          ],
-        };
-      } else {
-        // Update names if we got them from matchheaders
-        if (t1h.teamname && match.teams[0].name === '?') {
-          match.teams[0].name = t1h.teamname;
-          match.teams[0].shortName = t1h.teamsname || match.teams[0].shortName;
-        }
-        if (t2h.teamname && match.teams[1].name === '?') {
-          match.teams[1].name = t2h.teamname;
-          match.teams[1].shortName = t2h.teamsname || match.teams[1].shortName;
-        }
-      }
+        // Extract team names from matchheaders (lowercase keys)
+        const mh = commData.matchheaders || {};
+        const t1h = mh.team1 || {};
+        const t2h = mh.team2 || {};
 
-      // Extract scores from miniscore.inningsscores (actual API structure)
-      const ms = commData.miniscore || {};
-      if (ms && match) {
-        const inningsScores = ms.inningsscores?.inningsscore || [];
-        if (Array.isArray(inningsScores)) {
-          for (const inn of inningsScores) {
-            const shortName = inn.batteamshortname;
-            if (shortName) {
-              const idx = match.teams.findIndex(t => t.shortName === shortName);
-              if (idx >= 0) {
-                match.teams[idx].runs = inn.runs;
-                match.teams[idx].wickets = inn.wickets;
-                match.teams[idx].overs = inn.overs;
-              }
-            }
+        if (!match) {
+          match = {
+            matchId: id,
+            seriesName: mh.seriesname || mh.seriesName || 'Match',
+            status: classifyState(mh.state),
+            statusText: mh.status || '',
+            teams: [
+              { name: t1h.teamname || '?', shortName: t1h.teamsname || '?' },
+              { name: t2h.teamname || '?', shortName: t2h.teamsname || '?' },
+            ],
+          };
+        } else {
+          // Update names if we got them from matchheaders
+          if (t1h.teamname && match.teams[0].name === '?') {
+            match.teams[0].name = t1h.teamname;
+            match.teams[0].shortName = t1h.teamsname || match.teams[0].shortName;
+          }
+          if (t2h.teamname && match.teams[1].name === '?') {
+            match.teams[1].name = t2h.teamname;
+            match.teams[1].shortName = t2h.teamsname || match.teams[1].shortName;
           }
         }
 
-        // Extract current batsmen (striker and non-striker)
-        const batsmen: any[] = [];
-        const batsmanStriker = ms.batsmanstriker || ms.batsman1 || {};
-        const batsmanNonStriker = ms.batsmannonstriker || ms.batsman2 || {};
-        
-        if (batsmanStriker.batname || batsmanStriker.name) {
-          batsmen.push({
-            name: batsmanStriker.batname || batsmanStriker.name || 'Batsman 1',
-            runs: batsmanStriker.batruns ?? batsmanStriker.runs ?? 0,
-            balls: batsmanStriker.batballs ?? batsmanStriker.balls ?? 0,
-            isStriker: true,
-          });
-        }
-        if (batsmanNonStriker.batname || batsmanNonStriker.name) {
-          batsmen.push({
-            name: batsmanNonStriker.batname || batsmanNonStriker.name || 'Batsman 2',
-            runs: batsmanNonStriker.batruns ?? batsmanNonStriker.runs ?? 0,
-            balls: batsmanNonStriker.batballs ?? batsmanNonStriker.balls ?? 0,
-            isStriker: false,
-          });
-        }
-        if (batsmen.length > 0) {
-          match.batsmen = batsmen;
-        }
-
-        // Extract over summary - use correct Cricbuzz field names
-        // recentOvsStr is the primary field from Cricbuzz miniscore for ball-by-ball
-        let oSummary = ms.recentOvsStr || ms.recentovsstr || ms.o_summary || ms.recentovsummary || ms.oversummary || ms.recentOvs || '';
-        
-        // If no oSummary from API, build from recent commentary STRUCTURED DATA
-        // Priority: runs/event/extras fields FIRST, text matching NEVER
-        if (!oSummary && commentary && commentary.length > 0) {
-          const recentBalls: string[] = [];
-          for (let i = 0; i < Math.min(12, commentary.length); i++) {
-            const comm = commentary[i];
-            if (comm.over && comm.over !== '0' && /\d/.test(comm.over)) {
-              // PRIORITY 1: Use event field (most reliable for special deliveries)
-              if (comm.event === 'wicket') {
-                recentBalls.push('WKT');
-              } else if (comm.extras === 'wide') {
-                recentBalls.push('Wd');
-              } else if (comm.extras === 'noball') {
-                recentBalls.push('Nb');
-              } else if (comm.event === 'six') {
-                recentBalls.push('6');
-              } else if (comm.event === 'four') {
-                recentBalls.push('4');
-              // PRIORITY 2: Use numeric runs field
-              } else if (comm.runs !== undefined && comm.runs !== null) {
-                const r = Number(comm.runs);
-                if (r === 6) recentBalls.push('6');
-                else if (r === 4) recentBalls.push('4');
-                else recentBalls.push(String(r));
-              // PRIORITY 3: Use event field for dots
-              } else if (comm.event === 'dot') {
-                recentBalls.push('0');
-              // PRIORITY 4: Last resort - extract number from text
-              } else {
-                const text = (comm.english || '').toLowerCase();
-                const runMatch = text.match(/(\d)\s*run/);
-                if (runMatch) {
-                  recentBalls.push(runMatch[1]);
-                } else if (text.includes('no run')) {
-                  recentBalls.push('0');
-                } else {
-                  recentBalls.push('0');
+        // Extract scores from miniscore.inningsscores (actual API structure)
+        const ms = commData.miniscore || {};
+        if (ms && match) {
+          const inningsScores = ms.inningsscores?.inningsscore || [];
+          if (Array.isArray(inningsScores)) {
+            for (const inn of inningsScores) {
+              const shortName = inn.batteamshortname;
+              if (shortName) {
+                const idx = match.teams.findIndex(t => t.shortName === shortName);
+                if (idx >= 0) {
+                  match.teams[idx].runs = inn.runs;
+                  match.teams[idx].wickets = inn.wickets;
+                  match.teams[idx].overs = inn.overs;
                 }
               }
             }
           }
-          if (recentBalls.length > 0) {
-            oSummary = recentBalls.reverse().join(' ');
+
+          // Extract current batsmen (striker and non-striker)
+          const batsmen: any[] = [];
+          const batsmanStriker = ms.batsmanstriker || ms.batsman1 || {};
+          const batsmanNonStriker = ms.batsmannonstriker || ms.batsman2 || {};
+          
+          if (batsmanStriker.batname || batsmanStriker.name) {
+            batsmen.push({
+              name: batsmanStriker.batname || batsmanStriker.name || 'Batsman 1',
+              runs: batsmanStriker.batruns ?? batsmanStriker.runs ?? 0,
+              balls: batsmanStriker.batballs ?? batsmanStriker.balls ?? 0,
+              isStriker: true,
+            });
           }
-        }
-        
-        if (oSummary) {
-          match.oSummary = oSummary;
-        }
+          if (batsmanNonStriker.batname || batsmanNonStriker.name) {
+            batsmen.push({
+              name: batsmanNonStriker.batname || batsmanNonStriker.name || 'Batsman 2',
+              runs: batsmanNonStriker.batruns ?? batsmanNonStriker.runs ?? 0,
+              balls: batsmanNonStriker.batballs ?? batsmanNonStriker.balls ?? 0,
+              isStriker: false,
+            });
+          }
+          if (batsmen.length > 0) {
+            match.batsmen = batsmen;
+          }
 
-        // Current over number
-        const currentOver = ms.overs || ms.currentover;
-        if (currentOver !== undefined) {
-          match.currentOver = parseFloat(currentOver);
-        }
+          // Extract over summary - use correct Cricbuzz field names
+          // recentOvsStr is the primary field from Cricbuzz miniscore for ball-by-ball
+          let oSummary = ms.recentOvsStr || ms.recentovsstr || ms.o_summary || ms.recentovsummary || ms.oversummary || ms.recentOvs || '';
+          
+          // If no oSummary from API, build from recent commentary STRUCTURED DATA
+          // Priority: runs/event/extras fields FIRST, text matching NEVER
+          if (!oSummary && commentary && commentary.length > 0) {
+            const recentBalls: string[] = [];
+            for (let i = 0; i < Math.min(12, commentary.length); i++) {
+              const comm = commentary[i];
+              if (comm.over && comm.over !== '0' && /\d/.test(comm.over)) {
+                // PRIORITY 1: Use event field (most reliable for special deliveries)
+                if (comm.event === 'wicket') {
+                  recentBalls.push('WKT');
+                } else if (comm.extras === 'wide') {
+                  recentBalls.push('Wd');
+                } else if (comm.extras === 'noball') {
+                  recentBalls.push('Nb');
+                } else if (comm.event === 'six') {
+                  recentBalls.push('6');
+                } else if (comm.event === 'four') {
+                  recentBalls.push('4');
+                // PRIORITY 2: Use numeric runs field
+                } else if (comm.runs !== undefined && comm.runs !== null) {
+                  const r = Number(comm.runs);
+                  if (r === 6) recentBalls.push('6');
+                  else if (r === 4) recentBalls.push('4');
+                  else recentBalls.push(String(r));
+                // PRIORITY 3: Use event field for dots
+                } else if (comm.event === 'dot') {
+                  recentBalls.push('0');
+                // PRIORITY 4: Last resort - extract number from text
+                } else {
+                  const text = (comm.english || '').toLowerCase();
+                  const runMatch = text.match(/(\d)\s*run/);
+                  if (runMatch) {
+                    recentBalls.push(runMatch[1]);
+                  } else if (text.includes('no run')) {
+                    recentBalls.push('0');
+                  } else {
+                    recentBalls.push('0');
+                  }
+                }
+              }
+            }
+            if (recentBalls.length > 0) {
+              oSummary = recentBalls.reverse().join(' ');
+            }
+          }
+          
+          if (oSummary) {
+            match.oSummary = oSummary;
+          }
 
-        // Always prefer commentary matchheaders status (it has actual result)
-        if (mh.status) {
-          match.statusText = mh.status;
-        }
-        if (mh.state) {
-          match.status = classifyState(mh.state);
+          // Current over number
+          const currentOver = ms.overs || ms.currentover;
+          if (currentOver !== undefined) {
+            match.currentOver = parseFloat(currentOver);
+          }
+
+          // Always prefer commentary matchheaders status (it has actual result)
+          if (mh.status) {
+            match.statusText = mh.status;
+          }
+          if (mh.state) {
+            match.status = classifyState(mh.state);
+          }
         }
       }
     }
