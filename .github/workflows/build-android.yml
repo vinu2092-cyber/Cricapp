@@ -26,6 +26,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Gradle 8.14.3
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
@@ -48,16 +53,16 @@ jobs:
         working-directory: frontend/android
         run: |
           chmod +x gradlew
-          # Regenerate gradle wrapper jar (fixes corrupt jar from dev environment)
-          gradle wrapper --gradle-version $(grep distributionUrl gradle/wrapper/gradle-wrapper.properties | sed 's/.*gradle-\(.*\)-bin.zip/\1/')
+          gradle wrapper --gradle-version 8.14.3
+          chmod +x gradlew
 
       - name: Build Release APK
         working-directory: frontend/android
-        run: ./gradlew assembleRelease -x lint
+        run: ./gradlew assembleRelease -x lint --no-daemon
 
       - name: Build Release AAB
         working-directory: frontend/android
-        run: ./gradlew bundleRelease -x lint
+        run: ./gradlew bundleRelease -x lint --no-daemon
 
       - name: Find build outputs
         id: find_outputs
