@@ -42,55 +42,42 @@ jobs:
         working-directory: frontend
         run: npx expo prebuild --platform android --no-install
 
-      # CRITICAL: Restore the release signing keystore from GitHub Secrets
-      # This ensures the SHA1 always matches Play Store
-      - name: Setup Release Signing Key
+      # CRITICAL: Restore the ORIGINAL release keystore from GitHub Secret
+      # SHA1: 12:F2:7B:2F:BC:43:17:0D:1D:83:99:25:C4:11:5A:A7:EB:A2:DB:BD
+      - name: Restore Release Keystore
         run: |
-          if [ -n "${{ secrets.RELEASE_KEYSTORE_B64 }}" ]; then
-            echo "${{ secrets.RELEASE_KEYSTORE_B64 }}" | base64 -d > frontend/android/app/cricapp-upload.keystore
-            echo "Release keystore restored from GitHub Secret"
-            keytool -list -v -keystore frontend/android/app/cricapp-upload.keystore \
-              -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
-              -alias "${{ secrets.KEY_ALIAS }}" 2>/dev/null | grep "SHA1" || true
-          else
-            echo "WARNING: RELEASE_KEYSTORE_B64 secret not set, using debug keystore"
-          fi
+          echo "${{ secrets.RELEASE_KEYSTORE_B64 }}" | base64 -d > frontend/android/app/release-keystore.jks
+          echo "Release keystore restored from GitHub Secret"
 
-      # Patch build.gradle to use the release keystore
+      # Patch build.gradle to use the release keystore for signing
       - name: Configure Release Signing
         run: |
-          BUILD_GRADLE="frontend/android/app/build.gradle"
-          if [ -n "${{ secrets.RELEASE_KEYSTORE_B64 }}" ]; then
-            # Replace the signingConfigs block to add release config
-            python3 << 'SCRIPT'
+          python3 << 'SCRIPT'
           import re
+
           with open("frontend/android/app/build.gradle", "r") as f:
               content = f.read()
 
-          # Add release signing config
-          new_signing = '''    signingConfigs {
-              debug {
-                  storeFile file('debug.keystore')
-                  storePassword 'android'
-                  keyAlias 'androiddebugkey'
-                  keyPassword 'android'
-              }
-              release {
-                  storeFile file('cricapp-upload.keystore')
-                  storePassword System.getenv("KEYSTORE_PASSWORD") ?: "cricapp2092secure"
-                  keyAlias System.getenv("KEY_ALIAS") ?: "cricapp-upload-key"
-                  keyPassword System.getenv("KEY_PASSWORD") ?: "cricapp2092secure"
-              }
-          }'''
+          # Replace signingConfigs to add release config
+          old_signing = re.search(r'signingConfigs\s*\{.*?\n\s*\}', content, re.DOTALL)
+          if old_signing:
+              new_signing = """signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        release {
+            storeFile file('release-keystore.jks')
+            storePassword System.getenv("KEYSTORE_PASSWORD")
+            keyAlias System.getenv("KEY_ALIAS")
+            keyPassword System.getenv("KEY_PASSWORD")
+        }
+    }"""
+              content = content[:old_signing.start()] + new_signing + content[old_signing.end():]
 
-          content = re.sub(
-              r'signingConfigs\s*\{[^}]*debug\s*\{[^}]*\}[^}]*\}',
-              new_signing,
-              content,
-              flags=re.DOTALL
-          )
-
-          # Update release buildType to use release signingConfig
+          # Point release buildType to release signingConfig
           content = content.replace(
               'signingConfig signingConfigs.debug',
               'signingConfig signingConfigs.release'
@@ -98,22 +85,12 @@ jobs:
 
           with open("frontend/android/app/build.gradle", "w") as f:
               f.write(content)
-          print("build.gradle patched with release signing config")
+
+          print("build.gradle patched: release signing with release-keystore.jks")
           SCRIPT
-          else
-            echo "No release keystore, keeping debug signing"
-          fi
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Ensure google-services.json
-        run: |
-          if [ ! -f frontend/android/app/google-services.json ]; then
-            echo "google-services.json missing after prebuild, restoring..."
-          fi
-          ls -la frontend/android/app/google-services.json
+        run: ls -la frontend/android/app/google-services.json
 
       - name: Fix Gradle Wrapper
         working-directory: frontend/android
@@ -124,44 +101,32 @@ jobs:
 
       - name: Build Release APK
         working-directory: frontend/android
-        run: ./gradlew assembleRelease -x lint --no-daemon
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease -x lint --no-daemon
 
       - name: Build Release AAB
         working-directory: frontend/android
-        run: ./gradlew bundleRelease -x lint --no-daemon
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-
-      - name: Find build outputs
-        id: find_outputs
-        run: |
-          APK_PATH=$(find frontend/android/app/build/outputs -name "*.apk" -type f | head -1)
-          AAB_PATH=$(find frontend/android/app/build/outputs -name "*.aab" -type f | head -1)
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
-          echo "aab_path=$AAB_PATH" >> $GITHUB_OUTPUT
-          echo "APK: $APK_PATH"
-          echo "AAB: $AAB_PATH"
+        run: ./gradlew bundleRelease -x lint --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: CricApp-APK
-          path: |
-            frontend/android/app/build/outputs/apk/release/*.apk
+          path: frontend/android/app/build/outputs/apk/release/*.apk
           retention-days: 30
 
       - name: Upload AAB Artifact
         uses: actions/upload-artifact@v4
         with:
           name: CricApp-AAB
-          path: |
-            frontend/android/app/build/outputs/bundle/release/*.aab
+          path: frontend/android/app/build/outputs/bundle/release/*.aab
           retention-days: 30
 
       - name: Create GitHub Release
@@ -170,20 +135,11 @@ jobs:
           tag_name: v1.0.4
           name: CricApp v1.0.4
           body: |
-            ## CricApp v1.0.4 Release
-            
-            ### Changes:
-            - Firebase Dynamic API Key with Provider Factory Pattern
-            - Scorecard page (Batting, Bowling, Fall of Wickets, Partnerships)
-            - FCM Push Notifications with Deep Linking
-            - Admin Inbox with broadcast messages
-            - Banner Ad sizing fix
-            - API key cleanup (removed dead keys)
-            - Proper release signing setup
-            
-            ### Downloads:
-            - **APK**: Direct install on Android device
-            - **AAB**: For Google Play Store upload
+            ## CricApp v1.0.4
+            - Firebase Provider Factory + Fallback rotation
+            - Scorecard (Batting, Bowling, FOW, Partnerships)
+            - FCM Push Notifications + Inbox
+            - Banner Ad fix + API key cleanup
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab
