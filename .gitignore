@@ -28,12 +28,6 @@ next-env.d.ts
 # Production builds
 /build
 dist/
-dist
-
-# Environment files (comprehensive coverage)
-
-*token.json*
-*credentials.json*
 
 # Logs and debug files
 npm-debug.log*
@@ -44,7 +38,6 @@ dump.rdb
 
 # System files
 .DS_Store
-*.pem
 
 # Python
 __pycache__/
@@ -56,13 +49,9 @@ venv/
 chainlit.md
 .chainlit
 .ipynb_checkpoints/
-.ac
 
 # Deployment
 .vercel
-
-# Data and databases
-agenthub/agents/youtube/db
 
 # Archive files and large assets
 **/*.zip
@@ -76,10 +65,147 @@ agenthub/agents/youtube/db
 # Build caches
 .cache/
 
-memory/test_credentials.md
-
 # Mobile development
-android-sdk/-e 
+android-sdk/
+/opt/
+
+# Expo
+frontend/.expo/
+frontend/.metro-cache/
+
+# ============ CRITICAL: Block heavy/sensitive files ============
+
+# Core dumps and system files (qemu, crash dumps)
+*.core
+qemu_*
+*.dump
+
+# Sensitive files - NEVER push
+KEYSTORE_INFO_SAVE_THIS.md
+SENSITIVE_INFO_PRIVATE.md
+CRICAPP_ALL_IDS_KEYS.md
+KEYSTORE_GENERATION_GUIDE.md
+*token.json*
+*credentials.json*
+*.pem
+*.key
+*.keystore
+!frontend/android/app/debug.keystore
+
+# Android build outputs
+frontend/android/app/build/
+frontend/android/build/
+frontend/android/.gradle/
+*.apk
+*.aab
+
+# Temporary build files
+*.bin
+*.o
+*.obj
+*.so
+*.a
+
+# Environment and credential files
+.env
+.env.*
+*.env
+
+# Android project clones
+android-project/
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+backend/firebase-service-account.json
+frontend/android/app/release-keystore.jks
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+-e 
 # Environment and credential files
 .env
 .env.*
