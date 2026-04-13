@@ -196,3 +196,12 @@ credentials.json
 .credentials
 backend/firebase-service-account.json
 frontend/android/app/release-keystore.jks
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
