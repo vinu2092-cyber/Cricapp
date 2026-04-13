@@ -40,12 +40,31 @@ jobs:
         run: |
           npm install --legacy-peer-deps
           npm install expo-asset ajv --save-dev
-          
+
+      # CRITICAL: Backup original keystore BEFORE prebuild --clean
+      - name: Backup Original Keystore
+        run: |
+          if [ -f frontend/android/app/debug.keystore ]; then
+            cp frontend/android/app/debug.keystore /tmp/original-debug.keystore
+            echo "Original keystore backed up"
+          fi
+
       - name: CRITICAL - Hard Clean Native Folder
         working-directory: ./frontend
         run: |
           rm -rf android
           npx expo prebuild --platform android --clean
+
+      # CRITICAL: Restore original keystore AFTER prebuild --clean
+      # expo prebuild --clean generates a NEW keystore, we must replace it
+      - name: Restore Original Keystore
+        run: |
+          if [ -f /tmp/original-debug.keystore ]; then
+            cp /tmp/original-debug.keystore frontend/android/app/debug.keystore
+            echo "Original keystore restored - SHA1 will match Play Store"
+          else
+            echo "WARNING: No backup keystore found!"
+          fi
 
       - name: Build APK (Release)
         if: ${{ github.event.inputs.build_type == 'apk' || github.event.inputs.build_type == 'both' }}

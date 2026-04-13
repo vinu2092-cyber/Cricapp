@@ -38,9 +38,45 @@ jobs:
         working-directory: frontend
         run: yarn install
 
+      # CRITICAL: Backup the original signing keystore BEFORE expo prebuild
+      - name: Backup Original Keystore
+        run: |
+          if [ -f frontend/android/app/debug.keystore ]; then
+            cp frontend/android/app/debug.keystore /tmp/original-debug.keystore
+            echo "Original keystore backed up ($(md5sum frontend/android/app/debug.keystore | cut -d' ' -f1))"
+          else
+            echo "No existing keystore found, will restore from repo after prebuild"
+          fi
+
       - name: Expo Prebuild (Android)
         working-directory: frontend
         run: npx expo prebuild --platform android --no-install
+
+      # CRITICAL: Restore the original keystore AFTER expo prebuild
+      # This ensures the SHA1 matches the one used for v1.0.3 on Play Store
+      - name: Restore Original Keystore
+        run: |
+          if [ -f /tmp/original-debug.keystore ]; then
+            cp /tmp/original-debug.keystore frontend/android/app/debug.keystore
+            echo "Original keystore restored ($(md5sum frontend/android/app/debug.keystore | cut -d' ' -f1))"
+          fi
+          ls -la frontend/android/app/debug.keystore
+
+      # Ensure signing config in build.gradle uses the debug.keystore for release
+      - name: Patch Signing Config
+        run: |
+          BUILD_GRADLE="frontend/android/app/build.gradle"
+          if ! grep -q "signingConfigs" "$BUILD_GRADLE"; then
+            echo "WARNING: No signingConfigs found in build.gradle"
+          fi
+          # Verify release build uses debug signing config
+          if grep -q 'signingConfig signingConfigs.debug' "$BUILD_GRADLE"; then
+            echo "Release signing config OK: uses debug.keystore"
+          else
+            echo "WARNING: Release signing config may not use debug.keystore"
+          fi
+          # Show the keystore SHA1 for verification
+          keytool -list -v -keystore frontend/android/app/debug.keystore -storepass android -alias androiddebugkey 2>/dev/null | grep "SHA1\|SHA256" || echo "keytool SHA info not available"
 
       - name: Ensure google-services.json
         run: |
@@ -99,11 +135,12 @@ jobs:
             ## CricApp v1.0.4 Release
             
             ### Changes:
-            - Firebase Dynamic API Key integration (Firestore: app_config/settings)
-            - Added 6 new API keys (Provider: free-cricbuzz-cricket-api)
-            - Firebase-first priority with hardcoded key fallback
-            - Total 25 API keys in rotation (19 original + 6 new)
-            - Version upgrade: 3 -> 4
+            - Firebase Dynamic API Key with Provider Factory Pattern
+            - Scorecard page (Batting, Bowling, Fall of Wickets, Partnerships)
+            - FCM Push Notifications with Deep Linking
+            - Admin Inbox with broadcast messages
+            - Banner Ad sizing fix
+            - API key cleanup (removed dead keys)
             
             ### Downloads:
             - **APK**: Direct install on Android device
