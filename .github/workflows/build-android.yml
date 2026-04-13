@@ -43,9 +43,24 @@ jobs:
         run: npx expo prebuild --platform android --no-install
 
       - name: Restore Release Keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
         run: |
-          echo "${{ secrets.RELEASE_KEYSTORE_B64 }}" | base64 -d > frontend/android/app/release-keystore.jks
-          echo "Release keystore restored from GitHub Secret"
+          python3 -c "
+          import base64, os, sys
+          b64 = os.environ['KEYSTORE_B64'].strip()
+          data = base64.b64decode(b64)
+          with open('frontend/android/app/release-keystore.jks', 'wb') as f:
+              f.write(data)
+          print(f'Keystore restored: {len(data)} bytes')
+          if data[0] == 0x30:
+              print('Format: PKCS12 (OK)')
+          elif data[:4].hex() == 'feedfeed':
+              print('Format: JKS (OK)')
+          else:
+              print(f'WARNING: unknown format {data[:4].hex()}')
+              sys.exit(1)
+          "
 
       - name: Configure Release Signing
         run: python3 scripts/patch-signing.py
