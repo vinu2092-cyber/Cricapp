@@ -42,52 +42,13 @@ jobs:
         working-directory: frontend
         run: npx expo prebuild --platform android --no-install
 
-      # CRITICAL: Restore the ORIGINAL release keystore from GitHub Secret
-      # SHA1: 12:F2:7B:2F:BC:43:17:0D:1D:83:99:25:C4:11:5A:A7:EB:A2:DB:BD
       - name: Restore Release Keystore
         run: |
           echo "${{ secrets.RELEASE_KEYSTORE_B64 }}" | base64 -d > frontend/android/app/release-keystore.jks
           echo "Release keystore restored from GitHub Secret"
 
-      # Patch build.gradle to use the release keystore for signing
       - name: Configure Release Signing
-        run: |
-          python3 << 'SCRIPT'
-          import re
-
-          with open("frontend/android/app/build.gradle", "r") as f:
-              content = f.read()
-
-          # Replace signingConfigs to add release config
-          old_signing = re.search(r'signingConfigs\s*\{.*?\n\s*\}', content, re.DOTALL)
-          if old_signing:
-              new_signing = """signingConfigs {
-        debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
-        }
-        release {
-            storeFile file('release-keystore.jks')
-            storePassword System.getenv("KEYSTORE_PASSWORD")
-            keyAlias System.getenv("KEY_ALIAS")
-            keyPassword System.getenv("KEY_PASSWORD")
-        }
-    }"""
-              content = content[:old_signing.start()] + new_signing + content[old_signing.end():]
-
-          # Point release buildType to release signingConfig
-          content = content.replace(
-              'signingConfig signingConfigs.debug',
-              'signingConfig signingConfigs.release'
-          )
-
-          with open("frontend/android/app/build.gradle", "w") as f:
-              f.write(content)
-
-          print("build.gradle patched: release signing with release-keystore.jks")
-          SCRIPT
+        run: python3 scripts/patch-signing.py
 
       - name: Ensure google-services.json
         run: ls -la frontend/android/app/google-services.json
