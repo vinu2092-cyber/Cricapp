@@ -108,10 +108,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.4
-          name: CricApp v1.0.4
+          tag_name: v1.0.5
+          name: CricApp v1.0.5
           body: |
-            ## CricApp v1.0.4
+            ## CricApp v1.0.5
             - Firebase Provider Factory + Fallback rotation
             - Scorecard (Batting, Bowling, FOW, Partnerships)
             - FCM Push Notifications + Inbox
