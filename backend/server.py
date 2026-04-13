@@ -19,16 +19,21 @@ load_dotenv(ROOT_DIR / '.env')
 # Firebase Admin SDK for FCM
 import firebase_admin
 from firebase_admin import credentials, messaging as fcm_messaging
+import json
+import base64
 
 try:
-    service_account_path = ROOT_DIR / 'firebase-service-account.json'
-    if service_account_path.exists():
-        cred = credentials.Certificate(str(service_account_path))
+    # Load service account from environment variable (base64-encoded JSON)
+    firebase_sa_b64 = os.environ.get('FIREBASE_SERVICE_ACCOUNT_B64', '')
+    if firebase_sa_b64:
+        sa_json = base64.b64decode(firebase_sa_b64).decode('utf-8')
+        sa_dict = json.loads(sa_json)
+        cred = credentials.Certificate(sa_dict)
         firebase_admin.initialize_app(cred)
         logger_temp = logging.getLogger(__name__)
-        logger_temp.info("Firebase Admin SDK initialized for FCM")
+        logger_temp.info("Firebase Admin SDK initialized from env variable")
     else:
-        logging.getLogger(__name__).warning("firebase-service-account.json not found, FCM disabled")
+        logging.getLogger(__name__).warning("FIREBASE_SERVICE_ACCOUNT_B64 not set, FCM disabled")
 except Exception as e:
     logging.getLogger(__name__).warning(f"Firebase Admin SDK init failed: {e}")
 
