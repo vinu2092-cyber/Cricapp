@@ -443,12 +443,12 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           width: screenWidth,
           alignItems: 'center',
           justifyContent: 'center',
-          marginVertical: 4,
+          marginVertical: 8,
           overflow: 'hidden',
         }}>
           <BannerAd
             unitId={AD_IDS.banner}
-            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+            size={BannerAdSize.MEDIUM_RECTANGLE}
             requestOptions={{ requestNonPersonalizedAdsOnly: false }}
             onAdFailedToLoad={(error) => console.log('[AdMob] Banner failed:', error)}
           />

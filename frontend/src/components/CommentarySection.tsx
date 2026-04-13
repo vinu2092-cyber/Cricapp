@@ -112,8 +112,15 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Hide "Ball by Ball Commentary" header for upcoming matches */}
-      {matchStatus !== 'upcoming' && (
+      {/* Show "Expert Analysis" header for upcoming, "Ball by Ball Commentary" for live/recent */}
+      {matchStatus === 'upcoming' ? (
+        <View style={styles.header}>
+          <View style={styles.titleContainer}>
+            <Ionicons name="analytics" size={20} color="#FF9800" />
+            <Text style={styles.title}>Expert Analysis</Text>
+          </View>
+        </View>
+      ) : (
         <View style={styles.header}>
           <View style={styles.titleContainer}>
             <Ionicons name="chatbubbles" size={20} color="#4CAF50" />
@@ -123,7 +130,23 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       )}
 
       <ScrollView style={styles.commentaryList} nestedScrollEnabled>
-        {/* If no commentary, show 2 banner ads with external link button in middle */}
+        {/* Upcoming match: show expert analysis if available */}
+        {matchStatus === 'upcoming' && displayedCommentary.length > 0 && (
+          <View style={{ padding: 12 }}>
+            {displayedCommentary.map((item, idx) => (
+              <View key={idx} style={styles.analysisCard}>
+                <Ionicons name="newspaper-outline" size={16} color="#FF9800" style={{ marginRight: 8, marginTop: 2 }} />
+                <Text style={styles.analysisText}>{item.english}</Text>
+              </View>
+            ))}
+            {/* Banner Ad between analysis */}
+            <View style={styles.bannerAdContainer}>
+              <BannerAdComponent />
+            </View>
+          </View>
+        )}
+
+        {/* If no commentary, show placeholder with ads */}
         {displayedCommentary.length === 0 && (
           <View style={{ padding: 20, alignItems: 'center' }}>
             <Ionicons name="chatbox-outline" size={40} color="#999" />
@@ -169,11 +192,16 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           </View>
         )}
         
-        {displayedCommentary.map((item, index) => {
-          // Banner ad BEFORE index 0 (first ball), then AFTER every 6 balls (end of over)
-          // So: banner before index 0, then after index 5, 11, 17... (which is before index 6, 12, 18)
+        {/* Ball-by-ball commentary for live/recent matches */}
+        {matchStatus !== 'upcoming' && displayedCommentary.map((item, index) => {
+          // Detect actual over boundary: show banner when over number changes (integer part)
+          const currentOverInt = Math.floor(parseFloat(item.over || '0'));
+          const prevOverInt = index > 0 ? Math.floor(parseFloat(displayedCommentary[index - 1]?.over || '0')) : -1;
+          const isOverBoundary = index > 0 && currentOverInt !== prevOverInt && currentOverInt > 0;
+          
+          // Banner ad BEFORE first ball, and at every over boundary (start/end of over)
           const showBannerBefore = index === 0;
-          const showBannerAfter = (index + 1) % 6 === 0;
+          const showBannerAtOverChange = isOverBoundary;
           
           // Fix: Only show over/ball circle if it's an actual delivery (has valid over number)
           const isActualDelivery = item.over && item.over !== '0' && item.over !== '' && /\d/.test(item.over);
@@ -186,6 +214,13 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
           return (
             <View key={index}>
+              {/* Banner at over boundary (between overs) */}
+              {showBannerAtOverChange && BannerAdComponent && (
+                <View style={styles.bannerAdContainer}>
+                  <BannerAdComponent />
+                </View>
+              )}
+
               {/* Banner BEFORE first ball */}
               {showBannerBefore && BannerAdComponent && (
                 <View style={styles.bannerAdContainer}>
@@ -228,13 +263,6 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                   </TouchableOpacity>
                 )}
               </View>
-
-              {/* Banner AFTER every complete over (6 balls) */}
-              {showBannerAfter && BannerAdComponent && (
-                <View style={styles.bannerAdContainer}>
-                  <BannerAdComponent />
-                </View>
-              )}
             </View>
           );
         })}
@@ -355,10 +383,10 @@ const styles = StyleSheet.create({
   commentaryText: { fontSize: 14, lineHeight: 20, color: '#333', marginBottom: 4 },
   speakButton: { padding: 4, justifyContent: 'center' },
   bannerAdContainer: { 
-    minHeight: 50, 
+    minHeight: 260, 
     alignItems: 'center', 
     justifyContent: 'center',
-    marginVertical: 10,
+    marginVertical: 12,
     width: '100%',
   },
   actionContainer: { paddingVertical: 12, alignItems: 'center' },
@@ -396,6 +424,21 @@ const styles = StyleSheet.create({
   },
   countContainer: { paddingVertical: 12, alignItems: 'center' },
   countText: { fontSize: 12, color: '#999', fontStyle: 'italic' },
+  analysisCard: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 152, 0, 0.08)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
+  },
+  analysisText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#333',
+  },
 });
 
 export default CommentarySection;

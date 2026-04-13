@@ -28,7 +28,7 @@ import {
   hideFloatingWidget,
 } from '../../src/services/FloatingWidgetService';
 
-const AUTO_REFRESH = 60000; // 60 seconds refresh
+const AUTO_REFRESH = 50000; // 50 seconds refresh (saves API key call limits)
 const MATCH_CACHE_FLUSH = 1800000; // 30 minutes
 
 // Format over summary with wickets in RED, 6 in Purple, 4 in Green
@@ -203,6 +203,10 @@ export default function MatchDetail() {
   const [nativeOverlayActive, setNativeOverlayActive] = useState(false);
   const [hasOverlayPermission, setHasOverlayPermission] = useState(false);
 
+  // Auto-scroll ref for commentary updates
+  const mainScrollRef = useRef<ScrollView>(null);
+  const prevCommCountRef = useRef<number>(0);
+
   // Click counter for interstitial (Logic B)
   const [clicks, setClicks] = useState(0);
   const [clickTarget] = useState(Math.floor(Math.random() * 6) + 10);
@@ -309,16 +313,8 @@ export default function MatchDetail() {
     // Initial load
     loadMatch();
     
-    // 60-second refresh with state cleanup
+    // 50-second auto-refresh for live commentary updates
     refreshIntervalRef.current = setInterval(() => {
-      // Clear previous match state before update to prevent memory bloat
-      setMatch(prevMatch => {
-        if (prevMatch) {
-          // Keep minimal data, clear commentary cache
-          return { ...prevMatch, commentary: [] };
-        }
-        return prevMatch;
-      });
       loadMatch();
     }, AUTO_REFRESH);
 
@@ -365,8 +361,14 @@ export default function MatchDetail() {
         }
         setMatch(data);
         // Initialize commentary pagination
-        setAllCommentary(data.commentary || []);
+        const newComm = data.commentary || [];
+        setAllCommentary(newComm);
         setNextTimestamp(data.commentaryNextTimestamp);
+        // Auto-scroll to top when new commentary arrives (live matches)
+        if (newComm.length > 0 && newComm.length !== prevCommCountRef.current && (data.status === 'live' || data.status === 'recent')) {
+          prevCommCountRef.current = newComm.length;
+          setTimeout(() => mainScrollRef.current?.scrollTo({ y: 0, animated: true }), 300);
+        }
         setError(false);
         setRetryCount(0);
       } else if (retryCount < 3) {
@@ -494,7 +496,7 @@ export default function MatchDetail() {
         {/* Emotional animations overlay - 4, 6, Out, Wide */}
         <MatchMoodMeter event={moodEvent} />
 
-      <ScrollView stickyHeaderIndices={[0]}>
+      <ScrollView ref={mainScrollRef} stickyHeaderIndices={[0]}>
         {/* Sticky Score Header */}
         <View style={styles.scoreHeader}>
           <View style={styles.headerRow}>
