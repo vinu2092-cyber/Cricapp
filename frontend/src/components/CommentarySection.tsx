@@ -21,6 +21,9 @@ interface CommentarySectionProps {
   matchId?: string;
   isLive?: boolean;
   matchStatus?: 'live' | 'recent' | 'upcoming';
+  onLoadMore?: () => Promise<void>;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
 }
 
 const CommentarySection: React.FC<CommentarySectionProps> = ({
@@ -28,11 +31,12 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   matchId,
   isLive = false,
   matchStatus,
+  onLoadMore,
+  hasMore = false,
+  isLoadingMore = false,
 }) => {
   const [language, setLanguage] = useState<Language>('english');
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
-  const [displayCount, setDisplayCount] = useState(10);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const { isPro } = usePro();
   const { BannerAdComponent } = useAdMob();
@@ -51,18 +55,6 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       });
     } catch {
       setSpeakingIndex(null);
-    }
-  };
-
-  const handleLoadMore = () => {
-    const remaining = commentary.length - displayCount;
-    if (remaining > 0) {
-      // Still have local items to show
-      setIsLoadingMore(true);
-      setTimeout(() => {
-        setDisplayCount((prev) => Math.min(prev + 10, commentary.length));
-        setIsLoadingMore(false);
-      }, 300);
     }
   };
 
@@ -116,8 +108,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     }
   };
 
-  const displayedCommentary = commentary.slice(0, displayCount);
-  const hasMoreLocal = displayCount < commentary.length;
+  const displayedCommentary = commentary;
 
   return (
     <View style={styles.container}>
@@ -248,28 +239,22 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           );
         })}
 
-        {/* Load More - Direct to external with confirmation */}
-        {hasMoreLocal ? (
+        {/* Load More - Fetch older commentary from API */}
+        {hasMore && onLoadMore ? (
           <View style={styles.actionContainer}>
             <TouchableOpacity
               style={styles.loadMoreButton}
-              onPress={() => {
-                if (matchId) {
-                  Alert.alert(
-                    'External Link',
-                    'You will be redirected to an external website. Do you want to continue?',
-                    [
-                      { text: 'No', style: 'cancel' },
-                      { text: 'Yes', onPress: () => Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`) },
-                    ]
-                  );
-                }
-              }}
+              onPress={onLoadMore}
+              disabled={isLoadingMore}
               data-testid="load-more-commentary"
             >
-              <Ionicons name="open-outline" size={20} color="#4CAF50" />
+              {isLoadingMore ? (
+                <ActivityIndicator size="small" color="#4CAF50" />
+              ) : (
+                <Ionicons name="chevron-down-outline" size={20} color="#4CAF50" />
+              )}
               <Text style={styles.loadMoreText}>
-                Load More ({commentary.length - displayCount} remaining)
+                {isLoadingMore ? 'Loading...' : 'Load More Commentary'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -287,15 +272,15 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             <Ionicons name="open-outline" size={16} color="#FFF" />
           </TouchableOpacity>
           <Text style={styles.infoText}>
-            {hasMoreLocal
-              ? 'Want more? Tap above to see complete ball-by-ball coverage'
+            {hasMore
+              ? 'Tap "Load More" for older commentary or view full coverage on the web'
               : 'All loaded commentary shown. Tap above for full live coverage on the web'}
           </Text>
         </View>
 
         <View style={styles.countContainer}>
           <Text style={styles.countText}>
-            {displayCount} of {commentary.length} commentary items
+            {commentary.length} commentary items loaded
           </Text>
         </View>
       </ScrollView>

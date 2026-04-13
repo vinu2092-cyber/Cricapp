@@ -46,6 +46,8 @@ export interface Match {
   batsmen?: Batsman[];
   oSummary?: string; // Over summary like "1 4 W 0 2 6 | 0 1 ..."
   currentOver?: number;
+  // Pagination: timestamp for loading older commentary
+  commentaryNextTimestamp?: number;
 }
 
 export type MatchCategory = 'All' | 'International' | 'League' | 'Domestic' | 'Women';

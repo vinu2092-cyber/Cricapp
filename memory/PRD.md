@@ -1,55 +1,52 @@
-# CricApp - PRD v1.0.5
+# CricApp - PRD & Progress
 
-## App Version: 1.0.5 (versionCode: 5)
+## Project Overview
+- **Project**: CricApp (Android Native - React Native/Expo)
+- **Repository**: github.com/vinu2092-cyber/Cricapp (PRIVATE)
+- **Status**: Live on Google Play Store (Closed Testing)
+- **Package**: com.cricapp.live
+- **Current Version**: 1.0.5 (versionCode 5)
 
-## All Implementations
+## Architecture
+- React Native + Expo (managed workflow with prebuild)
+- Firebase (FCM push notifications, google-services.json)
+- AdMob (Unity Ads mediation)
+- GitHub Actions CI/CD (build-android.yml)
+- Release signing via release-keystore.jks (PKCS12, Base64 in GitHub Secrets)
+- Cricket APIs: cricbuzz-cricket, free-cricbuzz-cricket, cricket-live-data (RapidAPI)
 
-### Session 1-2: Firebase + Fallback + Provider Factory
-- Firebase fetches api_key, api_host, current_provider from Firestore
-- Provider Factory Pattern for 3 providers (cricbuzz-cricket, free-cricbuzz-cricket, cricket-live-data)
-- Fallback: Firebase (5s) -> User key -> Random rotation of cleaned keys on HOST_1
-- Firebase key double-try (HOST_2 -> HOST_1 fallback)
-- API keys cleaned: removed NOT_SUBSCRIBED, kept QUOTA_EXCEEDED
+## What's Been Implemented
 
-### Session 3: Scorecard + Banner Ad + Push Notifications
-- Scorecard batting/DNB fix with "Yet to Bat" / "Did Not Bat" section
-- Banner Ad sizing fix (exact screen width, no padding)
-- Push notifications for International + League matches with deep linking
-- Match reminder channel with MAX importance
+### Session 1 — Build Fix (Jan 2026)
+1. **`scripts/patch-signing.py`** — Fixed broken regex that only matched inner `debug {}` brace, causing Gradle syntax error at line 140. Replaced with balanced-brace counting algorithm.
+2. **`build-android.yml`** — Replaced `echo | base64 -d` with robust Python-based keystore decode to fix "Tag number over 30" corruption error.
+3. **`scripts/patch-signing.py`** — Added `storeType "PKCS12"` since keystore is PKCS12 format.
+4. **GitHub Secret `RELEASE_KEYSTORE_B64`** — Updated via API with correct base64.
+5. **GitHub Secret `FIREBASE_SERVICE_ACCOUNT_B64`** — Rotated after Google disabled exposed key. New key ID: `5e60a08870...`
+6. **Version bump** — v1.0.4 → v1.0.5 across app.json, build.gradle, workflow.
 
-### Session 4: FCM + Inbox (Current)
-**Task 1: FCM & Admin Broadcast**
-- Firebase Admin SDK initialized with service account JSON on backend
-- POST /api/fcm/subscribe - subscribes device token to 'all_users' topic
-- POST /api/fcm/broadcast - sends admin broadcast to all subscribers
-- Frontend auto-subscribes to 'all_users' topic on first app launch
-- Deep linking: admin broadcast notifications -> Inbox page
+### Session 1 — Commentary Pagination Feature
+7. **`api.ts`** — Added `fetchMoreCommentary(matchId, timestamp)` for paginated commentary loading via Cricbuzz `?timestamp=` param.
+8. **`api.ts`** — Added `queryParams` support to `tryApiCall` and `fetchData`.
+9. **`api.ts`** — Added `extractCommTimestamp()` helper to get pagination cursor from API response.
+10. **`types/match.ts`** — Added `commentaryNextTimestamp?: number` field.
+11. **`CommentarySection.tsx`** — Replaced external cricbuzz redirect with in-app "Load More" that fetches older commentary from API. Works for both live and recent matches.
+12. **`app/match/[id].tsx`** — Added pagination state management (`allCommentary`, `nextTimestamp`, `loadingMoreComm`) and `handleLoadMoreCommentary` callback.
 
-**Task 2: Inbox Page**
-- Header icon: chatbubble-ellipses-outline with dynamic red badge (unread count)
-- InboxContext: manages messages, unread count, read/unread status, AsyncStorage persistence
-- Inbox page: commentary-style design (transparent bg, rounded cards)
-- Each message: title, relative timestamp, body text
-- Auto marks all as read when inbox opened
-- Max 100 messages stored
+## GitHub Secrets (5 total)
+- RELEASE_KEYSTORE_B64
+- KEYSTORE_PASSWORD (CricApp2026Release)
+- KEY_ALIAS (cricapp-release)
+- KEY_PASSWORD (CricApp2026Release)
+- FIREBASE_SERVICE_ACCOUNT_B64
 
-### Files Modified/Created
-- backend/server.py - FCM endpoints + key cleanup
-- backend/firebase-service-account.json - NEW: service account
-- backend/requirements.txt - Added firebase-admin
-- frontend/app.json - Version 1.0.5, versionCode 5
-- frontend/app/_layout.tsx - InboxProvider + deep link routing
-- frontend/app/inbox.tsx - NEW: Inbox page
-- frontend/src/components/Header.tsx - Inbox icon + badge
-- frontend/src/context/InboxContext.tsx - NEW: Inbox state management
-- frontend/src/components/ScorecardSection.tsx - DNB fix
-- frontend/src/context/AdMobContext.native.tsx - Banner sizing
-- frontend/src/context/NotificationContext.tsx - Keys + League auto-track
-- frontend/src/services/NotificationService.ts - Reminder channel
-- frontend/src/services/api.ts - Key cleanup + scorecard endpoint
-- frontend/src/services/FirebaseKeyService.ts - Provider support
-- frontend/app/match/[id].tsx - Scorecard tab
+## Next Action Items
+- P0: Push via "Save to GitHub" → verify build passes
+- P0: Upload AAB to Play Store as v1.0.5
+- P1: Test commentary pagination on live & recent matches
+- P1: Delete old Firebase key from Google Cloud Console
 
 ## Backlog
-- P2: Custom notification sound file
-- P3: Firebase Cloud Functions for server-side scheduled notifications
+- P2: Fix pre-existing TypeScript category type mismatch in app/index.tsx
+- P2: Add auto-incrementing version tags in workflow
+- P2: Update Node.js 20 actions to remove deprecation warnings

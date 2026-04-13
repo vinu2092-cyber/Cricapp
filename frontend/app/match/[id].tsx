@@ -7,8 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import { fetchMatchById, openExternalScorecard } from '../../src/services/api';
-import { Match } from '../../src/types/match';
+import { fetchMatchById, fetchMoreCommentary, openExternalScorecard } from '../../src/services/api';
+import { Match, Commentary } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
 import LiveIndicator, { MatchStatusBadge } from '../../src/components/LiveIndicator';
 import CricketField from '../../src/components/CricketField';
@@ -180,6 +180,11 @@ export default function MatchDetail() {
   const [error, setError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [showOverlay, setShowOverlay] = useState(false);
+
+  // Commentary pagination state
+  const [allCommentary, setAllCommentary] = useState<Commentary[]>([]);
+  const [nextTimestamp, setNextTimestamp] = useState<number | undefined>(undefined);
+  const [loadingMoreComm, setLoadingMoreComm] = useState(false);
 
   // Content tab: 'commentary' or 'scorecard'
   const [activeDetailTab, setActiveDetailTab] = useState<'commentary' | 'scorecard'>('commentary');
@@ -359,6 +364,9 @@ export default function MatchDetail() {
           prevCommRef.current = latestKey;
         }
         setMatch(data);
+        // Initialize commentary pagination
+        setAllCommentary(data.commentary || []);
+        setNextTimestamp(data.commentaryNextTimestamp);
         setError(false);
         setRetryCount(0);
       } else if (retryCount < 3) {
@@ -378,6 +386,35 @@ export default function MatchDetail() {
       setLoading(false);
     }
   }, [id, retryCount]);
+
+  // Handle "Load More" commentary pagination
+  const handleLoadMoreCommentary = useCallback(async () => {
+    if (!id || !nextTimestamp || loadingMoreComm) return;
+    setLoadingMoreComm(true);
+    try {
+      const result = await fetchMoreCommentary(id, nextTimestamp);
+      if (result.commentary.length > 0) {
+        // Deduplicate: filter out items already in allCommentary by id
+        const existingIds = new Set(allCommentary.map(c => c.id));
+        const newItems = result.commentary.filter(c => !existingIds.has(c.id));
+        if (newItems.length > 0) {
+          const merged = [...allCommentary, ...newItems];
+          setAllCommentary(merged);
+          // Also update match object so other components see it
+          setMatch(prev => prev ? { ...prev, commentary: merged } : prev);
+        }
+        setNextTimestamp(result.nextTimestamp);
+      } else {
+        // No more data
+        setNextTimestamp(undefined);
+      }
+    } catch {
+      console.log('[Commentary] Load more failed');
+    } finally {
+      setLoadingMoreComm(false);
+    }
+  }, [id, nextTimestamp, loadingMoreComm, allCommentary]);
+
 
   // Logic B: Interstitial on random clicks (10-15 range for non-pro users)
   const handleInteraction = () => {
@@ -734,10 +771,13 @@ export default function MatchDetail() {
             {match.commentary && match.commentary.length > 0 ? (
               <React.Suspense fallback={<View style={styles.noComm}><ActivityIndicator color="#4CAF50" /></View>}>
                 <CommentarySection
-                  commentary={match.commentary}
+                  commentary={allCommentary.length > 0 ? allCommentary : (match.commentary || [])}
                   matchId={id}
                   isLive={match.status === 'live'}
                   matchStatus={match.status as 'live' | 'recent' | 'upcoming'}
+                  onLoadMore={handleLoadMoreCommentary}
+                  hasMore={!!nextTimestamp}
+                  isLoadingMore={loadingMoreComm}
                 />
               </React.Suspense>
             ) : (

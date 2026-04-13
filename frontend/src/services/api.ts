@@ -171,9 +171,10 @@ function shuffleArray<T>(arr: T[]): T[] {
 // ============ API CALL HELPERS ============
 
 // Try a single API call with given key and host
-async function tryApiCall(endpoint: string, apiKey: string, apiHost: string): Promise<any> {
+async function tryApiCall(endpoint: string, apiKey: string, apiHost: string, params?: Record<string, string>): Promise<any> {
   const res = await axios.get(`https://${apiHost}${endpoint}`, {
     headers: { 'X-RapidAPI-Key': apiKey, 'X-RapidAPI-Host': apiHost },
+    params,
     timeout: 12000,
   });
   if (res.data && !res.data.message) return res.data;
@@ -189,7 +190,8 @@ async function tryApiCall(endpoint: string, apiKey: string, apiHost: string): Pr
 
 async function fetchData(
   endpointType: 'live' | 'recent' | 'upcoming' | 'detail' | 'comm' | 'scard',
-  matchId?: string
+  matchId?: string,
+  queryParams?: Record<string, string>
 ): Promise<{ data: any; providerName: string } | null> {
 
   // ===== PRIORITY 1: Firebase Key (wait up to 5 seconds) =====
@@ -206,7 +208,7 @@ async function fetchData(
 
     // Try 1: Firebase key with its configured host
     try {
-      const result = await tryApiCall(endpoint, fb.apiKey, fb.apiHost);
+      const result = await tryApiCall(endpoint, fb.apiKey, fb.apiHost, queryParams);
       if (result) {
         console.log(`[API] Firebase key SUCCESS (provider: ${providerName})`);
         return { data: result, providerName };
@@ -241,7 +243,7 @@ async function fetchData(
     const config = PROVIDERS[DEFAULT_PROVIDER];
     const endpoint = getEndpointForType(config, endpointType, matchId);
     try {
-      const result = await tryApiCall(endpoint, userKey, HOST_1);
+      const result = await tryApiCall(endpoint, userKey, HOST_1, queryParams);
       if (result) {
         console.log('[API] User custom key SUCCESS');
         return { data: result, providerName: DEFAULT_PROVIDER };
@@ -264,7 +266,7 @@ async function fetchData(
 
     // Try with Host 1 (cricbuzz-cricket.p.rapidapi.com) - primary
     try {
-      const result = await tryApiCall(fallbackEndpoint, key, HOST_1);
+      const result = await tryApiCall(fallbackEndpoint, key, HOST_1, queryParams);
       if (result) {
         console.log(`[API] Hardcoded key #${i} SUCCESS on HOST_1`);
         return { data: result, providerName: 'cricbuzz-cricket' };
@@ -761,6 +763,7 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
 
   let match: Match | null = null;
   let commentary: Commentary[] = [];
+  let commRawData: any = null;
 
   // 1. Get match info
   try {
@@ -777,6 +780,7 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
     if (commResult && !commResult.data.message) {
       const config = getProviderConfig(commResult.providerName);
       commentary = config.parseCommentary(commResult.data, id);
+      commRawData = commResult.data;
 
       // Cricbuzz-specific: extract rich data from comm response (team names, scores, batsmen, oSummary)
       if (config.isCricbuzzLike) {
@@ -927,6 +931,8 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
 
   if (match) {
     match.commentary = commentary;
+    // Extract pagination timestamp from comm response for loading older commentary
+    match.commentaryNextTimestamp = extractCommTimestamp(commRawData);
     // Cache the match data (30 second TTL for live updates)
     await setCache(`match_${id}`, match);
   }
@@ -946,6 +952,47 @@ export async function fetchScorecard(matchId: string): Promise<any> {
   // Cache scorecard for 60 seconds
   await setCache(`scard_${matchId}`, data);
   return data;
+}
+
+// ============ COMMENTARY PAGINATION ============
+// Extract the oldest timestamp from a comm API response for pagination
+function extractCommTimestamp(data: any): number | undefined {
+  if (!data) return undefined;
+  const cw = data.comwrapper;
+  if (Array.isArray(cw) && cw.length > 0) {
+    // The last item in comwrapper is the oldest ball in this batch
+    const last = cw[cw.length - 1];
+    const ts = last?.timestamp ?? last?.commentary?.timestamp;
+    if (ts) return Number(ts);
+  }
+  // Fallback: check commentaryList
+  if (Array.isArray(data.commentaryList) && data.commentaryList.length > 0) {
+    const last = data.commentaryList[data.commentaryList.length - 1];
+    const ts = last?.timestamp;
+    if (ts) return Number(ts);
+  }
+  return undefined;
+}
+
+// Fetch older commentary using timestamp pagination (for "Load More")
+export async function fetchMoreCommentary(
+  matchId: string,
+  timestamp: number
+): Promise<{ commentary: Commentary[]; nextTimestamp?: number }> {
+  try {
+    const result = await fetchData('comm', matchId, { timestamp: String(timestamp) });
+    if (!result || !result.data) return { commentary: [] };
+
+    const config = getProviderConfig(result.providerName);
+    const commentary = config.parseCommentary(result.data, matchId);
+    const nextTimestamp = extractCommTimestamp(result.data);
+
+    console.log(`[API] Loaded ${commentary.length} more commentary items (next ts: ${nextTimestamp})`);
+    return { commentary, nextTimestamp };
+  } catch (e: any) {
+    console.log(`[API] fetchMoreCommentary failed: ${e?.message}`);
+    return { commentary: [] };
+  }
 }
 
 
