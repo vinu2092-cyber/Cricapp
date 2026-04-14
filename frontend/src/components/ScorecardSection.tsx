@@ -16,6 +16,14 @@ function didBat(bat: any): boolean {
   return true;
 }
 
+// Alternating transparent shades for premium look
+const ROW_COLORS = [
+  'rgba(76, 175, 80, 0.06)',   // Soft transparent green
+  'rgba(244, 67, 54, 0.05)',   // Soft transparent reddish
+  'rgba(255, 193, 7, 0.06)',   // Soft transparent yellow
+];
+const getRowBg = (idx: number) => ROW_COLORS[idx % 3];
+
 export default function ScorecardSection({ matchId, isLive }: Props) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +126,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
           <Text style={s.headerCell}>SR</Text>
         </View>
         {battedPlayers.map((bat: any, idx: number) => (
-          <View key={idx} style={[s.dataRow, idx % 2 === 0 && s.dataRowAlt]}>
+          <View key={idx} style={[s.dataRow, { backgroundColor: getRowBg(idx) }]}>
             <View style={s.nameCol}>
               <Text style={s.batName}>
                 {bat.name || bat.nickname}
@@ -183,7 +191,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
           <Text style={s.headerCell}>ECO</Text>
         </View>
         {bowlers.map((bowl: any, idx: number) => (
-          <View key={idx} style={[s.dataRow, idx % 2 === 0 && s.dataRowAlt]}>
+          <View key={idx} style={[s.dataRow, { backgroundColor: getRowBg(idx) }]}>
             <View style={s.nameCol}>
               <Text style={s.bowlName}>
                 {bowl.name || bowl.nickname}
@@ -220,7 +228,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
         <View style={s.section}>
           <Text style={s.sectionTitle}>Partnerships</Text>
           {partnershipData.map((p: any, idx: number) => (
-            <View key={idx} style={[s.partnerRow, idx % 2 === 0 && s.dataRowAlt]}>
+            <View key={idx} style={[s.partnerRow, { backgroundColor: getRowBg(idx) }]}>
               <View style={s.partnerInfo}>
                 <Text style={s.partnerNames} numberOfLines={1}>
                   {p.bat1name} & {p.bat2name}

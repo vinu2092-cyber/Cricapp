@@ -2,7 +2,7 @@
   "expo": {
     "name": "CricApp",
     "slug": "cric-app",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "cricapp",
@@ -34,7 +34,7 @@
       "backgroundColor": "#E4DCC4"
     },
     "android": {
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#f5f5dc"
@@ -55,7 +55,6 @@
       "expo-router",
       "expo-splash-screen",
       "./plugins/withFloatingWidget",
-      "./plugins/withUnityAdsMediation",
       [
         "expo-build-properties",
         {
@@ -63,7 +62,7 @@
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
             "minSdkVersion": 24,
-            "extraProguardRules": "-keep class com.google.android.gms.internal.consent_sdk.** { *; }\n-keep class com.unity3d.ads.** { *; }\n-keep class com.google.ads.mediation.unity.** { *; }"
+            "extraProguardRules": "-keep class com.google.android.gms.internal.consent_sdk.** { *; }"
           }
         }
       ],

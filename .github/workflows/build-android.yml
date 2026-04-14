@@ -108,14 +108,17 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.6-fix1
-          name: CricApp v1.0.6 (Bug Fix)
+          tag_name: v1.0.7
+          name: CricApp v1.0.7
           body: |
-            ## CricApp v1.0.6 (Bug Fix)
-            - Fix: Content-based stable IDs for commentary dedup
-            - Fix: \n literal rendering in commentary text
-            - Fix: Commentary buffer increased to 100 balls
-            - Fix: Displayed commentary count accuracy
+            ## CricApp v1.0.7
+            - Interstitial ad threshold increased to 40-60 clicks
+            - Anchored Adaptive Banners (replaced fixed banners)
+            - Banner ad every 6 balls in commentary
+            - Removed Unity Ads mediation (AdMob only)
+            - Commentary font +30%, justified text, alternating row colors
+            - Scorecard alternating row colors (premium look)
+            - Header: 'Unlock Features' → 'Unlock' for smaller screens
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab

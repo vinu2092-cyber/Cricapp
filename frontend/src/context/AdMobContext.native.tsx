@@ -44,7 +44,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
   const [isRewardedAdReady, setIsRewardedAdReady] = useState(false);
   const [clicks, setClicks] = useState(0);
-  const [clickTarget] = useState(Math.floor(Math.random() * 6) + 10);
+  const [clickTarget] = useState(Math.floor(Math.random() * 21) + 40);
 
   // Interstitial refs (keep existing working pattern)
   const interstitialRef = useRef<InterstitialAd | null>(null);
@@ -436,7 +436,6 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const BannerAdComponent: React.FC = () => {
     try {
-      // Use screen width for adaptive banner sizing - fixes "ad not matching" container issue
       const { width: screenWidth } = require('react-native').Dimensions.get('window');
       return (
         <View style={{
@@ -448,7 +447,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }}>
           <BannerAd
             unitId={AD_IDS.banner}
-            size={BannerAdSize.MEDIUM_RECTANGLE}
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
             requestOptions={{ requestNonPersonalizedAdsOnly: false }}
             onAdFailedToLoad={(error) => console.log('[AdMob] Banner failed:', error)}
           />

@@ -108,6 +108,16 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     }
   };
 
+  // Alternating row background colors for premium look
+  const getAlternatingBg = (index: number): string => {
+    const colors = [
+      'rgba(76, 175, 80, 0.06)',   // Soft transparent green
+      'rgba(244, 67, 54, 0.05)',   // Soft transparent reddish
+      'rgba(255, 193, 7, 0.06)',   // Soft transparent yellow
+    ];
+    return colors[index % 3];
+  };
+
   const displayedCommentary = commentary;
 
   return (
@@ -194,14 +204,9 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         
         {/* Ball-by-ball commentary for live/recent matches */}
         {matchStatus !== 'upcoming' && displayedCommentary.map((item, index) => {
-          // Detect actual over boundary: show banner when over number changes (integer part)
-          const currentOverInt = Math.floor(parseFloat(item.over || '0'));
-          const prevOverInt = index > 0 ? Math.floor(parseFloat(displayedCommentary[index - 1]?.over || '0')) : -1;
-          const isOverBoundary = index > 0 && currentOverInt !== prevOverInt && currentOverInt > 0;
-          
-          // Banner ad BEFORE first ball, and at every over boundary (start/end of over)
+          // Banner ad every 6 balls within the commentary list
           const showBannerBefore = index === 0;
-          const showBannerAtOverChange = isOverBoundary;
+          const showBannerEvery6 = index > 0 && index % 6 === 0;
           
           // Fix: Only show over/ball circle if it's an actual delivery (has valid over number)
           const isActualDelivery = item.over && item.over !== '0' && item.over !== '' && /\d/.test(item.over);
@@ -214,8 +219,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
           return (
             <View key={index}>
-              {/* Banner at over boundary (between overs) */}
-              {showBannerAtOverChange && BannerAdComponent && (
+              {/* Banner every 6 balls */}
+              {showBannerEvery6 && BannerAdComponent && (
                 <View style={styles.bannerAdContainer}>
                   <BannerAdComponent />
                 </View>
@@ -228,7 +233,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                 </View>
               )}
               
-              <View style={styles.commentaryItem}>
+              <View style={[styles.commentaryItem, { backgroundColor: getAlternatingBg(index) }]}>
                 {/* Only show over ball circle for actual deliveries */}
                 {isActualDelivery ? (
                   <View style={styles.overBall}>
@@ -338,7 +343,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0, 0, 0, 0.08)',
   },
   titleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  title: { fontSize: 16, fontWeight: '700', color: '#333' },
+  title: { fontSize: 18, fontWeight: '700', color: '#333' },
   languageToggle: {
     flexDirection: 'row',
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
@@ -352,15 +357,18 @@ const styles = StyleSheet.create({
   commentaryList: { flex: 1 },
   commentaryItem: {
     flexDirection: 'row',
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.05)',
     gap: 12,
+    borderRadius: 6,
+    marginVertical: 1,
   },
   overBall: { width: 50, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 4 },
   overBallPlaceholder: { width: 50 }, // Empty placeholder when no over/ball data
   overText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#4CAF50',
     backgroundColor: 'rgba(76, 175, 80, 0.1)',
@@ -379,14 +387,14 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: 6,
   },
-  eventText: { fontSize: 10, fontWeight: '700', color: '#FFF', letterSpacing: 0.5 },
-  commentaryText: { fontSize: 14, lineHeight: 20, color: '#333', marginBottom: 4 },
+  eventText: { fontSize: 13, fontWeight: '700', color: '#FFF', letterSpacing: 0.5 },
+  commentaryText: { fontSize: 18, lineHeight: 26, color: '#333', marginBottom: 4, textAlign: 'justify' as any },
   speakButton: { padding: 4, justifyContent: 'center' },
   bannerAdContainer: { 
-    minHeight: 260, 
+    minHeight: 80, 
     alignItems: 'center', 
     justifyContent: 'center',
-    marginVertical: 12,
+    marginVertical: 8,
     width: '100%',
   },
   actionContainer: { paddingVertical: 12, alignItems: 'center' },
@@ -435,9 +443,10 @@ const styles = StyleSheet.create({
   },
   analysisText: {
     flex: 1,
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 18,
+    lineHeight: 28,
     color: '#333',
+    textAlign: 'justify',
   },
 });
 
