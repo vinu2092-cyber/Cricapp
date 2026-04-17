@@ -1,0 +1,165 @@
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import { Platform } from 'react-native';
+
+// Configure how notifications appear when app is in foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+export async function setupNotificationChannel() {
+  if (Platform.OS === 'android') {
+    // Main match alerts channel
+    await Notifications.setNotificationChannelAsync('match-alerts', {
+      name: 'Match Alerts',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#4CAF50',
+      sound: 'default',
+      description: 'Wicket, boundary, and milestone alerts',
+    });
+
+    // Score updates channel (lower priority)
+    await Notifications.setNotificationChannelAsync('score-updates', {
+      name: 'Score Updates',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      description: 'Periodic score updates for tracked matches',
+    });
+
+    // Match reminder channel (high priority with distinct sound)
+    await Notifications.setNotificationChannelAsync('match-reminders', {
+      name: 'Match Reminders',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 300, 200, 300, 200, 300],
+      lightColor: '#FFD700',
+      sound: 'default',
+      description: 'Upcoming match reminders (10 min before)',
+      enableVibrate: true,
+      showBadge: true,
+    });
+  }
+}
+
+export async function requestNotificationPermission(): Promise<boolean> {
+  if (!Device.isDevice) {
+    console.warn('Notifications only work on physical devices');
+    return false;
+  }
+
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  if (existing === 'granted') return true;
+
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
+}
+
+export type AlertType = 'wicket' | 'four' | 'six' | 'over-end' | 'milestone' | 'result';
+
+interface MatchAlertPayload {
+  matchId: string;
+  type: AlertType;
+  title: string;
+  body: string;
+  team1Short: string;
+  team2Short: string;
+  score?: string;
+}
+
+const ALERT_EMOJI: Record<AlertType, string> = {
+  wicket: 'W',
+  four: '4',
+  six: '6',
+  'over-end': '',
+  milestone: '50/100',
+  result: 'RESULT',
+};
+
+export async function sendMatchAlert(payload: MatchAlertPayload) {
+  const tag = ALERT_EMOJI[payload.type] || '';
+
+  // Custom vibration patterns per event type
+  const vibrationPattern = VIBRATION_PATTERNS[payload.type] || [0, 250];
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: `${tag ? `[${tag}] ` : ''}${payload.title}`,
+      body: payload.body,
+      data: { matchId: payload.matchId, type: payload.type },
+      sound: 'default',
+      vibrate: vibrationPattern,
+      ...(Platform.OS === 'android' && {
+        channelId: payload.type === 'result' ? 'score-updates' : 'match-alerts',
+        priority: payload.type === 'wicket' || payload.type === 'six' ? 'max' : 'high',
+      }),
+    },
+    trigger: null,
+  });
+}
+
+// Custom vibration patterns: [wait, vibrate, wait, vibrate, ...]
+const VIBRATION_PATTERNS: Record<AlertType, number[]> = {
+  wicket: [0, 500, 200, 500, 200, 300],     // Long-pause-long-pause-short (dramatic)
+  four: [0, 200, 100, 200],                  // Quick double tap
+  six: [0, 300, 150, 300, 150, 300, 150, 300], // Rapid celebration pattern
+  'over-end': [0, 150],                      // Single gentle buzz
+  milestone: [0, 250, 100, 250, 100, 250],   // Triple pulse
+  result: [0, 400, 200, 400, 200, 600],      // Grand finale pattern
+};
+
+export async function cancelAllMatchAlerts() {
+  await Notifications.cancelAllScheduledNotificationsAsync();
+}
+
+// Schedule a notification for match start (10 minutes before)
+export async function scheduleMatchReminder(
+  matchId: string,
+  team1: string,
+  team2: string,
+  matchStartTime: Date,
+  seriesName: string
+) {
+  const reminderTime = new Date(matchStartTime.getTime() - 10 * 60 * 1000); // 10 min before
+  const now = new Date();
+  
+  if (reminderTime <= now) {
+    // Match already started or about to start, skip scheduling
+    return;
+  }
+
+  const identifier = `match-reminder-${matchId}`;
+  
+  // Cancel existing reminder for this match if any
+  await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
+
+  // Format match time for display
+  const timeStr = matchStartTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const dateStr = matchStartTime.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
+  await Notifications.scheduleNotificationAsync({
+    identifier,
+    content: {
+      title: `${team1} vs ${team2} - Starting Soon!`,
+      body: `${seriesName}\nMatch starts at ${timeStr}, ${dateStr}\nTap to view match details`,
+      data: { matchId, type: 'match-reminder', screen: 'match-detail' },
+      sound: 'default',
+      vibrate: [0, 300, 200, 300, 200, 300],
+      ...(Platform.OS === 'android' && {
+        channelId: 'match-reminders',
+        priority: 'max',
+      }),
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: reminderTime,
+    },
+  });
+}
+
+// Cancel match reminder
+export async function cancelMatchReminder(matchId: string) {
+  await Notifications.cancelScheduledNotificationAsync(`match-reminder-${matchId}`).catch(() => {});
+}

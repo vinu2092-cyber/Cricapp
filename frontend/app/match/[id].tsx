@@ -1,0 +1,1158 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  ActivityIndicator, Dimensions, Modal, Alert, Linking, Platform, ImageBackground, AppState
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import * as Speech from 'expo-speech';
+import { fetchMatchById, fetchMoreCommentary, openExternalScorecard, fetchMatchInfo } from '../../src/services/api';
+import { Match, Commentary } from '../../src/types/match';
+import ErrorScreen from '../../src/components/ErrorScreen';
+import LiveIndicator, { MatchStatusBadge } from '../../src/components/LiveIndicator';
+import CricketField from '../../src/components/CricketField';
+import CommentarySection from '../../src/components/CommentarySection';
+import ScorecardSection from '../../src/components/ScorecardSection';
+import SquadsSection from '../../src/components/SquadsSection';
+import FloatingScoreboard from '../../src/components/FloatingScoreboard';
+import AppBackground from '../../src/components/AppBackground';
+import MatchMoodMeter from '../../src/components/MatchMoodMeter';
+import { saveCommentary, loadCommentary, mergeCommentary, shouldPersistCommentary } from '../../src/services/CommentaryStorage';
+import { usePro } from '../../src/context/ProContext';
+import { useAdMob } from '../../src/context/AdMobContext.native';
+import { useNotifications } from '../../src/context/NotificationContext';
+import {
+  isFloatingWidgetAvailable,
+  checkOverlayPermission,
+  requestOverlayPermission,
+  showFloatingWidget,
+  updateFloatingWidget,
+  hideFloatingWidget,
+} from '../../src/services/FloatingWidgetService';
+
+const AUTO_REFRESH = 30000; // 30 seconds refresh for live commentary
+const MATCH_CACHE_FLUSH = 1800000; // 30 minutes
+
+// Format over summary with wickets in RED, 6 in Purple, 4 in Green
+const formatOverSummary = (summary: string, currentOver?: number): React.ReactNode[] => {
+  const elements: React.ReactNode[] = [];
+  
+  // Cricbuzz recentOvsStr format: "23.6 1, 24.1 4, 24.2 W, 24.3 4" (ball-number result pairs)
+  // Also handle simple format: "1 4 W 0 2 6" or "1|4|W|0|2|6"
+  // IMPORTANT: In Cricbuzz recentOvsStr, "W" means WIDE (not wicket!)
+  // Wickets are represented as "WKT", "OUT", or "WICKET"
+  
+  let balls: string[] = [];
+  
+  if (summary.includes(',')) {
+    // Cricbuzz comma-separated format: "23.6 1, 24.1 4, 24.2 W"
+    const entries = summary.split(',').map(s => s.trim()).filter(Boolean);
+    let prevOver = -1;
+    
+    for (const entry of entries) {
+      const parts = entry.split(/\s+/);
+      if (parts.length >= 2) {
+        const ballNum = parts[0]; // e.g. "24.3"
+        const result = parts.slice(1).join(' '); // e.g. "4" or "W" or "no run"
+        
+        // Detect over change for separator
+        const overNum = Math.floor(parseFloat(ballNum) || 0);
+        if (prevOver >= 0 && overNum !== prevOver) {
+          balls.push('|'); // Over separator
+        }
+        prevOver = overNum;
+        
+        // Normalize the result
+        const r = result.toUpperCase().trim();
+        if (r.includes('WICKET') || r === 'WKT' || r.includes('OUT') || r === 'OW') {
+          balls.push('WKT'); // Explicit wicket markers only
+        } else if (r === 'W' || r.includes('WIDE') || r === 'WD') {
+          balls.push('Wd'); // W in Cricbuzz = Wide, not wicket
+        } else if (r === '6' || r.includes('SIX')) {
+          balls.push('6');
+        } else if (r === '4' || r.includes('FOUR')) {
+          balls.push('4');
+        } else if (r.includes('NO BALL') || r === 'NB') {
+          balls.push('Nb');
+        } else if (r === '0' || r.includes('NO RUN') || r === '.' || r === '•') {
+          balls.push('0');
+        } else if (/^\d+$/.test(r)) {
+          balls.push(r);
+        } else {
+          balls.push('•');
+        }
+      } else if (parts.length === 1) {
+        // Just a result without ball number
+        const val = parts[0].toUpperCase();
+        if (val === 'W') {
+          balls.push('Wd'); // W = Wide in Cricbuzz
+        } else if (val === 'WKT' || val === 'OUT' || val === 'WICKET') {
+          balls.push('WKT');
+        } else {
+          balls.push(val);
+        }
+      }
+    }
+  } else {
+    // Simple space/pipe separated format: "1 4 W 0 2 6 | 0 1"
+    // In Cricbuzz recentOvsStr: W = Wide, WKT/OUT = Wicket
+    const rawBalls = summary.split(/[\s]+/).filter(b => b.trim());
+    balls = rawBalls.map(b => {
+      const val = b.trim().toUpperCase();
+      // Convert W to Wd (wide) - Cricbuzz uses W for wide in recentOvsStr
+      if (val === 'W') return 'Wd';
+      // Keep explicit wicket markers
+      if (val === 'WKT' || val === 'OUT' || val === 'WICKET') return 'WKT';
+      return val;
+    });
+  }
+  
+  let ballCount = 0;
+  
+  balls.forEach((b, idx) => {
+    if (!b) return;
+    
+    if (b.includes('OVER')) return;
+    
+    // Handle pipe separator
+    if (b === '|') {
+      elements.push(
+        <Text key={`sep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
+          |
+        </Text>
+      );
+      return;
+    }
+    
+    // Auto-add separator every 6 balls (only for non-comma format)
+    if (!summary.includes(',') && ballCount > 0 && ballCount % 6 === 0) {
+      elements.push(
+        <Text key={`autosep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
+          |
+        </Text>
+      );
+    }
+    
+    // Style based on ball type
+    let style: any = { marginHorizontal: 4, fontSize: 15, fontWeight: '700' };
+    
+    if (b === 'WKT' || b === 'WICKET' || b === 'OUT') {
+      style = { ...style, color: '#FF0000', fontWeight: 'bold', fontSize: 16 };
+    } else if (b === '6') {
+      style = { ...style, color: '#9C27B0', fontWeight: 'bold', fontSize: 16 };
+    } else if (b === '4') {
+      style = { ...style, color: '#00E676', fontWeight: 'bold', fontSize: 16 };
+    } else if (b === 'WD' || b === 'Wd' || b === 'WIDE' || b === 'W') {
+      style = { ...style, color: '#FF9800', fontSize: 13 };
+    } else if (b === 'NB' || b === 'Nb' || b === 'NOBALL') {
+      style = { ...style, color: '#FF9800', fontSize: 13 };
+    } else if (b === '0' || b === '.' || b === '•') {
+      style = { ...style, color: '#888' };
+    } else {
+      style = { ...style, color: '#FFF' };
+    }
+    
+    // Display text
+    let displayText = b;
+    if (b === '.' || b === '•') displayText = '0';
+    if (b === 'WKT') displayText = 'W';
+    if (b === 'Wd') displayText = 'WD';
+    
+    elements.push(
+      <Text key={`ball-${idx}`} style={style}>
+        {displayText}
+      </Text>
+    );
+    
+    ballCount++;
+  });
+  
+  return elements;
+};
+
+export default function MatchDetail() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { isPro: globalIsPro, setProFromAdMob } = usePro();
+  const { trackClick, showRewardedAd, showInterstitialAd, BannerAdComponent } = useAdMob();
+  const { isTracking, toggleTracking, notificationsEnabled, enableNotifications } = useNotifications();
+
+  const [match, setMatch] = useState<Match | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [showOverlay, setShowOverlay] = useState(false);
+
+  // Commentary pagination state
+  const [allCommentary, setAllCommentary] = useState<Commentary[]>([]);
+  const [nextTimestamp, setNextTimestamp] = useState<number | undefined>(undefined);
+  const [loadingMoreComm, setLoadingMoreComm] = useState(false);
+  // Name → Cricbuzz faceImageId for rendering player photos inside event cards
+  const [playerImgMap, setPlayerImgMap] = useState<Record<string, string>>({});
+
+  // Content tab: 'commentary' or 'scorecard' or 'squads'
+  const [activeDetailTab, setActiveDetailTab] = useState<'commentary' | 'scorecard' | 'squads'>('commentary');
+
+  // Mood event for emotional animations
+  const [moodEvent, setMoodEvent] = useState<'wicket' | 'four' | 'six' | 'dot' | 'wide' | 'normal' | null>(null);
+  const prevCommRef = useRef<string | null>(null);
+
+  // Pro unlock states
+  const [tempPro, setTempPro] = useState(false);
+  const [proExpiry, setProExpiry] = useState<number | null>(null);
+  const [adsWatchedCount, setAdsWatchedCount] = useState(0);
+  const [showProModal, setShowProModal] = useState(false);
+
+  // Native floating widget states
+  const [nativeOverlayActive, setNativeOverlayActive] = useState(false);
+  const [hasOverlayPermission, setHasOverlayPermission] = useState(false);
+
+  // Auto-scroll ref for commentary updates
+  const mainScrollRef = useRef<ScrollView>(null);
+  const prevCommCountRef = useRef<number>(0);
+
+  // Click counter for interstitial (Logic B)
+  const [clicks, setClicks] = useState(0);
+  const [clickTarget] = useState(Math.floor(Math.random() * 11) + 50);
+
+  const effectiveIsPro = globalIsPro || tempPro;
+
+  // Pending overlay request - track if user was sent to settings
+  const [pendingOverlayRequest, setPendingOverlayRequest] = useState(false);
+
+  // Check overlay permission on mount and when app returns from settings
+  useEffect(() => {
+    if (isFloatingWidgetAvailable()) {
+      checkOverlayPermission().then(setHasOverlayPermission);
+    }
+  }, []);
+
+  // Listen for app state changes to detect when user returns from settings
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'active' && pendingOverlayRequest) {
+        // User came back from settings, check permission again
+        const granted = await checkOverlayPermission();
+        setHasOverlayPermission(granted);
+        setPendingOverlayRequest(false);
+        
+        if (granted && match) {
+          // Permission granted! Start the floating widget automatically
+          const scoreData = {
+            team1Name: match.teams[0]?.shortName || 'TM1',
+            team2Name: match.teams[1]?.shortName || 'TM2',
+            team1Score: match.teams[0]?.runs !== undefined 
+              ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` 
+              : '-',
+            team2Score: match.teams[1]?.runs !== undefined 
+              ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` 
+              : '-',
+            team1Overs: match.teams[0]?.overs?.toString() || '',
+            team2Overs: match.teams[1]?.overs?.toString() || '',
+            statusText: match.statusText || '',
+            commentary: match.commentary?.[0]?.english || '',
+          };
+          const success = await showFloatingWidget(scoreData);
+          if (success) {
+            setNativeOverlayActive(true);
+            Alert.alert(
+              'Floating Widget Active!',
+              'Score will now show over other apps. Minimize CricApp and check!',
+              [{ text: 'Got it!' }]
+            );
+          }
+        }
+      }
+    });
+    return () => subscription.remove();
+  }, [pendingOverlayRequest, match]);
+
+  // Update native floating widget when score changes (for Pro users with active overlay)
+  useEffect(() => {
+    if (nativeOverlayActive && effectiveIsPro && match) {
+      // Get latest commentary for voice
+      const latestCommentary = match.commentary && match.commentary.length > 0 
+        ? match.commentary[0].english 
+        : '';
+      
+      const scoreData = {
+        team1Name: match.teams[0]?.shortName || 'TM1',
+        team2Name: match.teams[1]?.shortName || 'TM2',
+        team1Score: match.teams[0]?.runs !== undefined 
+          ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` 
+          : '-',
+        team2Score: match.teams[1]?.runs !== undefined 
+          ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` 
+          : '-',
+        team1Overs: match.teams[0]?.overs?.toString() || '',
+        team2Overs: match.teams[1]?.overs?.toString() || '',
+        statusText: match.statusText || '',
+        batsmanName: '',
+        bowlerName: '',
+        commentary: latestCommentary, // Send commentary for TTS
+      };
+      updateFloatingWidget(scoreData);
+    }
+  }, [match?.teams[0]?.runs, match?.teams[1]?.runs, match?.commentary?.[0]?.english, nativeOverlayActive, effectiveIsPro]);
+
+  // 30-Min Pro Expiry (Logic D)
+  useEffect(() => {
+    if (!tempPro || !proExpiry) return;
+    const interval = setInterval(() => {
+      if (Date.now() >= proExpiry) {
+        setTempPro(false);
+        setProExpiry(null);
+        setProFromAdMob(false);
+        Alert.alert('Pro Expired', 'Watch 2 ads again to unlock Pro!');
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [tempPro, proExpiry]);
+
+  // Refs for timers - cleanup on unmount
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cacheFlushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    // Initial load
+    loadMatch();
+    loadPlayerImageMap();
+    
+    // 50-second auto-refresh for live commentary updates
+    refreshIntervalRef.current = setInterval(() => {
+      loadMatch();
+    }, AUTO_REFRESH);
+
+    // 30-minute absolute cache flush
+    cacheFlushIntervalRef.current = setInterval(() => {
+      console.log('[Memory] Match page - 30 min cache flush');
+      setMatch(null);
+      loadMatch();
+    }, MATCH_CACHE_FLUSH);
+
+    // Cleanup on unmount - kills ALL background fetching instantly
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+      if (cacheFlushIntervalRef.current) {
+        clearInterval(cacheFlushIntervalRef.current);
+        cacheFlushIntervalRef.current = null;
+      }
+      Speech.stop();
+      // Stop native overlay when leaving the page
+      if (nativeOverlayActive) {
+        hideFloatingWidget();
+      }
+    };
+  }, [id]);
+
+  // Fetch match info once, build name → Cricbuzz faceImageId map for commentary event cards.
+  // Cached 120s inside fetchMatchInfo, so this is cheap.
+  const loadPlayerImageMap = useCallback(async () => {
+    if (!id) return;
+    try {
+      const info = await fetchMatchInfo(id);
+      if (!info) return;
+      const map: Record<string, string> = {};
+      const collect = (arr: any) => {
+        if (!Array.isArray(arr)) return;
+        for (const p of arr) {
+          const name = (p?.name || p?.fullName || p?.fullname || p?.nickName || p?.playerName || '')
+            .replace(/\s*\((c|wk)\)/gi, '').toLowerCase().trim();
+          const imgId = p?.faceImageId || p?.imageId || p?.image_id || p?.faceimageid;
+          if (name && imgId) map[name] = String(imgId);
+        }
+      };
+      const addTeam = (t: any) => {
+        if (!t) return;
+        const pl = t.players;
+        if (pl && typeof pl === 'object' && !Array.isArray(pl)) {
+          collect(pl['playing XI']); collect(pl['playingXI']); collect(pl['Playing XI']);
+          collect(pl['bench']); collect(pl['Bench']);
+          collect(pl['substitutes']); collect(pl['Substitutes']);
+          collect(pl['impact players']);
+        } else if (Array.isArray(pl)) {
+          collect(pl);
+        }
+        collect(t.playerDetails); collect(t.squad); collect(t.playerDtls);
+        collect(t.bench); collect(t.substitutes);
+      };
+      addTeam(info.team1); addTeam(info.team2);
+      addTeam(info?.teams?.team1); addTeam(info?.teams?.team2);
+      addTeam(info?.matchInfo?.team1); addTeam(info?.matchInfo?.team2);
+      setPlayerImgMap(map);
+    } catch {}
+  }, [id]);
+
+  const loadMatch = useCallback(async () => {
+    if (!id) return;
+    try {
+      const data = await fetchMatchById(id);
+      if (data) {        // Detect new events for mood animations
+        if (data.commentary && data.commentary.length > 0) {
+          const latest = data.commentary[0];
+          const latestKey = `${latest.over}-${latest.english?.substring(0, 30)}`;
+          if (prevCommRef.current && prevCommRef.current !== latestKey) {
+            const evt = latest.event || 'normal';
+            setMoodEvent(evt);
+            setTimeout(() => setMoodEvent(null), 3000);
+          }
+          prevCommRef.current = latestKey;
+        }
+        setMatch(data);
+
+        // Commentary persistence: merge fresh + stored, save
+        const freshComm = data.commentary || [];
+        const shouldPersist = shouldPersistCommentary(data.category, data.seriesName, data.matchType);
+
+        if (shouldPersist && freshComm.length > 0) {
+          // Load stored history and merge
+          const stored = await loadCommentary(id);
+          const merged = mergeCommentary(freshComm, stored);
+          setAllCommentary(merged);
+
+          // Save merged commentary back to storage
+          saveCommentary(id, merged);
+        } else if (shouldPersist) {
+          // No fresh commentary, but load stored
+          const stored = await loadCommentary(id);
+          if (stored.length > 0) {
+            setAllCommentary(stored);
+          } else {
+            setAllCommentary(freshComm);
+          }
+        } else {
+          setAllCommentary(freshComm);
+        }
+
+        setNextTimestamp(data.commentaryNextTimestamp);
+
+        // ============ SYNC-ON-OPEN: fetch ENTIRE commentary history ============
+        // Every time the match screen opens, keep paginating older balls until:
+        //   • we already have ball 0.1 (nothing left to fetch), OR
+        //   • server returns no more commentary, OR
+        //   • timestamp stops moving backwards (end-of-history guard), OR
+        //   • we've reached MAX_SYNC_PAGES (safety cap for any format).
+        // Persists to AsyncStorage so offline/phone-off users see full history next open.
+        if (data.commentaryNextTimestamp && shouldPersist && prevCommCountRef.current === 0) {
+          const MAX_SYNC_PAGES = 60; // ~60 pages × ~25 balls ≈ 1500 balls (covers ODI & T20 fully)
+
+          let autoLoadedComm: Commentary[] = [
+            ...(await loadCommentary(id)),
+            ...freshComm,
+          ];
+
+          // Fast-path: if we already have the opening ball, no need to hit API
+          const hasOpeningBall = (arr: Commentary[]) =>
+            arr.some(c => c.over === '0.1' || c.over === '0.2' || /^0\.[12]$/.test(c.over || ''));
+
+          if (!hasOpeningBall(autoLoadedComm)) {
+            let ts: number | undefined = data.commentaryNextTimestamp;
+            let lastTs: number | undefined = undefined;
+
+            for (let page = 0; page < MAX_SYNC_PAGES && ts && ts !== lastTs; page++) {
+              try {
+                const moreResult = await fetchMoreCommentary(id, ts);
+                if (!moreResult.commentary || moreResult.commentary.length === 0) break;
+
+                // Dedup by id before merging
+                const existingIds = new Set(autoLoadedComm.map(c => c.id));
+                const newOnes = moreResult.commentary.filter(c => !existingIds.has(c.id));
+                if (newOnes.length === 0) break; // no actual progress → stop
+
+                autoLoadedComm = [...autoLoadedComm, ...newOnes];
+
+                // Progressive UI update so user sees history loading in real time
+                const progressMerged = mergeCommentary(autoLoadedComm, []);
+                setAllCommentary(progressMerged);
+
+                // Early exit once the opening ball is reached
+                if (hasOpeningBall(autoLoadedComm)) {
+                  ts = undefined;
+                  break;
+                }
+
+                lastTs = ts;
+                ts = moreResult.nextTimestamp;
+              } catch {
+                break;
+              }
+            }
+
+            const finalMerged = mergeCommentary(autoLoadedComm, []);
+            setAllCommentary(finalMerged);
+            if (shouldPersist) saveCommentary(id, finalMerged);
+            setNextTimestamp(ts); // may be undefined → "Load More" button hides correctly
+          } else {
+            // Already have full history — no more Load More needed
+            setNextTimestamp(undefined);
+          }
+        }
+
+        // Auto-scroll to top when new commentary arrives
+        if (freshComm.length > 0 && freshComm.length !== prevCommCountRef.current && (data.status === 'live' || data.status === 'recent')) {
+          prevCommCountRef.current = freshComm.length;
+          setTimeout(() => mainScrollRef.current?.scrollTo({ y: 0, animated: true }), 300);
+        }
+        setError(false);
+        setRetryCount(0);
+      } else if (retryCount < 3) {
+        setRetryCount(r => r + 1);
+        setTimeout(loadMatch, 2000);
+      } else {
+        setError(true);
+      }
+    } catch {
+      if (retryCount < 3) {
+        setRetryCount(r => r + 1);
+        setTimeout(loadMatch, 2000);
+      } else {
+        setError(true);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [id, retryCount]);
+
+  // Handle "Load More" commentary pagination
+  const handleLoadMoreCommentary = useCallback(async () => {
+    if (!id || !nextTimestamp || loadingMoreComm) return;
+    setLoadingMoreComm(true);
+    try {
+      const result = await fetchMoreCommentary(id, nextTimestamp);
+      if (result.commentary.length > 0) {
+        const existingIds = new Set(allCommentary.map(c => c.id));
+        const newItems = result.commentary.filter(c => !existingIds.has(c.id));
+        if (newItems.length > 0) {
+          const merged = [...allCommentary, ...newItems];
+          setAllCommentary(merged);
+          setMatch(prev => prev ? { ...prev, commentary: merged } : prev);
+
+          // Persist merged commentary
+          if (match && shouldPersistCommentary(match.category, match.seriesName, match.matchType)) {
+            saveCommentary(id, merged);
+          }
+        }
+        setNextTimestamp(result.nextTimestamp);
+      } else {
+        setNextTimestamp(undefined);
+      }
+    } catch {
+      console.log('[Commentary] Load more failed');
+    } finally {
+      setLoadingMoreComm(false);
+    }
+  }, [id, nextTimestamp, loadingMoreComm, allCommentary, match]);
+
+
+  // Logic B: Interstitial on random clicks (10-15 range for non-pro users)
+  const handleInteraction = () => {
+    if (effectiveIsPro) return;
+    const next = clicks + 1;
+    console.log(`[Interstitial] Click ${next}/${clickTarget}`);
+    if (next >= clickTarget) {
+      console.log('[Interstitial] Target reached! Showing interstitial ad...');
+      showInterstitialAd();
+      setClicks(0);
+    } else {
+      setClicks(next);
+    }
+  };
+
+  // Logic C: Watch 2 Rewarded Ads for Pro — REWARD GRANT fallback (counts even on ad failure)
+  const handleWatchAd = async () => {
+    await showRewardedAd(); // fire-and-forget; failure still credits the user
+    const newCount = adsWatchedCount + 1;
+    setAdsWatchedCount(newCount);
+
+    if (newCount >= 2) {
+      // All 2 ads watched - unlock Pro!
+      setTempPro(true);
+      setProExpiry(Date.now() + 30 * 60 * 1000);
+      setProFromAdMob(true);
+      setAdsWatchedCount(0);
+      setShowProModal(false);
+      Alert.alert(
+        'Pro Unlocked!',
+        'Voice Commentary, Floating Scoreboard and Ad-free for 30 minutes!',
+        [{ text: 'Enjoy!' }]
+      );
+    } else {
+      Alert.alert(
+        'Ad Watched!',
+        `${newCount}/2 ads done. ${2 - newCount} more to unlock Pro!`,
+        [{ text: 'Continue' }]
+      );
+    }
+  };
+
+  if (loading) {
+    return (
+      <AppBackground style={styles.container}>
+        <View style={styles.center}>
+          <ActivityIndicator color="#4CAF50" size="large" />
+          <Text style={styles.loadingText}>Loading match...</Text>
+        </View>
+      </AppBackground>
+    );
+  }
+
+  if (error || !match) {
+    return (
+      <ErrorScreen
+        onGoBack={() => router.back()}
+        onRetry={() => { setError(false); setLoading(true); setRetryCount(0); loadMatch(); }}
+        message="Could not load match. Check connection."
+      />
+    );
+  }
+
+  return (
+    <AppBackground style={styles.container}>
+      <SafeAreaView style={styles.container} onTouchStart={handleInteraction}>
+        {/* Emotional animations overlay - 4, 6, Out, Wide */}
+        <MatchMoodMeter event={moodEvent} />
+
+      <ScrollView ref={mainScrollRef} stickyHeaderIndices={[0]}>
+        {/* Sticky Score Header */}
+        <View style={styles.scoreHeader}>
+          <View style={styles.headerRow}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.seriesName} numberOfLines={1}>{match.seriesName}</Text>
+            
+            <View style={styles.headerActions}>
+              {/* Overlay Button - Non-Pro: opens Pro Modal, Pro: toggles overlay */}
+              <TouchableOpacity
+                style={[styles.actionBtn, nativeOverlayActive && styles.actionBtnActive]}
+                onPress={async () => {
+                  // Non-Pro users: show Pro Modal to watch ads first
+                  if (!effectiveIsPro) {
+                    setShowProModal(true);
+                    return;
+                  }
+                  
+                  // Pro users: toggle overlay directly
+                  if (nativeOverlayActive) {
+                    await hideFloatingWidget();
+                    setNativeOverlayActive(false);
+                    return;
+                  }
+                  
+                  // Check permission first
+                  const hasPermission = await checkOverlayPermission();
+                  if (!hasPermission) {
+                    Alert.alert(
+                      'Permission Required',
+                      'Enable "Display over other apps" permission for CricApp.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Open Settings', 
+                          onPress: async () => {
+                            setPendingOverlayRequest(true);
+                            await requestOverlayPermission();
+                          }
+                        }
+                      ]
+                    );
+                    return;
+                  }
+                  
+                  // Show floating widget
+                  const scoreData = {
+                    team1Name: match.teams[0]?.shortName || 'Team 1',
+                    team2Name: match.teams[1]?.shortName || 'Team 2',
+                    team1Score: match.teams[0]?.runs !== undefined ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` : '-',
+                    team2Score: match.teams[1]?.runs !== undefined ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` : '-',
+                    team1Overs: match.teams[0]?.overs?.toString() || '',
+                    team2Overs: match.teams[1]?.overs?.toString() || '',
+                    statusText: match.statusText || '',
+                    commentary: match.commentary?.[0]?.english || '',
+                  };
+                  const success = await showFloatingWidget(scoreData);
+                  if (success) {
+                    setNativeOverlayActive(true);
+                  }
+                }}
+                data-testid="pin-score-button"
+              >
+                <Ionicons
+                  name={nativeOverlayActive ? 'layers' : 'layers-outline'}
+                  size={18}
+                  color={nativeOverlayActive ? '#4CAF50' : '#AAA'}
+                />
+              </TouchableOpacity>
+
+              {/* Notification Toggle */}
+              <TouchableOpacity
+                style={[styles.actionBtn, isTracking(id || '') && styles.actionBtnActive]}
+                onPress={async () => {
+                  if (!notificationsEnabled) await enableNotifications();
+                  toggleTracking(id || '', match.teams[0]?.shortName || 'TM1', match.teams[1]?.shortName || 'TM2');
+                }}
+              >
+                <Ionicons
+                  name={isTracking(id || '') ? 'notifications' : 'notifications-outline'}
+                  size={18}
+                  color={isTracking(id || '') ? '#4CAF50' : '#AAA'}
+                />
+              </TouchableOpacity>
+
+              {/* External Link */}
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: 'rgba(255,165,0,0.15)' }]}
+                onPress={() => openExternalScorecard(id || '')}
+              >
+                <Ionicons name="open-outline" size={16} color="#FFA500" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Score Row - Compact */}
+          <View style={styles.teamRow}>
+            <View style={styles.teamBlock}>
+              <Text style={styles.teamName}>{match.teams[0].shortName}</Text>
+              <Text style={styles.teamScore}>
+                {match.teams[0].runs !== undefined ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` : '-'}
+              </Text>
+              {match.teams[0].overs !== undefined && <Text style={styles.overs}>({match.teams[0].overs} ov)</Text>}
+            </View>
+
+            <MatchStatusBadge state={match.status} isLive={match.status === 'live'} />
+
+            <View style={styles.teamBlock}>
+              <Text style={styles.teamName}>{match.teams[1].shortName}</Text>
+              <Text style={styles.teamScore}>
+                {match.teams[1].runs !== undefined ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` : '-'}
+              </Text>
+              {match.teams[1].overs !== undefined && <Text style={styles.overs}>({match.teams[1].overs} ov)</Text>}
+            </View>
+          </View>
+
+          {match.statusText ? <Text style={styles.statusTxt} numberOfLines={2}>{match.statusText}</Text> : null}
+
+          {/* Match Details: Current Batsmen - For LIVE and RECENT */}
+          {(match.status === 'live' || match.status === 'recent') && match.batsmen && match.batsmen.length > 0 && (
+            <View style={styles.batsmenContainer}>
+              <Text style={styles.batsmenTitle}>{match.status === 'live' ? 'At The Crease' : 'Last Batsmen'}</Text>
+              <View style={styles.batsmenRow}>
+                {match.batsmen.map((bat, idx) => (
+                  <View key={idx} style={styles.batsmanItem}>
+                    <Text style={[styles.batsmanName, bat.isStriker && styles.strikerName]}>
+                      {bat.isStriker ? '* ' : ''}{bat.name}
+                    </Text>
+                    <Text style={styles.batsmanScore}>
+                      {bat.runs} ({bat.balls})
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* OVER SUMMARY - For LIVE and RECENT */}
+          {(match.status === 'live' || match.status === 'recent') && match.oSummary && (
+            <View style={styles.overSummaryContainer}>
+              <Text style={styles.overSummaryTitle}>Recent Overs</Text>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={true}
+                style={styles.overSummaryScroll}
+                contentContainerStyle={styles.overSummaryScrollContent}
+              >
+                {formatOverSummary(match.oSummary, match.currentOver)}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Pro Overlay Toggles - Only show for Pro users */}
+          {effectiveIsPro && (
+            <View style={styles.proRow}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {/* Native Overlay (Draw Over Other Apps) - Android Only */}
+                {isFloatingWidgetAvailable() && (
+                  <TouchableOpacity
+                    style={[styles.unlockBtn, { backgroundColor: nativeOverlayActive ? '#FF6B00' : '#333' }]}
+                    onPress={async () => {
+                      if (nativeOverlayActive) {
+                        // Turn off native overlay
+                        await hideFloatingWidget();
+                        setNativeOverlayActive(false);
+                      } else {
+                        // Check permission first
+                        const hasPermission = await checkOverlayPermission();
+                        if (!hasPermission) {
+                          Alert.alert(
+                            'Enable Overlay Permission',
+                            'To show live score over other apps (like WhatsApp, YouTube), you need to enable "Display over other apps" permission.\n\nTap "Enable" to open settings.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Enable',
+                                onPress: async () => {
+                                  setPendingOverlayRequest(true);
+                                  await requestOverlayPermission();
+                                },
+                              },
+                            ]
+                          );
+                          return;
+                        }
+                        
+                        // Start native overlay
+                        const scoreData = {
+                          team1Name: match.teams[0]?.shortName || 'TM1',
+                          team2Name: match.teams[1]?.shortName || 'TM2',
+                          team1Score: match.teams[0]?.runs !== undefined 
+                            ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` 
+                            : '-',
+                          team2Score: match.teams[1]?.runs !== undefined 
+                            ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` 
+                            : '-',
+                          team1Overs: match.teams[0]?.overs?.toString() || '',
+                          team2Overs: match.teams[1]?.overs?.toString() || '',
+                          statusText: match.statusText || '',
+                          commentary: match.commentary?.[0]?.english || '',
+                        };
+                        
+                        const success = await showFloatingWidget(scoreData);
+                        if (success) {
+                          setNativeOverlayActive(true);
+                          Alert.alert(
+                            'Floating Widget Active!',
+                            'Live score will now show over other apps. You can minimize CricApp and the score will still be visible!\n\n• Tap widget to minimize\n• Drag to move\n• Tap ✕ to close',
+                            [{ text: 'Got it!' }]
+                          );
+                        }
+                      }
+                    }}
+                    data-testid="native-overlay-toggle"
+                  >
+                    <Ionicons 
+                      name={nativeOverlayActive ? 'layers' : 'layers-outline'} 
+                      size={14} 
+                      color="#FFF" 
+                    />
+                    <Text style={styles.unlockTxt}>
+                      {nativeOverlayActive ? 'Overlay ON' : 'Overlay OFF'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Content Tab Bar - Commentary / Scorecard / Squads */}
+        <View style={styles.contentTabBar} data-testid="content-tab-bar">
+          <TouchableOpacity
+            style={[styles.contentTab, activeDetailTab === 'commentary' && styles.contentTabActive]}
+            onPress={() => setActiveDetailTab('commentary')}
+            data-testid="tab-commentary"
+          >
+            <Ionicons name="chatbox-outline" size={14} color={activeDetailTab === 'commentary' ? '#FFF' : '#999'} />
+            <Text style={[styles.contentTabText, activeDetailTab === 'commentary' && styles.contentTabTextActive]}>Commentary</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.contentTab, activeDetailTab === 'scorecard' && styles.contentTabActive]}
+            onPress={() => setActiveDetailTab('scorecard')}
+            data-testid="tab-scorecard"
+          >
+            <Ionicons name="stats-chart-outline" size={14} color={activeDetailTab === 'scorecard' ? '#FFF' : '#999'} />
+            <Text style={[styles.contentTabText, activeDetailTab === 'scorecard' && styles.contentTabTextActive]}>Scorecard</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.contentTab, activeDetailTab === 'squads' && styles.contentTabActive]}
+            onPress={() => setActiveDetailTab('squads')}
+            data-testid="tab-squads"
+          >
+            <Ionicons name="people-outline" size={14} color={activeDetailTab === 'squads' ? '#FFF' : '#999'} />
+            <Text style={[styles.contentTabText, activeDetailTab === 'squads' && styles.contentTabTextActive]}>Squads</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Content Area - Toggle between Commentary, Scorecard, and Squads */}
+        {activeDetailTab === 'scorecard' ? (
+          <ScorecardSection matchId={id || ''} isLive={match.status === 'live'} />
+        ) : activeDetailTab === 'squads' ? (
+          <SquadsSection matchId={id || ''} isLive={match.status === 'live'} />
+        ) : (
+          <>
+            {/* Cricket Field */}
+            <CricketField
+              lastCommentary={match.commentary?.[0]}
+              battingTeam={match.teams[0].shortName}
+              bowlingTeam={match.teams[1].shortName}
+            />
+
+            {/* Commentary - with error boundary */}
+            {match.commentary && match.commentary.length > 0 ? (
+              <React.Suspense fallback={<View style={styles.noComm}><ActivityIndicator color="#4CAF50" /></View>}>
+                <CommentarySection
+                  commentary={allCommentary.length > 0 ? allCommentary : (match.commentary || [])}
+                  matchId={id}
+                  isLive={match.status === 'live'}
+                  matchStatus={match.status as 'live' | 'recent' | 'upcoming'}
+                  onLoadMore={handleLoadMoreCommentary}
+                  hasMore={!!nextTimestamp}
+                  isLoadingMore={loadingMoreComm}
+                  playerImgMap={playerImgMap}
+                />
+              </React.Suspense>
+            ) : (
+              <View style={styles.noComm}>
+                <Ionicons name="chatbox-outline" size={40} color="#999" />
+                <Text style={styles.noCommText}>
+                  {match.status === 'upcoming' ? 'Match has not started yet' : 'Commentary not available'}
+                </Text>
+
+                {/* Banner Ad 1 */}
+                <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
+                  <BannerAdComponent />
+                </View>
+
+                <TouchableOpacity style={styles.externalBtn} onPress={() => openExternalScorecard(id || '')}>
+                  <Ionicons name="open-outline" size={16} color="#FFF" />
+                  <Text style={styles.externalTxt}>View Full Scorecard</Text>
+                </TouchableOpacity>
+
+                {/* Banner Ad 2 */}
+                <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
+                  <BannerAdComponent />
+                </View>
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+
+      {/* Pro Modal - 3 Rewarded Ads */}
+      <Modal visible={showProModal} transparent animationType="fade">
+        <View style={styles.modalBg}>
+          <View style={styles.modalBox}>
+            <Text style={styles.mTitle}>Unlock Special Access</Text>
+
+            <View style={styles.featureList}>
+              {[
+                { icon: 'mic', text: 'Voice Commentary (TTS)' },
+                { icon: 'layers', text: 'Floating Scoreboard' },
+                { icon: 'notifications', text: 'Score Notifications' },
+                { icon: 'close-circle', text: 'No Ads for 30 mins' },
+              ].map((f, i) => (
+                <View key={i} style={styles.featureRow}>
+                  <Ionicons name={f.icon as any} size={18} color="#4CAF50" />
+                  <Text style={styles.featureTxt}>{f.text}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Progress Bar */}
+            <View style={styles.progressWrap}>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${(adsWatchedCount / 2) * 100}%` }]} />
+              </View>
+              <Text style={styles.progressLabel}>{adsWatchedCount}/2 Ads Watched</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.watchBtn}
+              onPress={handleWatchAd}
+            >
+              <Ionicons name="play-circle" size={22} color="#FFF" />
+              <Text style={styles.watchBtnTxt}>
+                {`Watch Ad ${adsWatchedCount + 1} of 2`}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setShowProModal(false)}>
+              <Text style={styles.laterTxt}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Floating Scoreboard - Pro Only */}
+      {showOverlay && effectiveIsPro && (
+        <FloatingScoreboard
+          match={match}
+          visible={showOverlay}
+          onClose={() => setShowOverlay(false)}
+          isPro={effectiveIsPro}
+        />
+      )}
+    </SafeAreaView>
+    </AppBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: 'transparent' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
+  loadingText: { color: '#999', marginTop: 12, fontSize: 14 },
+  scoreHeader: { backgroundColor: 'rgba(34,34,34,0.85)', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, borderBottomWidth: 2, borderBottomColor: '#4CAF50' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  backBtn: { padding: 4, marginRight: 6 },
+  seriesName: { color: '#ffd700', fontSize: 11, flex: 1 },
+  headerActions: { flexDirection: 'row', gap: 6 },
+  actionBtn: {
+    padding: 7,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  actionBtnActive: { backgroundColor: 'rgba(76,175,80,0.2)' },
+  teamRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 4 },
+  teamBlock: { alignItems: 'center', flex: 1 },
+  teamName: { color: '#CCC', fontSize: 12, fontWeight: '600' },
+  teamScore: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  overs: { color: '#999', fontSize: 10, marginTop: 1 },
+  statusTxt: { color: '#4CAF50', fontSize: 11, textAlign: 'center', marginBottom: 4, fontStyle: 'italic' },
+  // Live match batsmen section - compact
+  batsmenContainer: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 4,
+  },
+  batsmenTitle: {
+    color: '#4CAF50',
+    fontSize: 9,
+    fontWeight: '700',
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  batsmenRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  batsmanItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  batsmanName: {
+    color: '#CCC',
+    fontSize: 11,
+  },
+  strikerName: {
+    color: '#FFD700',
+    fontWeight: 'bold',
+  },
+  batsmanScore: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginTop: 1,
+  },
+  // Over summary section - compact
+  overSummaryContainer: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(76, 175, 80, 0.4)',
+  },
+  overSummaryTitle: {
+    color: '#4CAF50',
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 5,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  overSummaryScroll: {
+    minHeight: 30,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  overSummaryScrollContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 16,
+    gap: 1,
+  },
+  proRow: { alignItems: 'center', marginTop: 4 },
+  // Content tab bar (Commentary / Scorecard)
+  contentTabBar: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(34,34,34,0.9)',
+    marginHorizontal: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(76,175,80,0.3)',
+  },
+  contentTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    gap: 6,
+  },
+  contentTabActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: '#4CAF50',
+    backgroundColor: 'rgba(76,175,80,0.1)',
+  },
+  contentTabText: {
+    color: '#999',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  contentTabTextActive: {
+    color: '#FFF',
+  },
+  unlockBtn: {
+    backgroundColor: 'rgba(51,51,51,0.9)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  unlockTxt: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
+  noComm: { padding: 40, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', margin: 16, borderRadius: 12 },
+  noCommText: { color: '#999', fontSize: 16, marginTop: 12, marginBottom: 16, textAlign: 'center' },
+  externalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFA500',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    gap: 8,
+  },
+  externalTxt: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
+  modalBox: { backgroundColor: '#FFF', padding: 24, borderRadius: 20, width: '85%', alignItems: 'center' },
+  mTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 16, color: '#333' },
+  featureList: { width: '100%', marginBottom: 16, gap: 10 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  featureTxt: { fontSize: 14, color: '#555' },
+  progressWrap: { width: '100%', marginBottom: 16, alignItems: 'center' },
+  progressTrack: { width: '100%', height: 10, backgroundColor: '#E0E0E0', borderRadius: 5, overflow: 'hidden', marginBottom: 6 },
+  progressFill: { height: '100%', backgroundColor: '#4CAF50', borderRadius: 5 },
+  progressLabel: { fontSize: 14, fontWeight: '700', color: '#4CAF50' },
+  watchBtn: {
+    backgroundColor: '#4CAF50',
+    padding: 14,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  watchBtnTxt: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  laterTxt: { marginTop: 8, color: '#999', fontSize: 14 },
+});
