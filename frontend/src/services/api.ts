@@ -825,8 +825,10 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
 
   if (match) {
     match.commentary = commentary;
-    // Extract pagination timestamp from comm response for loading older commentary
-    match.commentaryNextTimestamp = extractCommTimestamp(commRawData);
+    // Extract pagination (tms + iid) from comm response for loading older commentary.
+    const pag = extractCommPagination(commRawData);
+    match.commentaryNextTimestamp = pag.tms;
+    match.commentaryNextIid = pag.iid;
     // Cache the match data (30 second TTL for live updates)
     await setCache(`match_${id}`, match);
   }
@@ -863,44 +865,110 @@ export async function fetchMatchInfo(matchId: string): Promise<any> {
 }
 
 // ============ COMMENTARY PAGINATION ============
-// Extract the oldest timestamp from a comm API response for pagination
-function extractCommTimestamp(data: any): number | undefined {
-  if (!data) return undefined;
+// Extract the oldest timestamp AND innings id from a comm API response for pagination.
+// Cricbuzz RapidAPI uses `tms` + `iid` query params (NOT `timestamp`) — older balls are
+// retrieved by decrementing tms within the same iid, then flipping iid→iid-1 when
+// the current innings is exhausted.
+function extractCommPagination(data: any): { tms?: number; iid?: number } {
+  const out: { tms?: number; iid?: number } = {};
+  if (!data) return out;
+
   const cw = data.comwrapper;
   if (Array.isArray(cw) && cw.length > 0) {
-    // The last item in comwrapper is the oldest ball in this batch
-    const last = cw[cw.length - 1];
-    const ts = last?.timestamp ?? last?.commentary?.timestamp;
-    if (ts) return Number(ts);
+    // Oldest ball = last item in wrapper; check multiple key variants
+    for (let i = cw.length - 1; i >= 0; i--) {
+      const w = cw[i];
+      const c = w?.commentary || w;
+      const ts = w?.timestamp ?? c?.timestamp ?? w?.tms ?? c?.tms;
+      const iid = w?.inningsid ?? w?.inningsId ?? c?.inningsid ?? c?.inningsId ?? c?.iid ?? w?.iid;
+      if (ts && !out.tms) out.tms = Number(ts);
+      if (iid && out.iid === undefined) out.iid = Number(iid);
+      if (out.tms && out.iid !== undefined) break;
+    }
   }
-  // Fallback: check commentaryList
-  if (Array.isArray(data.commentaryList) && data.commentaryList.length > 0) {
+
+  // Fallback: commentaryList
+  if (!out.tms && Array.isArray(data.commentaryList) && data.commentaryList.length > 0) {
     const last = data.commentaryList[data.commentaryList.length - 1];
-    const ts = last?.timestamp;
-    if (ts) return Number(ts);
+    if (last?.timestamp) out.tms = Number(last.timestamp);
+    if (last?.inningsId) out.iid = Number(last.inningsId);
   }
-  return undefined;
+
+  // miniscore.inningsid / matchheaders for current innings (fallback)
+  if (out.iid === undefined) {
+    const mi = data.miniscore || {};
+    const mh = data.matchheaders || {};
+    const iid = mi.inningsid ?? mi.inningsId ?? mh.inningsid ?? mh.inningsId;
+    if (iid !== undefined) out.iid = Number(iid);
+  }
+
+  return out;
 }
 
-// Fetch older commentary using timestamp pagination (for "Load More" / Sync-on-Open)
-// IMPORTANT: When the server returns nothing (we've reached ball 0.1), we MUST return empty
-// instead of falling back to the latest page — otherwise Sync-on-Open loops forever.
+// Legacy wrapper retained for any caller that only needs the timestamp
+function extractCommTimestamp(data: any): number | undefined {
+  return extractCommPagination(data).tms;
+}
+
+// Fetch older commentary using (tms, iid) pagination (for "Load More" / Sync-on-Open).
+// Returns empty when the server has no more history.
+// Automatically steps iid down (iid-1) when the current innings is exhausted so we
+// can walk all the way back to ball 0.1 of innings 1 regardless of how many innings
+// the match has.
 export async function fetchMoreCommentary(
   matchId: string,
-  timestamp: number
-): Promise<{ commentary: Commentary[]; nextTimestamp?: number }> {
+  tms: number,
+  iid?: number
+): Promise<{ commentary: Commentary[]; nextTimestamp?: number; nextIid?: number }> {
+  const params: Record<string, string> = { tms: String(tms) };
+  if (iid !== undefined) params.iid = String(iid);
+
   try {
-    const result = await fetchData('comm', matchId, { timestamp: String(timestamp) });
-    if (!result || !result.data) return { commentary: [] };
+    const result = await fetchData('comm', matchId, params);
+    if (!result || !result.data) {
+      // Try stepping down to previous innings if we have one
+      if (iid !== undefined && iid > 1) {
+        return fetchMoreCommentary(matchId, Date.now(), iid - 1);
+      }
+      // No iid known → try iid=1 as a last-ditch attempt (covers matches that
+      // report innings via miniscore only in later calls)
+      if (iid === undefined) {
+        return fetchMoreCommentary(matchId, Date.now(), 1);
+      }
+      return { commentary: [] };
+    }
 
     const config = getProviderConfig(result.providerName);
     const commentary = config.parseCommentary(result.data, matchId);
-    if (commentary.length === 0) return { commentary: [] };
 
-    const nextTimestamp = extractCommTimestamp(result.data);
-    // Guard: if API echoes the same (or newer) timestamp, treat as end-of-history
-    const safeNext = nextTimestamp && nextTimestamp < timestamp ? nextTimestamp : undefined;
-    return { commentary, nextTimestamp: safeNext };
+    if (commentary.length === 0) {
+      // Current innings exhausted — try previous innings
+      if (iid !== undefined && iid > 1) {
+        return fetchMoreCommentary(matchId, Date.now(), iid - 1);
+      }
+      if (iid === undefined) {
+        return fetchMoreCommentary(matchId, Date.now(), 1);
+      }
+      return { commentary: [] };
+    }
+
+    const pag = extractCommPagination(result.data);
+    // Guard: if API echoes the same (or newer) timestamp within the same innings,
+    // flip to previous innings OR treat as end-of-history.
+    let safeNextTms: number | undefined;
+    let safeNextIid: number | undefined = pag.iid ?? iid;
+
+    if (pag.tms && pag.tms < tms) {
+      safeNextTms = pag.tms;
+    } else if (safeNextIid !== undefined && safeNextIid > 1) {
+      // Current innings has no older balls → step to previous innings next call
+      safeNextIid = safeNextIid - 1;
+      safeNextTms = Date.now(); // fresh start-point for previous innings
+    } else {
+      safeNextTms = undefined; // end-of-history
+    }
+
+    return { commentary, nextTimestamp: safeNextTms, nextIid: safeNextIid };
   } catch {
     return { commentary: [] };
   }

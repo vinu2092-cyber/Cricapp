@@ -5,62 +5,54 @@ CricApp (com.cricapp.live) — React Native / Expo Android app, live on Play Sto
 Repo: https://github.com/vinu2092-cyber/Cricapp.git
 Current version: **v1.0.8** (versionCode 8)
 
-## Core Stack
-- Expo / React Native (frontend/)
-- FastAPI backend (backend/)
-- Cricbuzz RapidAPI providers (3-host failover, Firebase Remote Config keys)
-- GitHub Actions workflow `.github/workflows/build-android.yml` for APK + AAB
-- Release signing via repo secrets (`RELEASE_KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
+## 2026-04-17 — Phase 3 (Commentary Gap Recovery — THE real root cause)
 
-## 2026-04-17 — Phase 1 (Build Fix, earlier)
-- compileSdk/targetSdk 35 → 36 in `frontend/app.json` (expo-build-properties) + `frontend/android/gradle.properties`
-- Resolved `:app:checkReleaseAarMetadata` failure caused by androidx.activity 1.11.0 / androidx.core 1.17.0 requiring compileSdk 36.
+### Problem
+Even with Sync-on-Open in place, users reopening the app after phone sleep saw only the
+latest ~10-25 balls. Walking "back" through pagination never actually reached ball 0.1.
 
-## 2026-04-17 — Phase 2 (Visual Cards, Deep Data Sync, Ads Fix)
+### Root cause (confirmed via RapidAPI docs)
+Cricbuzz's `mcenter/{matchId}/comm` endpoint paginates with `tms` + `iid` query params,
+NOT `timestamp`. Our code was sending `?timestamp=…` — the server silently ignored it
+and returned the SAME latest page every time. The loop "progressed" (because local
+dedup kept reducing new-ones to 0) but never actually moved backwards in time.
 
-### Critical Bug Fixes
-1. **Rewarded Ad Unit ID mismatch (reason ads not loading on test device):**
-   `src/context/AdMobContext.native.tsx` used `ca-app-pub-9675798593675825/6702704058` but Play Store / app.json has `/6702740458`. Corrected.
-2. **Blocking "Ad Not Available" alerts removed** — on-demand rewarded-ad errors now resolve(false) silently so the fall-through in `app/index.tsx` still credits progress.
-3. **Watch-ad button UX** — added `adLoading` state + `ActivityIndicator` + `disabled` guard so repeated taps don't stack and the user gets visible feedback while the ad request is in flight.
+### Fix
+1. `fetchMoreCommentary(matchId, tms, iid)` — now sends `?tms=…&iid=…`
+2. New `extractCommPagination()` pulls both `timestamp` + `inningsId` from the oldest
+   ball in `comwrapper` (falls back to `miniscore.inningsid` if wrapper omits it).
+3. When the server echoes the same tms within the current innings, the function
+   automatically flips `iid → iid - 1` with `tms = Date.now()` so we walk backwards
+   through innings 2 → innings 1 all the way to ball 0.1.
+4. If no `iid` was ever supplied (unusual response shape), we fallback to `iid=1`
+   as a last-ditch attempt to catch everything.
+5. `Match` type carries `commentaryNextTimestamp` + `commentaryNextIid` in state.
+6. `MAX_SYNC_PAGES` bumped 60 → 80 (~2000 balls) to cover 50-over × 2 innings.
 
-### Sync-on-Open Hardening (the 10-over gap fix)
-- Replaced the `prevCommCountRef === 0` gate with a dedicated `syncDoneRef` flag.
-- Added `AppState.addEventListener('change', …)` inside the match screen that re-arms `syncDoneRef = false` and re-runs `loadMatch` when the app returns to the foreground (phone wake / task-switch back).
-- Loop now safely bails when Cricbuzz omits `commentaryNextTimestamp` instead of silently doing nothing.
-- Still caps at MAX_SYNC_PAGES=60 (~1500 balls) and persists to AsyncStorage keyed by matchId.
+### Sync-on-Open loop — key improvements
+- Progressive UI update: user watches history fill in top-to-bottom as each page lands.
+- Break condition tightened: only stops when we genuinely can't step iid any further.
+- AppState.active listener (Phase 2) still re-arms on phone wake / task-switch.
 
-### UI — Commentary & Event Cards
-- Cards now take 100% width (`eventCard.width: '100%'`, container `marginHorizontal: 0`).
-- Gap between event cards bumped `marginVertical: 10 → 12`.
-- Standardised fonts:
-  - Commentary text: 14px (down from 18)
-  - Stats blocks: 13-14px
-  - Event card title: 12px, name: 15px, stats: 12-13px, commentary inside: 13px
-- OUT card (soft red), NEW BATSMAN card (pastel green), BOWLING CHANGE card (light blue) preserved.
+## Earlier phases (still in effect)
 
-### Team Logos (new)
-- Added `teamId` + `imageId` fields to `Team` type and extracted them in both list + detail parsers.
-- `MatchCard` now renders a 28px circular team logo next to each team shortName using `https://www.cricbuzz.com/a/img/v1/72x54/i1/c{id}/team.jpg`.
-- `app/match/[id].tsx` header shows a 36px team logo above each score block.
+### Phase 2 — UI + Ads
+- Rewarded ad unit ID corrected (`/6702704058` → `/6702740458`) — this was why ads weren't loading on test device.
+- Watch-ad alerts removed; button now shows spinner + is disabled mid-request.
+- `ADS_REQUIRED` 3 → 2 everywhere.
+- Commentary cards 100% width, `marginVertical: 12`, 13–14px fonts.
+- Team logos rendered in match list + match header (Cricbuzz CDN `/i1/c{id}/team.jpg`).
+- Scorecard avatars bumped 24 → 32px.
 
-### Scorecard avatars
-- `MiniAvatar` default size 24 → 32 so photos are actually visible in batter/bowler rows.
-- Existing name → faceImageId map (from `/mcenter/v1/{id}` match info) wires them up.
-
-### Pro unlock
-- `ADS_REQUIRED` 3 → 2 in `ProContext.tsx` (matches `index.tsx`'s localAdsWatched/2 flow).
-- Fall-through behaviour untouched — user always earns progress on each tap.
+### Phase 1 — Build Fix
+- compileSdk/targetSdk 35 → 36 (app.json + gradle.properties) — androidx.activity/core 1.11+/1.17+ build clean.
 
 ## How to release
-1. User hits **"Save to GitHub"** on the Emergent UI.
-2. Workflow `Build Android APK & AAB` runs `assembleRelease` + `bundleRelease` → signed APK & AAB.
-3. `CricApp v1.0.8` GitHub Release auto-updated with Phase 2 notes + attached APK/AAB.
+1. User hits **"Save to GitHub"** in Emergent.
+2. GitHub Actions runs `assembleRelease` + `bundleRelease` and attaches APK/AAB to the `v1.0.8` release.
+3. Upload the AAB to Play Console Closed Testing.
 
-## Known constraints / not changed
-- Player photos in scorecard / squads depend on Cricbuzz `/mcenter/v1/{id}` returning `faceImageId` for each player. Enrichment logic exists; if the API response omits it for a given match, falls back to silhouette icon.
-- versionName and versionCode kept at 1.0.8 / 8 per user request.
-
-## Backlog / Next
-- If API still returns no `faceImageId`, consider calling `/mcenter/v1/{id}/team/{teamId}` per team to fetch squads with photos explicitly.
-- Optional: lazy-load first-party team crests from a bundled asset map so logos render even for matches where Cricbuzz hasn't populated `imageId`.
+## Backlog
+- Player-photo fallback asset map (top ~50 IPL/intl players) for when Cricbuzz API omits `faceImageId`.
+- Optional: `/mcenter/{id}/team/{teamId}` fetch for full photo-enriched squads.
+- Consider caching `commentaryNextIid` + `commentaryNextTimestamp` per match so even a cold-start continues from where it left off.

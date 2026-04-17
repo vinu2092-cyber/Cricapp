@@ -118,20 +118,28 @@ jobs:
           tag_name: v1.0.8
           name: CricApp v1.0.8
           body: |
-            ## CricApp v1.0.8 — Phase 2 (Visual Cards & Deep Data Sync)
-            ### Build Fix
+            ## CricApp v1.0.8 — Phase 3 (Deep Gap Recovery)
+            ### 🔥 Commentary Pagination — The actual root cause
+            - Cricbuzz mcenter/comm pagination requires **`tms` + `iid`** query params.
+              The app was sending `timestamp` which the API ignored, so every "older"
+              call returned the same latest ~25 balls — that's why users saw a 10-over gap
+              after reopening the phone.
+            - Now sends `tms=…&iid=…`; automatically walks back iid → iid-1 when an
+              innings exhausts so we reach ball 0.1 of innings 1 regardless of which
+              innings the user opened the match in.
+            - Safety cap bumped 60 → 80 pages (~2000 balls, covers 50-over × 2 innings).
+            - If the API returns no `iid`, falls back to iid=1 as a last-ditch attempt.
+            ### Build Fix (Phase 1)
             - compileSdk bumped 35 → 36 so androidx.activity/core 1.11+/1.17+ build clean
-            ### Rewarded Ads (CRITICAL FIX)
+            ### Rewarded Ads (Phase 2)
             - Corrected rewarded ad unit ID (was `/6702704058`, now `/6702740458` matching app.json / Play Store)
             - Removed blocking "Ad Not Available" alerts — on-demand errors now fall through silently so user still earns progress
             - Watch-ad button now shows a loading spinner and is disabled while the ad request is in flight (no more "dead" taps)
             - Reduced required rewarded ads 3 → 2 across all flows
             - Reward-grant fallback preserved: if an ad fails to load, progress still counts (feature unlock never blocks)
-            ### Commentary — Sync-on-Open hardened
-            - Full-history sync now re-arms on AppState resume (phone wake / task-switch back)
-            - Gate replaced: `syncDoneRef` flag instead of commentary-count guard (fixes the 10-over gap when re-opening after sleep)
-            - Safely bails when API provides no pagination timestamp (avoids infinite "latest page" loop)
-            - Still persists up to ~1500 balls per match, back to ball 0.1
+            ### Sync-on-Open robustness
+            - `syncDoneRef` gate + AppState.active listener re-arms sync when the phone wakes
+            - Progressive UI updates: user watches history fill in from top to bottom in real time
             ### Visual Event Cards (Cricket Guru parity)
             - 100% width event cards with marginVertical: 12 gap — no more squeezed look
             - Standardized fonts 13–14px across commentary rows, stats blocks, and event cards

@@ -187,6 +187,7 @@ export default function MatchDetail() {
   // Commentary pagination state
   const [allCommentary, setAllCommentary] = useState<Commentary[]>([]);
   const [nextTimestamp, setNextTimestamp] = useState<number | undefined>(undefined);
+  const [nextIid, setNextIid] = useState<number | undefined>(undefined);
   const [loadingMoreComm, setLoadingMoreComm] = useState(false);
   // Name → Cricbuzz faceImageId for rendering player photos inside event cards
   const [playerImgMap, setPlayerImgMap] = useState<Record<string, string>>({});
@@ -444,66 +445,70 @@ export default function MatchDetail() {
         }
 
         setNextTimestamp(data.commentaryNextTimestamp);
+        setNextIid(data.commentaryNextIid);
 
         // ============ SYNC-ON-OPEN: fetch ENTIRE commentary history ============
-        // Every time the match screen opens (or returns to foreground), keep paginating
-        // older balls until:
-        //   • we already have ball 0.1 (nothing left to fetch), OR
-        //   • server returns no more commentary, OR
-        //   • timestamp stops moving backwards (end-of-history guard), OR
-        //   • we've reached MAX_SYNC_PAGES (safety cap for any format).
+        // Cricbuzz pagination requires BOTH tms (timestamp) AND iid (innings id).
+        // Without iid the server keeps returning the latest page (the bug the user
+        // was seeing). We walk back iid-by-iid until we find ball 0.1 of innings 1.
         // Persists to AsyncStorage so offline / phone-off users see full history next open.
-        // NOTE: we intentionally do NOT gate on prevCommCountRef (that check broke
-        // the Gap-Recovery flow when a user re-opened a match after closing the phone
-        // mid-over). We use syncDoneRef so it runs once per screen open / resume.
         if (shouldPersist && !syncDoneRef.current) {
           syncDoneRef.current = true;
-          const MAX_SYNC_PAGES = 60; // ~60 pages × ~25 balls ≈ 1500 balls (covers ODI & T20 fully)
+          const MAX_SYNC_PAGES = 80; // ~80 pages × ~25 balls ≈ 2000 balls (covers ODI × 2 innings comfortably)
 
           let autoLoadedComm: Commentary[] = [
             ...(await loadCommentary(id)),
             ...freshComm,
           ];
 
-          // Fast-path: if we already have the opening ball, no need to hit API
+          // Fast-path: if we already have the opening ball of INNINGS 1, no need to hit API
           const hasOpeningBall = (arr: Commentary[]) =>
             arr.some(c => c.over === '0.1' || c.over === '0.2' || /^0\.[12]$/.test(c.over || ''));
 
           if (!hasOpeningBall(autoLoadedComm)) {
-            // Starting timestamp: prefer fresh-API nextTimestamp, else derive from oldest
-            // stored ball (id embeds over number, but ts is unknown for stored items).
-            // If we don't have any timestamp, we cannot paginate — bail gracefully.
-            let ts: number | undefined = data.commentaryNextTimestamp;
-            let lastTs: number | undefined = undefined;
+            // Start with API-provided tms+iid. If tms missing, use Date.now() so we
+            // still get the latest page and then walk backwards from there.
+            let ts: number | undefined = data.commentaryNextTimestamp || Date.now();
+            let currentIid: number | undefined = data.commentaryNextIid;
+            let lastKey: string | undefined = undefined;
 
-            if (ts) {
-              for (let page = 0; page < MAX_SYNC_PAGES && ts && ts !== lastTs; page++) {
-                try {
-                  const moreResult = await fetchMoreCommentary(id, ts);
-                  if (!moreResult.commentary || moreResult.commentary.length === 0) break;
+            for (let page = 0; page < MAX_SYNC_PAGES && ts; page++) {
+              const key = `${ts}-${currentIid ?? 'x'}`;
+              if (key === lastKey) break; // server echoed same page → stop
+              lastKey = key;
 
-                  // Dedup by id before merging
-                  const existingIds = new Set(autoLoadedComm.map(c => c.id));
-                  const newOnes = moreResult.commentary.filter(c => !existingIds.has(c.id));
-                  if (newOnes.length === 0) break; // no actual progress → stop
+              try {
+                const moreResult = await fetchMoreCommentary(id, ts, currentIid);
+                if (!moreResult.commentary || moreResult.commentary.length === 0) break;
 
+                // Dedup by id before merging
+                const existingIds = new Set(autoLoadedComm.map(c => c.id));
+                const newOnes = moreResult.commentary.filter(c => !existingIds.has(c.id));
+
+                if (newOnes.length > 0) {
                   autoLoadedComm = [...autoLoadedComm, ...newOnes];
-
                   // Progressive UI update so user sees history loading in real time
                   const progressMerged = mergeCommentary(autoLoadedComm, []);
                   setAllCommentary(progressMerged);
+                }
 
-                  // Early exit once the opening ball is reached
-                  if (hasOpeningBall(autoLoadedComm)) {
-                    ts = undefined;
-                    break;
-                  }
-
-                  lastTs = ts;
-                  ts = moreResult.nextTimestamp;
-                } catch {
+                // Early exit once we reach the very first ball of the match
+                if (hasOpeningBall(autoLoadedComm) && (currentIid === 1 || currentIid === undefined)) {
+                  ts = undefined;
                   break;
                 }
+
+                // No new items returned — either duplicate page or end-of-history.
+                // fetchMoreCommentary will have already tried stepping iid internally,
+                // so if we still got nothing new AND iid didn't change, we're done.
+                if (newOnes.length === 0) {
+                  if (!moreResult.nextIid || moreResult.nextIid === currentIid) break;
+                }
+
+                ts = moreResult.nextTimestamp;
+                currentIid = moreResult.nextIid;
+              } catch {
+                break;
               }
             }
 
@@ -511,9 +516,11 @@ export default function MatchDetail() {
             setAllCommentary(finalMerged);
             if (shouldPersist) saveCommentary(id, finalMerged);
             setNextTimestamp(ts); // may be undefined → "Load More" button hides correctly
+            setNextIid(currentIid);
           } else {
             // Already have full history — no more Load More needed
             setNextTimestamp(undefined);
+            setNextIid(undefined);
           }
         }
 
@@ -542,12 +549,13 @@ export default function MatchDetail() {
     }
   }, [id, retryCount]);
 
-  // Handle "Load More" commentary pagination
+  // Handle "Load More" commentary pagination (manual button for when Sync-on-Open
+  // hit the safety cap). Uses both tms and iid from the last response.
   const handleLoadMoreCommentary = useCallback(async () => {
     if (!id || !nextTimestamp || loadingMoreComm) return;
     setLoadingMoreComm(true);
     try {
-      const result = await fetchMoreCommentary(id, nextTimestamp);
+      const result = await fetchMoreCommentary(id, nextTimestamp, nextIid);
       if (result.commentary.length > 0) {
         const existingIds = new Set(allCommentary.map(c => c.id));
         const newItems = result.commentary.filter(c => !existingIds.has(c.id));
@@ -562,15 +570,17 @@ export default function MatchDetail() {
           }
         }
         setNextTimestamp(result.nextTimestamp);
+        setNextIid(result.nextIid);
       } else {
         setNextTimestamp(undefined);
+        setNextIid(undefined);
       }
     } catch {
       console.log('[Commentary] Load more failed');
     } finally {
       setLoadingMoreComm(false);
     }
-  }, [id, nextTimestamp, loadingMoreComm, allCommentary, match]);
+  }, [id, nextTimestamp, nextIid, loadingMoreComm, allCommentary, match]);
 
 
   // Logic B: Interstitial on random clicks (10-15 range for non-pro users)
