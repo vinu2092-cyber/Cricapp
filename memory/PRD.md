@@ -5,47 +5,50 @@ CricApp (com.cricapp.live) — React Native / Expo Android app, live on Play Sto
 Repo: https://github.com/vinu2092-cyber/Cricapp.git
 Current version: **v1.0.8** (versionCode 8)
 
-## 2026-04-17 — Phase 3 (Commentary Gap Recovery — THE real root cause)
+## 2026-04-17 — Phase 4 (Full Squads + Smart Ad Unlock)
 
-### Problem
-Even with Sync-on-Open in place, users reopening the app after phone sleep saw only the
-latest ~10-25 balls. Walking "back" through pagination never actually reached ball 0.1.
+### Squads — Substitutes & Bench now visible (Cricbuzz parity)
+**Root cause:** The base `/mcenter/v1/{matchId}` endpoint only returns Playing XI for
+many matches. Substitutes / Bench / Reserves live on a different endpoint that the
+Cricbuzz mobile app uses for its dedicated Squads tab.
 
-### Root cause (confirmed via RapidAPI docs)
-Cricbuzz's `mcenter/{matchId}/comm` endpoint paginates with `tms` + `iid` query params,
-NOT `timestamp`. Our code was sending `?timestamp=…` — the server silently ignored it
-and returned the SAME latest page every time. The loop "progressed" (because local
-dedup kept reducing new-ones to 0) but never actually moved backwards in time.
+**Fix:**
+1. Added `fetchTeamSquad(matchId, teamId)` → `/mcenter/v1/{matchId}/team/{teamId}` with 120s cache.
+2. Wired endpoint type `'team'` through `fetchData` (added `teamId` arg + new `team` switch case in `getEndpointForType`).
+3. `SquadsSection` now triggers BOTH teams' squad fetches in parallel after match info loads, then merges the rich squad data (Playing XI + Substitutes + Bench + Support Staff) on top of the basic detail response.
+4. `ScorecardSection.loadPlayerImages` and `app/match/[id].tsx loadPlayerImageMap` also call `fetchTeamSquad` so batter/bowler avatars + commentary event-card photos render for incoming substitutes too.
+5. `deepExtractPlayers` extended to handle additional key names (`Reserves`, `support staff`, `12th man`) and uses Cricbuzz's `id` field as a `faceImageId` fallback.
 
-### Fix
-1. `fetchMoreCommentary(matchId, tms, iid)` — now sends `?tms=…&iid=…`
-2. New `extractCommPagination()` pulls both `timestamp` + `inningsId` from the oldest
-   ball in `comwrapper` (falls back to `miniscore.inningsid` if wrapper omits it).
-3. When the server echoes the same tms within the current innings, the function
-   automatically flips `iid → iid - 1` with `tms = Date.now()` so we walk backwards
-   through innings 2 → innings 1 all the way to ball 0.1.
-4. If no `iid` was ever supplied (unusual response shape), we fallback to `iid=1`
-   as a last-ditch attempt to catch everything.
-5. `Match` type carries `commentaryNextTimestamp` + `commentaryNextIid` in state.
-6. `MAX_SYNC_PAGES` bumped 60 → 80 (~2000 balls) to cover 50-over × 2 innings.
+### Smart Ad Unlock — fix for "free access without watching ads"
+**Old behaviour:** every tap incremented the watched count regardless of whether an ad
+actually played → user got Pro after just 2 quick taps without seeing any ads.
 
-### Sync-on-Open loop — key improvements
-- Progressive UI update: user watches history fill in top-to-bottom as each page lands.
-- Break condition tightened: only stops when we genuinely can't step iid any further.
-- AppState.active listener (Phase 2) still re-arms on phone wake / task-switch.
+**New behaviour (in `app/index.tsx`):**
+- `showRewardedAd()` returns `true` only when `EARNED_REWARD` fires.
+- Tap → ad shown → `localAdsWatched +1`. After 2 watched ads → Pro unlocked.
+- Tap → ad failed (no fill / timeout) → `adFails +1` + a non-blocking toast.
+- After 2 consecutive ad-load failures → free Pro auto-unlocked (so the user is never
+  stuck behind Google's ad inventory).
+- Loading spinner + disabled button state preserved during ad request.
+- Test ad behaviour: AdMob test devices that don't get a fill simply hit the 2-failure
+  fallthrough path and unlock automatically — production users with real fills go
+  through the normal 2-ads flow.
 
-## Earlier phases (still in effect)
+## Phase 3 (still in effect) — Commentary Gap Recovery
+- `fetchMoreCommentary(matchId, tms, iid)` uses correct Cricbuzz pagination params (`tms`+`iid`).
+- Walks back through innings (`iid → iid-1`) until ball 0.1.
+- AppState.active listener re-arms sync on phone wake.
+- MAX_SYNC_PAGES 60 → 80 (~2000 balls, covers 50-over × 2 innings).
 
-### Phase 2 — UI + Ads
-- Rewarded ad unit ID corrected (`/6702704058` → `/6702740458`) — this was why ads weren't loading on test device.
-- Watch-ad alerts removed; button now shows spinner + is disabled mid-request.
-- `ADS_REQUIRED` 3 → 2 everywhere.
-- Commentary cards 100% width, `marginVertical: 12`, 13–14px fonts.
-- Team logos rendered in match list + match header (Cricbuzz CDN `/i1/c{id}/team.jpg`).
+## Phase 2 (still in effect) — UI + Ads basics
+- Rewarded ad unit ID corrected (`/6702704058` → `/6702740458`).
+- Blocking "Ad Not Available" alerts removed; silent fall-through.
+- 100% width event cards with `marginVertical: 12`, 13–14px fonts.
+- Team logos rendered in match list + match header.
 - Scorecard avatars bumped 24 → 32px.
 
-### Phase 1 — Build Fix
-- compileSdk/targetSdk 35 → 36 (app.json + gradle.properties) — androidx.activity/core 1.11+/1.17+ build clean.
+## Phase 1 (still in effect) — Build Fix
+- compileSdk/targetSdk 35 → 36 (app.json + gradle.properties).
 
 ## How to release
 1. User hits **"Save to GitHub"** in Emergent.
@@ -53,6 +56,8 @@ dedup kept reducing new-ones to 0) but never actually moved backwards in time.
 3. Upload the AAB to Play Console Closed Testing.
 
 ## Backlog
-- Player-photo fallback asset map (top ~50 IPL/intl players) for when Cricbuzz API omits `faceImageId`.
-- Optional: `/mcenter/{id}/team/{teamId}` fetch for full photo-enriched squads.
-- Consider caching `commentaryNextIid` + `commentaryNextTimestamp` per match so even a cold-start continues from where it left off.
+- If a player is in a squad but `faceImageId` is genuinely `null` from Cricbuzz (rare
+  for fresh callups), consider a small bundled fallback asset map for top ~50 IPL/intl
+  players.
+- AdMob test-device hashed ID could be added to `requestConfiguration` for the user's
+  own dev device so ads show during testing — but this only matters during dev.

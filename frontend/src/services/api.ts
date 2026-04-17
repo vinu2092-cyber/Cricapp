@@ -64,6 +64,7 @@ interface ProviderConfig {
     matchDetail: (id: string) => string;
     commentary: (id: string) => string;
     scorecard: (id: string) => string;
+    teamSquad: (id: string, teamId: string) => string;
   };
   parseMatchList: (data: any) => Match[];
   parseMatchDetail: (raw: any) => Match;
@@ -81,6 +82,7 @@ const PROVIDERS: Record<string, ProviderConfig> = {
       matchDetail: (id: string) => `/mcenter/v1/${id}`,
       commentary: (id: string) => `/mcenter/v1/${id}/comm`,
       scorecard: (id: string) => `/mcenter/v1/${id}/scard`,
+      teamSquad: (id: string, teamId: string) => `/mcenter/v1/${id}/team/${teamId}`,
     },
     parseMatchList: extractAllCricbuzz,
     parseMatchDetail: transformDetailCricbuzz,
@@ -96,6 +98,7 @@ const PROVIDERS: Record<string, ProviderConfig> = {
       matchDetail: (id: string) => `/mcenter/v1/${id}`,
       commentary: (id: string) => `/mcenter/v1/${id}/comm`,
       scorecard: (id: string) => `/mcenter/v1/${id}/scard`,
+      teamSquad: (id: string, teamId: string) => `/mcenter/v1/${id}/team/${teamId}`,
     },
     parseMatchList: extractAllCricbuzz,
     parseMatchDetail: transformDetailCricbuzz,
@@ -111,6 +114,7 @@ const PROVIDERS: Record<string, ProviderConfig> = {
       matchDetail: (id: string) => `/mcenter/v1/${id}`,
       commentary: (id: string) => `/mcenter/v1/${id}/comm`,
       scorecard: (id: string) => `/mcenter/v1/${id}/scard`,
+      teamSquad: (id: string, teamId: string) => `/mcenter/v1/${id}/team/${teamId}`,
     },
     parseMatchList: extractAllCricbuzz,
     parseMatchDetail: transformDetailCricbuzz,
@@ -125,7 +129,7 @@ function getProviderConfig(name: string): ProviderConfig {
   return PROVIDERS[name] || PROVIDERS[DEFAULT_PROVIDER];
 }
 
-function getEndpointForType(config: ProviderConfig, type: string, matchId?: string): string {
+function getEndpointForType(config: ProviderConfig, type: string, matchId?: string, teamId?: string): string {
   switch (type) {
     case 'live': return config.endpoints.live;
     case 'recent': return config.endpoints.recent;
@@ -133,6 +137,7 @@ function getEndpointForType(config: ProviderConfig, type: string, matchId?: stri
     case 'detail': return config.endpoints.matchDetail(matchId!);
     case 'comm': return config.endpoints.commentary(matchId!);
     case 'scard': return config.endpoints.scorecard(matchId!);
+    case 'team': return config.endpoints.teamSquad(matchId!, teamId!);
     default: return config.endpoints.live;
   }
 }
@@ -175,9 +180,10 @@ async function tryApiCall(endpoint: string, apiKey: string, apiHost: string, par
 // Returns { data, providerName } or null
 
 async function fetchData(
-  endpointType: 'live' | 'recent' | 'upcoming' | 'detail' | 'comm' | 'scard',
+  endpointType: 'live' | 'recent' | 'upcoming' | 'detail' | 'comm' | 'scard' | 'team',
   matchId?: string,
-  queryParams?: Record<string, string>
+  queryParams?: Record<string, string>,
+  teamId?: string
 ): Promise<{ data: any; providerName: string } | null> {
 
   // ===== Wait for Firebase to load keys =====
@@ -199,7 +205,7 @@ async function fetchData(
     // Find the correct provider config for this host
     const configName = Object.keys(PROVIDERS).find(k => PROVIDERS[k].host === provider.host) || DEFAULT_PROVIDER;
     const config = getProviderConfig(configName);
-    const endpoint = getEndpointForType(config, endpointType, matchId);
+    const endpoint = getEndpointForType(config, endpointType, matchId, teamId);
 
     for (const key of provider.keys) {
       try {
@@ -231,7 +237,7 @@ async function fetchData(
     for (const host of hostsToTry) {
       const configName = Object.keys(PROVIDERS).find(k => PROVIDERS[k].host === host) || DEFAULT_PROVIDER;
       const config = getProviderConfig(configName);
-      const endpoint = getEndpointForType(config, endpointType, matchId);
+      const endpoint = getEndpointForType(config, endpointType, matchId, teamId);
       try {
         const result = await tryApiCall(endpoint, fb.apiKey, host, queryParams);
         if (result) {
@@ -248,7 +254,7 @@ async function fetchData(
   const userKey = await getUserApiKey();
   if (userKey) {
     const config = PROVIDERS[DEFAULT_PROVIDER];
-    const endpoint = getEndpointForType(config, endpointType, matchId);
+    const endpoint = getEndpointForType(config, endpointType, matchId, teamId);
     try {
       const result = await tryApiCall(endpoint, userKey, HOST_1, queryParams);
       if (result) {
@@ -862,6 +868,24 @@ export async function fetchMatchInfo(matchId: string): Promise<any> {
   // Cache match info for 120 seconds
   await setCache(`info_${matchId}`, data);
   return data;
+}
+
+// ============ FETCH TEAM SQUAD (Cricbuzz-style: full squad with photos) ============
+// Endpoint: /mcenter/v1/{matchId}/team/{teamId}
+// Returns the FULL squad for one team — Playing XI, Substitutes, Bench — each player
+// includes faceImageId, role, captain/keeper flags. This is the same data Cricbuzz
+// app's "Squads" tab uses to render Substitutes + Bench sections with photos.
+export async function fetchTeamSquad(matchId: string, teamId: string | number): Promise<any> {
+  const tid = String(teamId);
+  const cacheKey = `teamsquad_${matchId}_${tid}`;
+  const cached = await getCached(cacheKey);
+  if (cached) return cached;
+
+  const result = await fetchData('team', matchId, undefined, tid);
+  if (!result || !result.data) return null;
+
+  await setCache(cacheKey, result.data);
+  return result.data;
 }
 
 // ============ COMMENTARY PAGINATION ============

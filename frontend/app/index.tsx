@@ -71,6 +71,7 @@ export default function Index() {
   const [error, setError] = useState<string | null>(null);
   const [showProModal, setShowProModal] = useState(false);
   const [localAdsWatched, setLocalAdsWatched] = useState(0);
+  const [adFails, setAdFails] = useState(0);
   const [adLoading, setAdLoading] = useState(false);
 
   // Refs for timers - important for cleanup
@@ -548,25 +549,54 @@ export default function Index() {
                   onPress={async () => {
                     if (adLoading) return;
                     setAdLoading(true);
+                    let shown = false;
                     try {
-                      // REWARD GRANT: Always credit the watch — even if ad fails to load,
-                      // the user gets progress. This keeps the unlock flow unblocked
-                      // when network/inventory is weak.
-                      await showRewardedAd(); // fire-and-forget, ignore bool result
-                    } catch {}
-                    const next = localAdsWatched + 1;
-                    setLocalAdsWatched(next);
+                      // showRewardedAd resolves true ONLY when the EARNED_REWARD event
+                      // fires (real ad watched). false = ad didn't load / no fill / user
+                      // closed before earning the reward.
+                      shown = await showRewardedAd();
+                    } catch {
+                      shown = false;
+                    }
                     setAdLoading(false);
-                    if (next >= 2) {
-                      setProFromAdMob(true);
-                      setLocalAdsWatched(0);
-                      Alert.alert(
-                        'PRO Unlocked!',
-                        'Voice Commentary, Floating Scoreboard, and Ad-free mode active for 30 minutes!',
-                        [{ text: 'Awesome!', onPress: () => setShowProModal(false) }]
-                      );
+
+                    if (shown) {
+                      // Genuine ad watched → reset fail counter, count progress
+                      setAdFails(0);
+                      const next = localAdsWatched + 1;
+                      setLocalAdsWatched(next);
+                      if (next >= 2) {
+                        setProFromAdMob(true);
+                        setLocalAdsWatched(0);
+                        Alert.alert(
+                          'PRO Unlocked!',
+                          'Voice Commentary, Floating Scoreboard, and Ad-free mode active for 30 minutes!',
+                          [{ text: 'Awesome!', onPress: () => setShowProModal(false) }]
+                        );
+                      } else {
+                        Alert.alert('Great!', `${next}/2 ads watched. One more to go!`);
+                      }
                     } else {
-                      Alert.alert('Great!', `${next}/2 ads watched. One more to go!`);
+                      // Ad failed to load / no fill — track failure.
+                      // After 2 consecutive ad-load failures, auto-unlock so the user
+                      // never gets stuck behind a Google ad inventory issue.
+                      const fails = adFails + 1;
+                      setAdFails(fails);
+                      if (fails >= 2) {
+                        setProFromAdMob(true);
+                        setAdFails(0);
+                        setLocalAdsWatched(0);
+                        Alert.alert(
+                          'Free Pro Unlocked!',
+                          'Ad service is busy right now — we have unlocked Pro for you for 30 minutes anyway. Enjoy!',
+                          [{ text: 'Thanks!', onPress: () => setShowProModal(false) }]
+                        );
+                      } else {
+                        Alert.alert(
+                          'Ad not available',
+                          'Please tap once more — if it still does not load, you will get free Pro access automatically.'
+                        );
+                      }
                     }
                   }}
                   data-testid="watch-ad-button"

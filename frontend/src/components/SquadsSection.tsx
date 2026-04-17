@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchScorecard, fetchMatchInfo } from '../services/api';
+import { fetchScorecard, fetchMatchInfo, fetchTeamSquad } from '../services/api';
 import { useAdMob } from '../context/AdMobContext.native';
 
 interface SquadPlayer {
@@ -80,7 +80,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
 
   const loadSquads = async () => {
     try {
-      // ============ STEP 1: Fetch BOTH match info AND scorecard ============
+      // ============ STEP 1: Fetch match info AND scorecard (parallel) ============
       const [infoData, scardData] = await Promise.all([
         fetchMatchInfo(matchId).catch(() => null),
         fetchScorecard(matchId).catch(() => null),
@@ -89,7 +89,23 @@ export default function SquadsSection({ matchId, isLive }: Props) {
       console.log('[Squads] matchInfo keys:', infoData ? Object.keys(infoData) : 'null');
       console.log('[Squads] scorecard keys:', scardData ? Object.keys(scardData) : 'null');
 
-      // ============ STEP 2: DEEP extract player data from match info ============
+      // ============ STEP 1B: Extract teamIds and fetch FULL team squads in parallel ============
+      // The /mcenter/v1/{id}/team/{teamId} endpoint is what Cricbuzz's own app uses for
+      // its "Squads" tab — returns ALL players (Playing XI + Substitutes + Bench) each
+      // with their faceImageId so photos render end-to-end. The base detail endpoint
+      // often only carries Playing XI which is why subs/bench were missing.
+      const team1Id = infoData?.team1?.teamid || infoData?.team1?.teamId || infoData?.matchInfo?.team1?.teamId;
+      const team2Id = infoData?.team2?.teamid || infoData?.team2?.teamId || infoData?.matchInfo?.team2?.teamId;
+
+      const [team1FullSquad, team2FullSquad] = await Promise.all([
+        team1Id ? fetchTeamSquad(matchId, team1Id).catch(() => null) : Promise.resolve(null),
+        team2Id ? fetchTeamSquad(matchId, team2Id).catch(() => null) : Promise.resolve(null),
+      ]);
+
+      console.log('[Squads] team1FullSquad keys:', team1FullSquad ? Object.keys(team1FullSquad) : 'null');
+      console.log('[Squads] team2FullSquad keys:', team2FullSquad ? Object.keys(team2FullSquad) : 'null');
+
+      // ============ STEP 2: DEEP extract player data from match info OR team-squad endpoint ============
       // Cricbuzz API can return players in many structures:
       // A) data.team1.players = { "playing XI": [...], "bench": [...] }  (OBJECT with named keys)
       // B) data.teams.team1.squad = [...], data.teams.team1.playingXI = [...]
@@ -110,9 +126,11 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         const players = teamObj?.players;
         if (players && typeof players === 'object' && !Array.isArray(players)) {
           // OBJECT format: { "playing XI": [...], "bench": [...], "substitutes": [...] }
-          playing11 = players['playing XI'] || players['playingXI'] || players['Playing XI'] || [];
-          bench = players['bench'] || players['Bench'] || [];
-          substitutes = players['substitutes'] || players['Substitutes'] || players['impact players'] || players['Impact Players'] || [];
+          playing11 = players['playing XI'] || players['playingXI'] || players['Playing XI'] || players['playing xi'] || [];
+          bench = players['bench'] || players['Bench'] || players['BENCH'] || players['reserves'] || players['Reserves'] || [];
+          substitutes = players['substitutes'] || players['Substitutes'] || players['SUBSTITUTES']
+            || players['impact players'] || players['Impact Players']
+            || players['support staff'] || [];
           console.log('[Squads] Found players OBJECT: playing11=' + playing11.length + ', bench=' + bench.length + ', subs=' + substitutes.length);
         } else if (Array.isArray(players)) {
           // ARRAY format: all players in a flat list
@@ -134,22 +152,40 @@ export default function SquadsSection({ matchId, isLive }: Props) {
           substitutes = teamObj?.substitutes || teamObj?.subs || teamObj?.impactPlayers || [];
         }
 
-        return { playing11, bench, substitutes, allSquad };
+        // Normalize: Cricbuzz team-squad endpoint uses `id` as the faceImageId
+        const normalize = (arr: any[]) => arr.map(p => ({
+          ...p,
+          faceImageId: p.faceImageId || p.imageId || p.image_id || p.faceimageid || p.id,
+        }));
+
+        return {
+          playing11: normalize(playing11),
+          bench: normalize(bench),
+          substitutes: normalize(substitutes),
+          allSquad: normalize(allSquad),
+        };
       };
 
-      // Try multiple paths for team info
-      const getTeamData = (root: any, teamKey: string) => {
+      // Try multiple paths for team info — check both the basic /mcenter/v1/{id} response
+      // AND the richer /mcenter/v1/{id}/team/{teamId} response which contains subs+bench.
+      const getTeamData = (root: any, teamKey: string, fullSquad: any) => {
+        // Prefer the dedicated team-squad payload because it always carries
+        // subs+bench with photo IDs.
+        if (fullSquad) {
+          // The team endpoint can wrap the squad under `team` or return it flat
+          return fullSquad.team || fullSquad;
+        }
         return root?.[teamKey] || root?.teams?.[teamKey] || root?.matchInfo?.[teamKey] || {};
       };
 
-      const team1Info = getTeamData(infoData, 'team1');
-      const team2Info = getTeamData(infoData, 'team2');
+      const team1Info = getTeamData(infoData, 'team1', team1FullSquad);
+      const team2Info = getTeamData(infoData, 'team2', team2FullSquad);
 
       const t1Data = deepExtractPlayers(team1Info);
       const t2Data = deepExtractPlayers(team2Info);
 
-      console.log('[Squads] T1 info: playing11=' + t1Data.playing11.length + ', bench=' + t1Data.bench.length + ', allSquad=' + t1Data.allSquad.length);
-      console.log('[Squads] T2 info: playing11=' + t2Data.playing11.length + ', bench=' + t2Data.bench.length + ', allSquad=' + t2Data.allSquad.length);
+      console.log('[Squads] T1 final: playing11=' + t1Data.playing11.length + ', bench=' + t1Data.bench.length + ', subs=' + t1Data.substitutes.length + ', allSquad=' + t1Data.allSquad.length);
+      console.log('[Squads] T2 final: playing11=' + t2Data.playing11.length + ', bench=' + t2Data.bench.length + ', subs=' + t2Data.substitutes.length + ', allSquad=' + t2Data.allSquad.length);
 
       // ============ STEP 3: Extract players from scorecard ============
       const innings = scardData?.scorecard || [];

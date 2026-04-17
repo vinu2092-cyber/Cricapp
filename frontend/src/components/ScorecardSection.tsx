@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchScorecard, fetchMatchInfo } from '../services/api';
+import { fetchScorecard, fetchMatchInfo, fetchTeamSquad } from '../services/api';
 import { useAdMob } from '../context/AdMobContext.native';
 
 interface Props {
@@ -87,6 +87,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
 
   // Fetch match info once and build a name → faceImageId map so batter/bowler rows
   // can render a small Cricbuzz-style avatar next to each name (Cricket Guru parity).
+  // Also pulls the per-team squad endpoint for richer photo coverage (subs+bench).
   const loadPlayerImages = async () => {
     try {
       const info = await fetchMatchInfo(matchId);
@@ -100,7 +101,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
           if (!Array.isArray(arr)) return;
           for (const p of arr) {
             const name = normalizeName(p?.name || p?.fullName || p?.fullname || p?.nickName || p?.playerName || '');
-            const id = p?.faceImageId || p?.imageId || p?.image_id || p?.faceimageid;
+            const id = p?.faceImageId || p?.imageId || p?.image_id || p?.faceimageid || p?.id;
             if (name && id) map[name] = String(id);
           }
         };
@@ -113,6 +114,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
           collect(players['substitutes']);
           collect(players['Substitutes']);
           collect(players['impact players']);
+          collect(players['support staff']);
         } else if (Array.isArray(players)) {
           collect(players);
         }
@@ -129,6 +131,16 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
       addTeam(info?.teams?.team2);
       addTeam(info?.matchInfo?.team1);
       addTeam(info?.matchInfo?.team2);
+
+      // Per-team full squad endpoint (Cricbuzz "Squads" tab data)
+      const t1Id = info?.team1?.teamid || info?.team1?.teamId;
+      const t2Id = info?.team2?.teamid || info?.team2?.teamId;
+      const [t1Full, t2Full] = await Promise.all([
+        t1Id ? fetchTeamSquad(matchId, t1Id).catch(() => null) : Promise.resolve(null),
+        t2Id ? fetchTeamSquad(matchId, t2Id).catch(() => null) : Promise.resolve(null),
+      ]);
+      if (t1Full) addTeam(t1Full.team || t1Full);
+      if (t2Full) addTeam(t2Full.team || t2Full);
 
       setPlayerImgMap(map);
     } catch {

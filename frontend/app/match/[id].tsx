@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import { fetchMatchById, fetchMoreCommentary, openExternalScorecard, fetchMatchInfo } from '../../src/services/api';
+import { fetchMatchById, fetchMoreCommentary, openExternalScorecard, fetchMatchInfo, fetchTeamSquad } from '../../src/services/api';
 import { Match, Commentary } from '../../src/types/match';
 import ErrorScreen from '../../src/components/ErrorScreen';
 import LiveIndicator, { MatchStatusBadge } from '../../src/components/LiveIndicator';
@@ -366,7 +366,8 @@ export default function MatchDetail() {
   }, [id]);
 
   // Fetch match info once, build name → Cricbuzz faceImageId map for commentary event cards.
-  // Cached 120s inside fetchMatchInfo, so this is cheap.
+  // Also pulls full team squads (including subs+bench) so photos render for incoming
+  // batsmen / bowling-change cards even when the player isn't in the basic Playing XI.
   const loadPlayerImageMap = useCallback(async () => {
     if (!id) return;
     try {
@@ -378,7 +379,7 @@ export default function MatchDetail() {
         for (const p of arr) {
           const name = (p?.name || p?.fullName || p?.fullname || p?.nickName || p?.playerName || '')
             .replace(/\s*\((c|wk)\)/gi, '').toLowerCase().trim();
-          const imgId = p?.faceImageId || p?.imageId || p?.image_id || p?.faceimageid;
+          const imgId = p?.faceImageId || p?.imageId || p?.image_id || p?.faceimageid || p?.id;
           if (name && imgId) map[name] = String(imgId);
         }
       };
@@ -389,7 +390,7 @@ export default function MatchDetail() {
           collect(pl['playing XI']); collect(pl['playingXI']); collect(pl['Playing XI']);
           collect(pl['bench']); collect(pl['Bench']);
           collect(pl['substitutes']); collect(pl['Substitutes']);
-          collect(pl['impact players']);
+          collect(pl['impact players']); collect(pl['support staff']);
         } else if (Array.isArray(pl)) {
           collect(pl);
         }
@@ -399,6 +400,17 @@ export default function MatchDetail() {
       addTeam(info.team1); addTeam(info.team2);
       addTeam(info?.teams?.team1); addTeam(info?.teams?.team2);
       addTeam(info?.matchInfo?.team1); addTeam(info?.matchInfo?.team2);
+
+      // Pull full per-team squads (Cricbuzz "Squads" tab data) for richer photo coverage
+      const t1Id = info?.team1?.teamid || info?.team1?.teamId;
+      const t2Id = info?.team2?.teamid || info?.team2?.teamId;
+      const [t1Full, t2Full] = await Promise.all([
+        t1Id ? fetchTeamSquad(id, t1Id).catch(() => null) : Promise.resolve(null),
+        t2Id ? fetchTeamSquad(id, t2Id).catch(() => null) : Promise.resolve(null),
+      ]);
+      if (t1Full) addTeam(t1Full.team || t1Full);
+      if (t2Full) addTeam(t2Full.team || t2Full);
+
       setPlayerImgMap(map);
     } catch {}
   }, [id]);

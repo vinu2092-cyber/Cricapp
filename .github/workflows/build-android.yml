@@ -118,36 +118,28 @@ jobs:
           tag_name: v1.0.8
           name: CricApp v1.0.8
           body: |
-            ## CricApp v1.0.8 — Phase 3 (Deep Gap Recovery)
-            ### 🔥 Commentary Pagination — The actual root cause
-            - Cricbuzz mcenter/comm pagination requires **`tms` + `iid`** query params.
-              The app was sending `timestamp` which the API ignored, so every "older"
-              call returned the same latest ~25 balls — that's why users saw a 10-over gap
-              after reopening the phone.
-            - Now sends `tms=…&iid=…`; automatically walks back iid → iid-1 when an
-              innings exhausts so we reach ball 0.1 of innings 1 regardless of which
-              innings the user opened the match in.
-            - Safety cap bumped 60 → 80 pages (~2000 balls, covers 50-over × 2 innings).
-            - If the API returns no `iid`, falls back to iid=1 as a last-ditch attempt.
-            ### Build Fix (Phase 1)
-            - compileSdk bumped 35 → 36 so androidx.activity/core 1.11+/1.17+ build clean
-            ### Rewarded Ads (Phase 2)
-            - Corrected rewarded ad unit ID (was `/6702704058`, now `/6702740458` matching app.json / Play Store)
-            - Removed blocking "Ad Not Available" alerts — on-demand errors now fall through silently so user still earns progress
-            - Watch-ad button now shows a loading spinner and is disabled while the ad request is in flight (no more "dead" taps)
-            - Reduced required rewarded ads 3 → 2 across all flows
-            - Reward-grant fallback preserved: if an ad fails to load, progress still counts (feature unlock never blocks)
-            ### Sync-on-Open robustness
-            - `syncDoneRef` gate + AppState.active listener re-arms sync when the phone wakes
-            - Progressive UI updates: user watches history fill in from top to bottom in real time
-            ### Visual Event Cards (Cricket Guru parity)
-            - 100% width event cards with marginVertical: 12 gap — no more squeezed look
-            - Standardized fonts 13–14px across commentary rows, stats blocks, and event cards
-            - Photos: OUT (soft red) / NEW BATSMAN (pastel green) / BOWLING CHANGE (light blue)
-            ### Team Logos
-            - Cricbuzz team logo now rendered on the match header AND every match list card (uses `imageId`/`teamId` from API)
-            ### Scorecard
-            - Batter/bowler avatars bumped 24 → 32px for visibility, matched Cricbuzz CDN URL template
+            ## CricApp v1.0.8 — Phase 4 (Full Squads + Smart Ad Unlock)
+            ### 🎯 Squads — Substitutes & Bench now visible
+            - Added `fetchTeamSquad(matchId, teamId)` → calls Cricbuzz `/mcenter/v1/{id}/team/{teamId}` (the same endpoint Cricbuzz's own app uses for its Squads tab).
+            - SquadsSection now fetches BOTH teams' full squads in parallel after match info loads. Renders Playing XI + Substitutes + Bench with `faceImageId` photos end-to-end.
+            - ScorecardSection + match-page commentary photo map also pull from the same endpoint, so batter/bowler avatars and event-card photos render reliably (incoming substitutes too).
+            - `deepExtractPlayers` extended to recognise additional key names (`Reserves`, `support staff`, `12th man`) and now treats Cricbuzz's `id` as the `faceImageId` fallback.
+            ### 🎯 Smart Ad Unlock (the real fix)
+            Old behaviour:    every tap counted, even if no ad shown → user got "free Pro" after 2 quick taps without seeing ads.
+            New behaviour:
+            - Tap 1: ad shown → `1/2` watched; if it FAILED → `Ad not available` toast, internal fail counter +1.
+            - Tap 2: ad shown → `2/2` → Pro unlocked normally.
+            - If ad fails 2 consecutive times → `Free Pro Unlocked!` (so the user is never stuck behind Google's ad inventory).
+            - Loading spinner + disabled state during ad request preserved.
+            ### Phase 3 (Commentary Gap Fix) — still in effect
+            - tms+iid pagination, walks back through innings until ball 0.1.
+            ### Phase 2 (UI + Ads) — still in effect
+            - Rewarded ad unit ID corrected to /6702740458, blocking alerts removed, ADS_REQUIRED 3 → 2.
+            - 100% width event cards, marginVertical: 12, 13–14px fonts.
+            - Team logos in match list + header.
+            - Scorecard avatars 24 → 32px.
+            ### Phase 1 (Build Fix) — still in effect
+            - compileSdk/targetSdk 35 → 36.
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab
