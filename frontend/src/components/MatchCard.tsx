@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Match } from '../types/match';
 import { MatchStatusBadge } from './LiveIndicator';
@@ -72,7 +72,16 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
       <View style={styles.teamsContainer}>
         {match.teams.map((team, index) => (
           <View key={index} style={styles.teamRow}>
-            <Text style={styles.teamName}>{team.shortName}</Text>
+            <View style={styles.teamNameRow}>
+              {team.imageId || team.teamId ? (
+                <Image
+                  source={{ uri: `https://www.cricbuzz.com/a/img/v1/72x54/i1/c${team.imageId || team.teamId}/team.jpg` }}
+                  style={styles.teamLogoImg}
+                  resizeMode="contain"
+                />
+              ) : null}
+              <Text style={styles.teamName}>{team.shortName}</Text>
+            </View>
             <View style={styles.scoreContainer}>
               {team.runs !== undefined && (
                 <Text style={styles.score}>
@@ -221,6 +230,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 6,
+  },
+  teamNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  teamLogoImg: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F5F5F5',
   },
   teamName: {
     fontSize: 16,

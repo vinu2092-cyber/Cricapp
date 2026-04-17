@@ -118,28 +118,28 @@ jobs:
           tag_name: v1.0.8
           name: CricApp v1.0.8
           body: |
-            ## CricApp v1.0.8 — Final Phase
-            ### IPL + Squads
-            - Fixed IPL/BBL/PSL/CPL/SA20/etc. tab population (per-series categorization)
-            - Squads: Playing XI / Substitutes / Bench sections with Cricbuzz profile photos end-to-end
-            ### Commentary
-            - Sync-on-Open: every app launch fetches full history back to ball 0.1 (≤1500 balls)
-            - Fast-exit when stored history already has opening ball (saves API calls)
-            - Fixed pagination fallback bug that looped on latest balls
-            - Commentary rows: 2 soft pastel colors (yellow + green); red reserved for OUT cards only
-            - Full-width layout (removed inner padding — container uses whole screen)
-            ### Event Cards (Cricbuzz-style)
-            - OUT card: soft red, batter photo + runs/balls + SR + dismissal
-            - NEW BATSMAN card: pastel green, incoming player photo
-            - BOWLING CHANGE card: light blue, bowler photo
+            ## CricApp v1.0.8 — Phase 2 (Visual Cards & Deep Data Sync)
+            ### Build Fix
+            - compileSdk bumped 35 → 36 so androidx.activity/core 1.11+/1.17+ build clean
+            ### Rewarded Ads (CRITICAL FIX)
+            - Corrected rewarded ad unit ID (was `/6702704058`, now `/6702740458` matching app.json / Play Store)
+            - Removed blocking "Ad Not Available" alerts — on-demand errors now fall through silently so user still earns progress
+            - Watch-ad button now shows a loading spinner and is disabled while the ad request is in flight (no more "dead" taps)
+            - Reduced required rewarded ads 3 → 2 across all flows
+            - Reward-grant fallback preserved: if an ad fails to load, progress still counts (feature unlock never blocks)
+            ### Commentary — Sync-on-Open hardened
+            - Full-history sync now re-arms on AppState resume (phone wake / task-switch back)
+            - Gate replaced: `syncDoneRef` flag instead of commentary-count guard (fixes the 10-over gap when re-opening after sleep)
+            - Safely bails when API provides no pagination timestamp (avoids infinite "latest page" loop)
+            - Still persists up to ~1500 balls per match, back to ball 0.1
+            ### Visual Event Cards (Cricket Guru parity)
+            - 100% width event cards with marginVertical: 12 gap — no more squeezed look
+            - Standardized fonts 13–14px across commentary rows, stats blocks, and event cards
+            - Photos: OUT (soft red) / NEW BATSMAN (pastel green) / BOWLING CHANGE (light blue)
+            ### Team Logos
+            - Cricbuzz team logo now rendered on the match header AND every match list card (uses `imageId`/`teamId` from API)
             ### Scorecard
-            - Batters and bowlers now show avatar photos next to names (Cricket Guru parity)
-            ### Appearance
-            - Settings → Change Background: 4 standard presets (Classic / White / Black / Light Green) + Custom photo upload via gallery
-            - Wallpaper persists across app restarts (AsyncStorage)
-            ### Pro Unlock
-            - Reduced required rewarded ads from 3 → 2
-            - Reward-grant fallback: if an ad fails to load the progress still counts (feature unlock never blocked)
+            - Batter/bowler avatars bumped 24 → 32px for visibility, matched Cricbuzz CDN URL template
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab

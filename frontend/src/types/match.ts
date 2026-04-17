@@ -4,6 +4,8 @@ export interface Team {
   runs?: number;
   wickets?: number;
   overs?: number;
+  teamId?: string | number;
+  imageId?: string | number;
 }
 
 export interface Batsman {

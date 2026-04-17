@@ -19,7 +19,7 @@ const AD_IDS = {
   appOpen: 'ca-app-pub-9675798593675825/4826782503',
   interstitial: 'ca-app-pub-9675798593675825/8438724452',
   banner: 'ca-app-pub-9675798593675825/8616886104',
-  rewarded: 'ca-app-pub-9675798593675825/6702704058',
+  rewarded: 'ca-app-pub-9675798593675825/6702740458',
 };
 
 // Track if SDK is initialized (for load gating)
@@ -336,11 +336,7 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     console.log('[AdMob] Rewarded ad not ready, attempting on-demand load...');
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        console.log('[AdMob] On-demand rewarded ad TIMEOUT (15s)');
-        Alert.alert(
-          'Ad Not Available',
-          'Rewarded ad is not available right now. Please try again in a moment.',
-        );
+        console.log('[AdMob] On-demand rewarded ad TIMEOUT (15s) — silent fail so fallthrough can credit user');
         resolve(false);
       }, 15000);
 
@@ -374,18 +370,16 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         onDemandAd.addAdEventListener(AdEventType.ERROR, (error: any) => {
           if (handled) return;
           handled = true;
-          console.warn('[AdMob] On-demand ERROR:', error?.message, error?.code);
+          console.warn('[AdMob] On-demand ERROR (silent fallthrough):', error?.message, error?.code);
           clearTimeout(timeout);
-          Alert.alert('Ad Not Available', 'No ad available right now. Please try again later.');
           resolve(false);
         });
 
         console.log('[AdMob] On-demand: loading rewarded ad...');
         onDemandAd.load();
       } catch (err) {
-        console.warn('[AdMob] On-demand EXCEPTION:', err);
+        console.warn('[AdMob] On-demand EXCEPTION (silent fallthrough):', err);
         clearTimeout(timeout);
-        Alert.alert('Ad Error', 'Something went wrong. Please try again.');
         resolve(false);
       }
     });

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Dimensions, Modal, Alert, Linking, Platform, ImageBackground, AppState
+  ActivityIndicator, Dimensions, Modal, Alert, Linking, Platform, ImageBackground, AppState, Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -211,6 +211,9 @@ export default function MatchDetail() {
   // Auto-scroll ref for commentary updates
   const mainScrollRef = useRef<ScrollView>(null);
   const prevCommCountRef = useRef<number>(0);
+  // Sync-on-Open guard: run full-history sync exactly ONCE per match screen open.
+  // Re-armed on AppState.active (below) so cold-start returning users also trigger a sync.
+  const syncDoneRef = useRef<boolean>(false);
 
   // Click counter for interstitial (Logic B)
   const [clicks, setClicks] = useState(0);
@@ -331,6 +334,17 @@ export default function MatchDetail() {
       loadMatch();
     }, MATCH_CACHE_FLUSH);
 
+    // ============ SYNC-ON-FOREGROUND ============
+    // When user brings the app back to the foreground (after phone sleep / app switch),
+    // re-arm the sync-on-open gate and re-run loadMatch so any balls missed during
+    // the blackout get fetched from ball 0.1 and merged into AsyncStorage.
+    const fgSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        syncDoneRef.current = false;
+        loadMatch();
+      }
+    });
+
     // Cleanup on unmount - kills ALL background fetching instantly
     return () => {
       if (refreshIntervalRef.current) {
@@ -341,6 +355,7 @@ export default function MatchDetail() {
         clearInterval(cacheFlushIntervalRef.current);
         cacheFlushIntervalRef.current = null;
       }
+      fgSub.remove();
       Speech.stop();
       // Stop native overlay when leaving the page
       if (nativeOverlayActive) {
@@ -431,13 +446,18 @@ export default function MatchDetail() {
         setNextTimestamp(data.commentaryNextTimestamp);
 
         // ============ SYNC-ON-OPEN: fetch ENTIRE commentary history ============
-        // Every time the match screen opens, keep paginating older balls until:
+        // Every time the match screen opens (or returns to foreground), keep paginating
+        // older balls until:
         //   • we already have ball 0.1 (nothing left to fetch), OR
         //   • server returns no more commentary, OR
         //   • timestamp stops moving backwards (end-of-history guard), OR
         //   • we've reached MAX_SYNC_PAGES (safety cap for any format).
-        // Persists to AsyncStorage so offline/phone-off users see full history next open.
-        if (data.commentaryNextTimestamp && shouldPersist && prevCommCountRef.current === 0) {
+        // Persists to AsyncStorage so offline / phone-off users see full history next open.
+        // NOTE: we intentionally do NOT gate on prevCommCountRef (that check broke
+        // the Gap-Recovery flow when a user re-opened a match after closing the phone
+        // mid-over). We use syncDoneRef so it runs once per screen open / resume.
+        if (shouldPersist && !syncDoneRef.current) {
+          syncDoneRef.current = true;
           const MAX_SYNC_PAGES = 60; // ~60 pages × ~25 balls ≈ 1500 balls (covers ODI & T20 fully)
 
           let autoLoadedComm: Commentary[] = [
@@ -450,35 +470,40 @@ export default function MatchDetail() {
             arr.some(c => c.over === '0.1' || c.over === '0.2' || /^0\.[12]$/.test(c.over || ''));
 
           if (!hasOpeningBall(autoLoadedComm)) {
+            // Starting timestamp: prefer fresh-API nextTimestamp, else derive from oldest
+            // stored ball (id embeds over number, but ts is unknown for stored items).
+            // If we don't have any timestamp, we cannot paginate — bail gracefully.
             let ts: number | undefined = data.commentaryNextTimestamp;
             let lastTs: number | undefined = undefined;
 
-            for (let page = 0; page < MAX_SYNC_PAGES && ts && ts !== lastTs; page++) {
-              try {
-                const moreResult = await fetchMoreCommentary(id, ts);
-                if (!moreResult.commentary || moreResult.commentary.length === 0) break;
+            if (ts) {
+              for (let page = 0; page < MAX_SYNC_PAGES && ts && ts !== lastTs; page++) {
+                try {
+                  const moreResult = await fetchMoreCommentary(id, ts);
+                  if (!moreResult.commentary || moreResult.commentary.length === 0) break;
 
-                // Dedup by id before merging
-                const existingIds = new Set(autoLoadedComm.map(c => c.id));
-                const newOnes = moreResult.commentary.filter(c => !existingIds.has(c.id));
-                if (newOnes.length === 0) break; // no actual progress → stop
+                  // Dedup by id before merging
+                  const existingIds = new Set(autoLoadedComm.map(c => c.id));
+                  const newOnes = moreResult.commentary.filter(c => !existingIds.has(c.id));
+                  if (newOnes.length === 0) break; // no actual progress → stop
 
-                autoLoadedComm = [...autoLoadedComm, ...newOnes];
+                  autoLoadedComm = [...autoLoadedComm, ...newOnes];
 
-                // Progressive UI update so user sees history loading in real time
-                const progressMerged = mergeCommentary(autoLoadedComm, []);
-                setAllCommentary(progressMerged);
+                  // Progressive UI update so user sees history loading in real time
+                  const progressMerged = mergeCommentary(autoLoadedComm, []);
+                  setAllCommentary(progressMerged);
 
-                // Early exit once the opening ball is reached
-                if (hasOpeningBall(autoLoadedComm)) {
-                  ts = undefined;
+                  // Early exit once the opening ball is reached
+                  if (hasOpeningBall(autoLoadedComm)) {
+                    ts = undefined;
+                    break;
+                  }
+
+                  lastTs = ts;
+                  ts = moreResult.nextTimestamp;
+                } catch {
                   break;
                 }
-
-                lastTs = ts;
-                ts = moreResult.nextTimestamp;
-              } catch {
-                break;
               }
             }
 
@@ -716,6 +741,13 @@ export default function MatchDetail() {
           {/* Score Row - Compact */}
           <View style={styles.teamRow}>
             <View style={styles.teamBlock}>
+              {match.teams[0].imageId || match.teams[0].teamId ? (
+                <Image
+                  source={{ uri: `https://www.cricbuzz.com/a/img/v1/72x54/i1/c${match.teams[0].imageId || match.teams[0].teamId}/team.jpg` }}
+                  style={styles.teamLogo}
+                  resizeMode="contain"
+                />
+              ) : null}
               <Text style={styles.teamName}>{match.teams[0].shortName}</Text>
               <Text style={styles.teamScore}>
                 {match.teams[0].runs !== undefined ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` : '-'}
@@ -726,6 +758,13 @@ export default function MatchDetail() {
             <MatchStatusBadge state={match.status} isLive={match.status === 'live'} />
 
             <View style={styles.teamBlock}>
+              {match.teams[1].imageId || match.teams[1].teamId ? (
+                <Image
+                  source={{ uri: `https://www.cricbuzz.com/a/img/v1/72x54/i1/c${match.teams[1].imageId || match.teams[1].teamId}/team.jpg` }}
+                  style={styles.teamLogo}
+                  resizeMode="contain"
+                />
+              ) : null}
               <Text style={styles.teamName}>{match.teams[1].shortName}</Text>
               <Text style={styles.teamScore}>
                 {match.teams[1].runs !== undefined ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` : '-'}
@@ -1007,6 +1046,7 @@ const styles = StyleSheet.create({
   actionBtnActive: { backgroundColor: 'rgba(76,175,80,0.2)' },
   teamRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 4 },
   teamBlock: { alignItems: 'center', flex: 1 },
+  teamLogo: { width: 36, height: 36, marginBottom: 2, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)' },
   teamName: { color: '#CCC', fontSize: 12, fontWeight: '600' },
   teamScore: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
   overs: { color: '#999', fontSize: 10, marginTop: 1 },

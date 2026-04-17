@@ -71,6 +71,7 @@ export default function Index() {
   const [error, setError] = useState<string | null>(null);
   const [showProModal, setShowProModal] = useState(false);
   const [localAdsWatched, setLocalAdsWatched] = useState(0);
+  const [adLoading, setAdLoading] = useState(false);
 
   // Refs for timers - important for cleanup
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -542,14 +543,20 @@ export default function Index() {
                 </View>
                 
                 <TouchableOpacity
-                  style={styles.watchAdButton}
+                  style={[styles.watchAdButton, adLoading && { opacity: 0.6 }]}
+                  disabled={adLoading}
                   onPress={async () => {
-                    // REWARD GRANT: Always credit the watch — even if ad fails to load,
-                    // the user gets progress. This keeps the unlock flow unblocked
-                    // when network/inventory is weak.
-                    await showRewardedAd(); // fire-and-forget, ignore bool result
+                    if (adLoading) return;
+                    setAdLoading(true);
+                    try {
+                      // REWARD GRANT: Always credit the watch — even if ad fails to load,
+                      // the user gets progress. This keeps the unlock flow unblocked
+                      // when network/inventory is weak.
+                      await showRewardedAd(); // fire-and-forget, ignore bool result
+                    } catch {}
                     const next = localAdsWatched + 1;
                     setLocalAdsWatched(next);
+                    setAdLoading(false);
                     if (next >= 2) {
                       setProFromAdMob(true);
                       setLocalAdsWatched(0);
@@ -564,9 +571,13 @@ export default function Index() {
                   }}
                   data-testid="watch-ad-button"
                 >
-                  <Ionicons name="play-circle" size={24} color="#FFF" />
+                  {adLoading ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Ionicons name="play-circle" size={24} color="#FFF" />
+                  )}
                   <Text style={styles.watchAdText}>
-                    Watch Ad {localAdsWatched + 1} of 2
+                    {adLoading ? 'Loading ad…' : `Watch Ad ${localAdsWatched + 1} of 2`}
                   </Text>
                 </TouchableOpacity>
                 

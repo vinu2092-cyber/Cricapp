@@ -10,7 +10,7 @@ interface Props {
 }
 
 // Small player avatar that matches Squads section styling. Uses the same Cricbuzz face-image CDN.
-function MiniAvatar({ imageId, size = 24 }: { imageId?: string; size?: number }) {
+function MiniAvatar({ imageId, size = 32 }: { imageId?: string; size?: number }) {
   if (imageId) {
     return (
       <Image

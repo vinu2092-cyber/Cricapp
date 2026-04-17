@@ -413,8 +413,8 @@ function transformListMatch(m: any): Match {
     city: venue.city || '',
     startTime: info.startDate ? formatTs(info.startDate) : '',
     teams: [
-      { name: t1.teamName || '?', shortName: t1.teamSName || '?', runs: t1s.runs, wickets: t1s.wickets, overs: t1s.overs },
-      { name: t2.teamName || '?', shortName: t2.teamSName || '?', runs: t2s.runs, wickets: t2s.wickets, overs: t2s.overs },
+      { name: t1.teamName || '?', shortName: t1.teamSName || '?', runs: t1s.runs, wickets: t1s.wickets, overs: t1s.overs, teamId: t1.teamId, imageId: t1.imageId },
+      { name: t2.teamName || '?', shortName: t2.teamSName || '?', runs: t2s.runs, wickets: t2s.wickets, overs: t2s.overs, teamId: t2.teamId, imageId: t2.imageId },
     ],
   };
 }
@@ -437,8 +437,8 @@ function transformDetailCricbuzz(raw: any): Match {
     city: venue.city || '',
     startTime: raw.startdate ? formatTs(raw.startdate) : '',
     teams: [
-      { name: t1.teamname || t1.teamName || '?', shortName: t1.teamsname || t1.teamSName || '?' },
-      { name: t2.teamname || t2.teamName || '?', shortName: t2.teamsname || t2.teamSName || '?' },
+      { name: t1.teamname || t1.teamName || '?', shortName: t1.teamsname || t1.teamSName || '?', teamId: t1.teamid || t1.teamId, imageId: t1.imageid || t1.imageId },
+      { name: t2.teamname || t2.teamName || '?', shortName: t2.teamsname || t2.teamSName || '?', teamId: t2.teamid || t2.teamId, imageId: t2.imageid || t2.imageId },
     ],
   };
 }

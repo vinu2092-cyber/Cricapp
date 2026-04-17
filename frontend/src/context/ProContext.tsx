@@ -18,7 +18,7 @@ const ProContext = createContext<ProContextType | undefined>(undefined);
 
 const PRO_STORAGE_KEY = 'crickapp_pro_status';
 const PRO_EXPIRY_KEY = 'crickapp_pro_expiry';
-const ADS_REQUIRED = 3;
+const ADS_REQUIRED = 2;
 const PRO_DURATION_MS = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 export const ProProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
