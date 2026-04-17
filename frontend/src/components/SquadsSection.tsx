@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Image } fr
 import { Ionicons } from '@expo/vector-icons';
 import { fetchScorecard, fetchMatchInfo, fetchTeamSquad } from '../services/api';
 import { useAdMob } from '../context/AdMobContext.native';
+import PlayerDetailModal from './PlayerDetailModal';
 
 interface SquadPlayer {
+  id?: string | number;
   name: string;
   role: string;
   isCaptain: boolean;
@@ -71,6 +73,9 @@ export default function SquadsSection({ matchId, isLive }: Props) {
   const [team2Subs, setTeam2Subs] = useState<SquadPlayer[]>([]);
   const [team1Bench, setTeam1Bench] = useState<SquadPlayer[]>([]);
   const [team2Bench, setTeam2Bench] = useState<SquadPlayer[]>([]);
+
+  // Player Detail Modal state — tap any player to see bigger photo + career stats
+  const [selectedPlayer, setSelectedPlayer] = useState<SquadPlayer | null>(null);
 
   const { BannerAdComponent } = useAdMob();
 
@@ -348,6 +353,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         const isKeeper = !!p.keeper || !!p.iskeeper;
         const isCaptain = !!p.captain || !!p.iscaptain;
         return {
+          id: p.id || p.playerId || p.player_id,
           name: name + (isCaptain ? ' (C)' : '') + (isKeeper ? ' (WK)' : ''),
           role: role || p.role || (isKeeper ? 'WK-Batter' : 'Player'),
           isCaptain, isKeeper, category: 'playing',
@@ -613,32 +619,28 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         return (
           <View key={`playing-${idx}`} style={[styles.playerRow, { backgroundColor: getRowBg(idx) }]}>
             {/* Left player (Team 1) */}
-            <View style={styles.playerLeft}>
-              {p1 ? (
-                <>
-                  <PlayerAvatar imageId={p1.faceImageId} imageUrl={p1.imageUrl} />
-                  <View style={styles.playerInfo}>
-                    <Text style={styles.playerName} numberOfLines={1}>{p1.name}</Text>
-                    <Text style={styles.playerRole}>{p1.role}</Text>
-                  </View>
-                </>
-              ) : <View style={styles.emptyPlayer} />}
-            </View>
+            {p1 ? (
+              <TouchableOpacity style={styles.playerLeft} activeOpacity={0.6} onPress={() => setSelectedPlayer(p1)} data-testid={`player-t1-playing-${idx}`}>
+                <PlayerAvatar imageId={p1.faceImageId} imageUrl={p1.imageUrl} />
+                <View style={styles.playerInfo}>
+                  <Text style={styles.playerName} numberOfLines={1}>{p1.name}</Text>
+                  <Text style={styles.playerRole}>{p1.role}</Text>
+                </View>
+              </TouchableOpacity>
+            ) : <View style={styles.playerLeft}><View style={styles.emptyPlayer} /></View>}
 
             <View style={styles.divider} />
 
             {/* Right player (Team 2) */}
-            <View style={styles.playerRight}>
-              {p2 ? (
-                <>
-                  <View style={styles.playerInfoRight}>
-                    <Text style={styles.playerNameRight} numberOfLines={1}>{p2.name}</Text>
-                    <Text style={styles.playerRoleRight}>{p2.role}</Text>
-                  </View>
-                  <PlayerAvatar imageId={p2.faceImageId} imageUrl={p2.imageUrl} />
-                </>
-              ) : <View style={styles.emptyPlayer} />}
-            </View>
+            {p2 ? (
+              <TouchableOpacity style={styles.playerRight} activeOpacity={0.6} onPress={() => setSelectedPlayer(p2)} data-testid={`player-t2-playing-${idx}`}>
+                <View style={styles.playerInfoRight}>
+                  <Text style={styles.playerNameRight} numberOfLines={1}>{p2.name}</Text>
+                  <Text style={styles.playerRoleRight}>{p2.role}</Text>
+                </View>
+                <PlayerAvatar imageId={p2.faceImageId} imageUrl={p2.imageUrl} />
+              </TouchableOpacity>
+            ) : <View style={styles.playerRight}><View style={styles.emptyPlayer} /></View>}
           </View>
         );
       })}
@@ -659,29 +661,25 @@ export default function SquadsSection({ matchId, isLive }: Props) {
           const p2 = team2Subs[idx];
           return (
             <View key={`sub-${idx}`} style={[styles.playerRow, { backgroundColor: getRowBg(idx) }]}>
-              <View style={styles.playerLeft}>
-                {p1 ? (
-                  <>
-                    <PlayerAvatar size={38} imageId={p1.faceImageId} imageUrl={p1.imageUrl} />
-                    <View style={styles.playerInfo}>
-                      <Text style={styles.playerName} numberOfLines={1}>{p1.name}</Text>
-                      <Text style={styles.playerRole}>{p1.role}</Text>
-                    </View>
-                  </>
-                ) : <View style={styles.emptyPlayer} />}
-              </View>
+              {p1 ? (
+                <TouchableOpacity style={styles.playerLeft} activeOpacity={0.6} onPress={() => setSelectedPlayer(p1)} data-testid={`player-t1-sub-${idx}`}>
+                  <PlayerAvatar size={38} imageId={p1.faceImageId} imageUrl={p1.imageUrl} />
+                  <View style={styles.playerInfo}>
+                    <Text style={styles.playerName} numberOfLines={1}>{p1.name}</Text>
+                    <Text style={styles.playerRole}>{p1.role}</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : <View style={styles.playerLeft}><View style={styles.emptyPlayer} /></View>}
               <View style={styles.divider} />
-              <View style={styles.playerRight}>
-                {p2 ? (
-                  <>
-                    <View style={styles.playerInfoRight}>
-                      <Text style={styles.playerNameRight} numberOfLines={1}>{p2.name}</Text>
-                      <Text style={styles.playerRoleRight}>{p2.role}</Text>
-                    </View>
-                    <PlayerAvatar size={38} imageId={p2.faceImageId} imageUrl={p2.imageUrl} />
-                  </>
-                ) : <View style={styles.emptyPlayer} />}
-              </View>
+              {p2 ? (
+                <TouchableOpacity style={styles.playerRight} activeOpacity={0.6} onPress={() => setSelectedPlayer(p2)} data-testid={`player-t2-sub-${idx}`}>
+                  <View style={styles.playerInfoRight}>
+                    <Text style={styles.playerNameRight} numberOfLines={1}>{p2.name}</Text>
+                    <Text style={styles.playerRoleRight}>{p2.role}</Text>
+                  </View>
+                  <PlayerAvatar size={38} imageId={p2.faceImageId} imageUrl={p2.imageUrl} />
+                </TouchableOpacity>
+              ) : <View style={styles.playerRight}><View style={styles.emptyPlayer} /></View>}
             </View>
           );
         })
@@ -707,29 +705,25 @@ export default function SquadsSection({ matchId, isLive }: Props) {
           const p2 = team2Bench[idx];
           return (
             <View key={`bench-${idx}`} style={[styles.playerRow, { backgroundColor: getRowBg(idx) }]}>
-              <View style={styles.playerLeft}>
-                {p1 ? (
-                  <>
-                    <PlayerAvatar size={38} imageId={p1.faceImageId} imageUrl={p1.imageUrl} />
-                    <View style={styles.playerInfo}>
-                      <Text style={styles.playerName} numberOfLines={1}>{p1.name}</Text>
-                      <Text style={styles.playerRole}>{p1.role}</Text>
-                    </View>
-                  </>
-                ) : <View style={styles.emptyPlayer} />}
-              </View>
+              {p1 ? (
+                <TouchableOpacity style={styles.playerLeft} activeOpacity={0.6} onPress={() => setSelectedPlayer(p1)} data-testid={`player-t1-bench-${idx}`}>
+                  <PlayerAvatar size={38} imageId={p1.faceImageId} imageUrl={p1.imageUrl} />
+                  <View style={styles.playerInfo}>
+                    <Text style={styles.playerName} numberOfLines={1}>{p1.name}</Text>
+                    <Text style={styles.playerRole}>{p1.role}</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : <View style={styles.playerLeft}><View style={styles.emptyPlayer} /></View>}
               <View style={styles.divider} />
-              <View style={styles.playerRight}>
-                {p2 ? (
-                  <>
-                    <View style={styles.playerInfoRight}>
-                      <Text style={styles.playerNameRight} numberOfLines={1}>{p2.name}</Text>
-                      <Text style={styles.playerRoleRight}>{p2.role}</Text>
-                    </View>
-                    <PlayerAvatar size={38} imageId={p2.faceImageId} imageUrl={p2.imageUrl} />
-                  </>
-                ) : <View style={styles.emptyPlayer} />}
-              </View>
+              {p2 ? (
+                <TouchableOpacity style={styles.playerRight} activeOpacity={0.6} onPress={() => setSelectedPlayer(p2)} data-testid={`player-t2-bench-${idx}`}>
+                  <View style={styles.playerInfoRight}>
+                    <Text style={styles.playerNameRight} numberOfLines={1}>{p2.name}</Text>
+                    <Text style={styles.playerRoleRight}>{p2.role}</Text>
+                  </View>
+                  <PlayerAvatar size={38} imageId={p2.faceImageId} imageUrl={p2.imageUrl} />
+                </TouchableOpacity>
+              ) : <View style={styles.playerRight}><View style={styles.emptyPlayer} /></View>}
             </View>
           );
         })
@@ -750,6 +744,22 @@ export default function SquadsSection({ matchId, isLive }: Props) {
           Squad data extracted from match scorecard
         </Text>
       </View>
+
+      {/* Player Detail Modal — opens when any player row is tapped */}
+      <PlayerDetailModal
+        visible={!!selectedPlayer}
+        player={selectedPlayer ? {
+          id: selectedPlayer.id,
+          name: selectedPlayer.name.replace(/\s*\((C|WK)\)/gi, '').trim(),
+          fullName: selectedPlayer.name.replace(/\s*\((C|WK)\)/gi, '').trim(),
+          role: selectedPlayer.role,
+          faceImageId: selectedPlayer.faceImageId,
+          captain: selectedPlayer.isCaptain,
+          keeper: selectedPlayer.isKeeper,
+          substitute: selectedPlayer.category === 'substitute',
+        } : null}
+        onClose={() => setSelectedPlayer(null)}
+      />
     </View>
   );
 }

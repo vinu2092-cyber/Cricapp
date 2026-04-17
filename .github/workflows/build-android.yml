@@ -118,28 +118,23 @@ jobs:
           tag_name: v1.0.8
           name: CricApp v1.0.8
           body: |
-            ## CricApp v1.0.8 — Phase 4 (Full Squads + Smart Ad Unlock)
-            ### 🎯 Squads — Substitutes & Bench now visible
-            - Added `fetchTeamSquad(matchId, teamId)` → calls Cricbuzz `/mcenter/v1/{id}/team/{teamId}` (the same endpoint Cricbuzz's own app uses for its Squads tab).
-            - SquadsSection now fetches BOTH teams' full squads in parallel after match info loads. Renders Playing XI + Substitutes + Bench with `faceImageId` photos end-to-end.
-            - ScorecardSection + match-page commentary photo map also pull from the same endpoint, so batter/bowler avatars and event-card photos render reliably (incoming substitutes too).
-            - `deepExtractPlayers` extended to recognise additional key names (`Reserves`, `support staff`, `12th man`) and now treats Cricbuzz's `id` as the `faceImageId` fallback.
-            ### 🎯 Smart Ad Unlock (the real fix)
-            Old behaviour:    every tap counted, even if no ad shown → user got "free Pro" after 2 quick taps without seeing ads.
-            New behaviour:
-            - Tap 1: ad shown → `1/2` watched; if it FAILED → `Ad not available` toast, internal fail counter +1.
-            - Tap 2: ad shown → `2/2` → Pro unlocked normally.
-            - If ad fails 2 consecutive times → `Free Pro Unlocked!` (so the user is never stuck behind Google's ad inventory).
-            - Loading spinner + disabled state during ad request preserved.
-            ### Phase 3 (Commentary Gap Fix) — still in effect
-            - tms+iid pagination, walks back through innings until ball 0.1.
-            ### Phase 2 (UI + Ads) — still in effect
-            - Rewarded ad unit ID corrected to /6702740458, blocking alerts removed, ADS_REQUIRED 3 → 2.
-            - 100% width event cards, marginVertical: 12, 13–14px fonts.
-            - Team logos in match list + header.
-            - Scorecard avatars 24 → 32px.
-            ### Phase 1 (Build Fix) — still in effect
-            - compileSdk/targetSdk 35 → 36.
+            ## CricApp v1.0.8 — Phase 5 (Compact Scoreboard + Player Detail Modal)
+            ### 🎯 Compact Scoreboard (Dynamic 20% Cap)
+            - `scoreHeader` now has `maxHeight: SCREEN_H * 0.20` with `overflow: hidden` — scoreboard never exceeds 20% of screen regardless of device or display-zoom setting.
+            - Team row redesigned: logo + (name / score / overs) in a horizontal block instead of vertical stack → saves ~30% vertical space.
+            - Padding trimmed everywhere: `paddingTop 8 → 4`, `paddingBottom 6 → 2`, batsmen container `pV 5 → 3`, over summary container `pV 6 → 2`.
+            - Fonts standardised: team score 18 → 15, team name 12 → 11, batsman name 11 → 10, labels 9-10 → 8.
+            - Batsmen + Recent Overs are now single-line (title on left, data on right) instead of stacked blocks.
+            - Result: ~80% of screen left for commentary, matching Cricbuzz/Cricket-Guru feel.
+            ### 🎯 Player Detail Modal (tap-to-expand)
+            - New `PlayerDetailModal.tsx` renders when any player row is tapped in the Squads tab (Playing XI / Substitutes / Bench).
+            - Shows 130px circular photo with green border (Cricbuzz CDN).
+            - Name + role + Captain / Wicket-Keeper / Substitute badges.
+            - Bio box: Intl Team, Batting/Bowling style, Birthplace, DOB.
+            - **Career stats grid**: Batting (Mat/Runs/Avg/SR) + Bowling (Mat/Wkts/Econ/SR) across all formats (Test/ODI/T20I/IPL etc.) fetched from `/stats/v1/player/{id}[/batting|/bowling]` with 2-minute cache.
+            - Graceful fallback: if stats aren't available for a player, shows "Career stats not available."
+            ### Phases 1-4 still in effect
+            - Build Fix (compileSdk 36), rewarded ad ID fix, sync-on-open (tms+iid), Cricbuzz team-squad endpoint, smart ad unlock (2-fail fallthrough).
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab

@@ -760,7 +760,7 @@ export default function MatchDetail() {
             </View>
           </View>
 
-          {/* Score Row - Compact */}
+          {/* Score Row - Compact horizontal layout: logo + (name / score / overs) */}
           <View style={styles.teamRow}>
             <View style={styles.teamBlock}>
               {match.teams[0].imageId || match.teams[0].teamId ? (
@@ -770,11 +770,13 @@ export default function MatchDetail() {
                   resizeMode="contain"
                 />
               ) : null}
-              <Text style={styles.teamName}>{match.teams[0].shortName}</Text>
-              <Text style={styles.teamScore}>
-                {match.teams[0].runs !== undefined ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` : '-'}
-              </Text>
-              {match.teams[0].overs !== undefined && <Text style={styles.overs}>({match.teams[0].overs} ov)</Text>}
+              <View style={styles.teamMeta}>
+                <Text style={styles.teamName}>{match.teams[0].shortName}</Text>
+                <Text style={styles.teamScore}>
+                  {match.teams[0].runs !== undefined ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` : '-'}
+                  {match.teams[0].overs !== undefined ? <Text style={styles.overs}>  ({match.teams[0].overs} ov)</Text> : null}
+                </Text>
+              </View>
             </View>
 
             <MatchStatusBadge state={match.status} isLive={match.status === 'live'} />
@@ -787,28 +789,30 @@ export default function MatchDetail() {
                   resizeMode="contain"
                 />
               ) : null}
-              <Text style={styles.teamName}>{match.teams[1].shortName}</Text>
-              <Text style={styles.teamScore}>
-                {match.teams[1].runs !== undefined ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` : '-'}
-              </Text>
-              {match.teams[1].overs !== undefined && <Text style={styles.overs}>({match.teams[1].overs} ov)</Text>}
+              <View style={styles.teamMeta}>
+                <Text style={styles.teamName}>{match.teams[1].shortName}</Text>
+                <Text style={styles.teamScore}>
+                  {match.teams[1].runs !== undefined ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` : '-'}
+                  {match.teams[1].overs !== undefined ? <Text style={styles.overs}>  ({match.teams[1].overs} ov)</Text> : null}
+                </Text>
+              </View>
             </View>
           </View>
 
-          {match.statusText ? <Text style={styles.statusTxt} numberOfLines={2}>{match.statusText}</Text> : null}
+          {match.statusText ? <Text style={styles.statusTxt} numberOfLines={1}>{match.statusText}</Text> : null}
 
-          {/* Match Details: Current Batsmen - For LIVE and RECENT */}
+          {/* Current Batsmen — single row with title on left */}
           {(match.status === 'live' || match.status === 'recent') && match.batsmen && match.batsmen.length > 0 && (
             <View style={styles.batsmenContainer}>
-              <Text style={styles.batsmenTitle}>{match.status === 'live' ? 'At The Crease' : 'Last Batsmen'}</Text>
+              <Text style={styles.batsmenTitle}>{match.status === 'live' ? 'CREASE' : 'LAST'}</Text>
               <View style={styles.batsmenRow}>
                 {match.batsmen.map((bat, idx) => (
                   <View key={idx} style={styles.batsmanItem}>
-                    <Text style={[styles.batsmanName, bat.isStriker && styles.strikerName]}>
-                      {bat.isStriker ? '* ' : ''}{bat.name}
+                    <Text style={[styles.batsmanName, bat.isStriker && styles.strikerName]} numberOfLines={1}>
+                      {bat.isStriker ? '*' : ''}{bat.name}
                     </Text>
                     <Text style={styles.batsmanScore}>
-                      {bat.runs} ({bat.balls})
+                      {bat.runs}({bat.balls})
                     </Text>
                   </View>
                 ))}
@@ -816,13 +820,13 @@ export default function MatchDetail() {
             </View>
           )}
 
-          {/* OVER SUMMARY - For LIVE and RECENT */}
+          {/* Recent Overs — single row with horizontal scroll */}
           {(match.status === 'live' || match.status === 'recent') && match.oSummary && (
             <View style={styles.overSummaryContainer}>
-              <Text style={styles.overSummaryTitle}>Recent Overs</Text>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={true}
+              <Text style={styles.overSummaryTitle}>RECENT</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
                 style={styles.overSummaryScroll}
                 contentContainerStyle={styles.overSummaryScrollContent}
               >
@@ -1051,55 +1055,73 @@ export default function MatchDetail() {
   );
 }
 
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const SCOREBOARD_MAX_HEIGHT = Math.round(SCREEN_H * 0.20); // hard cap at 20% of screen height
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
   loadingText: { color: '#999', marginTop: 12, fontSize: 14 },
-  scoreHeader: { backgroundColor: 'rgba(34,34,34,0.85)', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, borderBottomWidth: 2, borderBottomColor: '#4CAF50' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  backBtn: { padding: 4, marginRight: 6 },
-  seriesName: { color: '#ffd700', fontSize: 11, flex: 1 },
-  headerActions: { flexDirection: 'row', gap: 6 },
+  scoreHeader: {
+    backgroundColor: 'rgba(34,34,34,0.85)',
+    paddingHorizontal: 10,
+    paddingTop: 4,
+    paddingBottom: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: '#4CAF50',
+    maxHeight: SCOREBOARD_MAX_HEIGHT,
+    overflow: 'hidden',
+  },
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  backBtn: { padding: 2, marginRight: 4 },
+  seriesName: { color: '#ffd700', fontSize: 11, flex: 1, fontWeight: '600' },
+  headerActions: { flexDirection: 'row', gap: 4 },
   actionBtn: {
-    padding: 7,
-    borderRadius: 18,
+    padding: 5,
+    borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
   actionBtnActive: { backgroundColor: 'rgba(76,175,80,0.2)' },
-  teamRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 4 },
-  teamBlock: { alignItems: 'center', flex: 1 },
-  teamLogo: { width: 36, height: 36, marginBottom: 2, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)' },
-  teamName: { color: '#CCC', fontSize: 12, fontWeight: '600' },
-  teamScore: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  overs: { color: '#999', fontSize: 10, marginTop: 1 },
-  statusTxt: { color: '#4CAF50', fontSize: 11, textAlign: 'center', marginBottom: 4, fontStyle: 'italic' },
-  // Live match batsmen section - compact
+  teamRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 2 },
+  teamBlock: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', gap: 6 },
+  teamLogo: { width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.08)' },
+  teamMeta: { alignItems: 'flex-start' },
+  teamName: { color: '#CCC', fontSize: 11, fontWeight: '600', lineHeight: 13 },
+  teamScore: { color: '#FFF', fontSize: 15, fontWeight: 'bold', lineHeight: 17 },
+  overs: { color: '#999', fontSize: 9, lineHeight: 11 },
+  statusTxt: { color: '#4CAF50', fontSize: 10, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
+  // Live match batsmen section - ultra compact (single-row display)
   batsmenContainer: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    marginBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    marginBottom: 2,
+    gap: 6,
   },
   batsmenTitle: {
     color: '#4CAF50',
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '700',
-    marginBottom: 3,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+    minWidth: 36,
   },
   batsmenRow: {
     flexDirection: 'row',
+    flex: 1,
     justifyContent: 'space-around',
   },
   batsmanItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    gap: 4,
   },
   batsmanName: {
     color: '#CCC',
-    fontSize: 11,
+    fontSize: 10,
   },
   strikerName: {
     color: '#FFD700',
@@ -1107,42 +1129,43 @@ const styles = StyleSheet.create({
   },
   batsmanScore: {
     color: '#FFF',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: 'bold',
-    marginTop: 1,
   },
-  // Over summary section - compact
+  // Over summary section - ultra compact
   overSummaryContainer: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(76, 175, 80, 0.4)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginBottom: 2,
+    gap: 6,
   },
   overSummaryTitle: {
     color: '#4CAF50',
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '700',
-    marginBottom: 5,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+    minWidth: 48,
   },
   overSummaryScroll: {
-    minHeight: 30,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 6,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
+    flex: 1,
+    minHeight: 22,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
   },
   overSummaryScrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingRight: 16,
+    paddingRight: 10,
     gap: 1,
   },
-  proRow: { alignItems: 'center', marginTop: 4 },
+  proRow: { alignItems: 'center', marginTop: 2, marginBottom: 2 },
   // Content tab bar (Commentary / Scorecard)
   contentTabBar: {
     flexDirection: 'row',
@@ -1174,14 +1197,14 @@ const styles = StyleSheet.create({
   },
   unlockBtn: {
     backgroundColor: 'rgba(51,51,51,0.9)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
-  unlockTxt: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
+  unlockTxt: { color: '#FFF', fontWeight: 'bold', fontSize: 10 },
   noComm: { padding: 40, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', margin: 16, borderRadius: 12 },
   noCommText: { color: '#999', fontSize: 16, marginTop: 12, marginBottom: 16, textAlign: 'center' },
   externalBtn: {

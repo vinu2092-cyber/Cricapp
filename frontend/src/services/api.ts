@@ -870,7 +870,45 @@ export async function fetchMatchInfo(matchId: string): Promise<any> {
   return data;
 }
 
-// ============ FETCH TEAM SQUAD (Cricbuzz-style: full squad with photos) ============
+// ============ FETCH PLAYER INFO (for Player Detail Modal) ============
+// Endpoint: /stats/v1/player/{id} — returns bio (name, role, age, batting/bowling style, teams)
+// Endpoint: /stats/v1/player/{id}/batting — returns batting career stats by format
+// Endpoint: /stats/v1/player/{id}/bowling — returns bowling career stats by format
+export async function fetchPlayerProfile(playerId: string | number): Promise<{ info: any; batting: any; bowling: any } | null> {
+  const pid = String(playerId);
+  const cacheKey = `player_${pid}`;
+  const cached = await getCached(cacheKey);
+  if (cached) return cached;
+
+  const allProviders = _getAllProviders ? _getAllProviders() : [];
+  const fb = _getFirebaseKey ? _getFirebaseKey() : null;
+
+  // Use the first working provider/key we have
+  const candidates: { apiKey: string; host: string }[] = [];
+  for (const p of allProviders) {
+    if (p?.keys) for (const k of p.keys) candidates.push({ apiKey: k, host: p.host });
+  }
+  if (fb?.apiKey && fb?.apiHost) candidates.push({ apiKey: fb.apiKey, host: fb.apiHost });
+  if (candidates.length === 0) return null;
+
+  for (const cand of candidates) {
+    try {
+      const [info, batting, bowling] = await Promise.all([
+        tryApiCall(`/stats/v1/player/${pid}`, cand.apiKey, cand.host).catch(() => null),
+        tryApiCall(`/stats/v1/player/${pid}/batting`, cand.apiKey, cand.host).catch(() => null),
+        tryApiCall(`/stats/v1/player/${pid}/bowling`, cand.apiKey, cand.host).catch(() => null),
+      ]);
+      if (info || batting || bowling) {
+        const result = { info, batting, bowling };
+        await setCache(cacheKey, result);
+        return result;
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+}
 // Endpoint: /mcenter/v1/{matchId}/team/{teamId}
 // Returns the FULL squad for one team — Playing XI, Substitutes, Bench — each player
 // includes faceImageId, role, captain/keeper flags. This is the same data Cricbuzz
