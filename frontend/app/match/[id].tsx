@@ -1043,7 +1043,11 @@ export default function MatchDetail() {
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const SCOREBOARD_MAX_HEIGHT = Math.round(SCREEN_H * 0.20); // hard cap at 20% of screen height
+// Scoreboard strictly capped at 30% of screen height — commentary naturally
+// takes the remaining ~70% (thanks to the SectionList's flex: 1 below).
+// Overflow is hidden so ultra-dense scoreboards never spill into commentary.
+const SCOREBOARD_MAX_HEIGHT = Math.round(SCREEN_H * 0.30);
+const SCOREBOARD_MIN_HEIGHT = Math.round(SCREEN_H * 0.16);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
@@ -1056,11 +1060,11 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
     borderBottomWidth: 1,
     borderBottomColor: '#4CAF50',
-    // Scoreboard targets ~20% of screen height; commentary (below) takes ~80%.
-    // We cap at 20% but allow it to be a little shorter when there's no live
-    // batsmen / recent-overs row (recent / upcoming matches).
+    // Scoreboard targets ≤ 30% of screen height; commentary (below) takes
+    // the remaining ~70%. We cap at 30% and keep a minimum 16% so recent /
+    // upcoming matches (with no live batsmen row) still look proportioned.
     maxHeight: SCOREBOARD_MAX_HEIGHT,
-    minHeight: Math.round(SCOREBOARD_MAX_HEIGHT * 0.6),
+    minHeight: SCOREBOARD_MIN_HEIGHT,
     overflow: 'hidden',
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },

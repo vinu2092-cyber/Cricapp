@@ -47,12 +47,12 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
   return (
     <ImageBackground
       source={require('../../assets/images/header-grass.png')}
-      style={[styles.headerBackground, { paddingTop: insets.top, height: 110 + insets.top }]}
+      style={[styles.headerBackground, { paddingTop: insets.top, height: 125 + insets.top }]}
       resizeMode="cover"
     >
       <View style={styles.headerContent}>
         <View style={styles.logoContainer}>
-          <LogoFireTail size={85} durationMs={30000}>
+          <LogoFireTail size={100} durationMs={30000}>
             <Image
               source={require('../../assets/images/logo.png')}
               style={styles.logo}
@@ -112,7 +112,7 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
 const styles = StyleSheet.create({
   headerBackground: {
     width: '100%',
-    height: 110,
+    height: 125,
     justifyContent: 'flex-end',
   },
   headerContent: {
@@ -127,8 +127,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 72,
-    height: 72,
+    width: 85,
+    height: 85,
   },
   rightButtons: {
     flexDirection: 'row',

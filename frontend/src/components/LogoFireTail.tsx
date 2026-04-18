@@ -19,24 +19,28 @@ interface LogoFireTailProps {
 }
 
 /**
- * LogoFireTail — wraps the app logo and animates a single SMOOTH fireball with
- * a rainbow smoke tail and occasional subtle rainbow spark bursts, orbiting a
- * ROUNDED-RECTANGLE path that hugs the logo's border.
+ * LogoFireTail — wraps the app logo with an animated RAINBOW PIXEL LINE that
+ * orbits a rounded-rectangle path hugging the logo's border.
  *
- * Path       : 30-keyframe rounded rectangle (soft corners like the logo's own
- *              shape), clockwise, 30 s per revolution (5 s in wicket mode).
- * Fireball   : solid smooth core + layered halos — NO visible pixel grains.
- * Sparks     : 24 ultra-tiny rainbow particles that burst outward from the
- *              fireball and fade back, each with its own random delay & period
- *              so they look uncountable.
- * Smoke tail : 9 soft rainbow dots trailing the fireball with increasing blur.
+ * • The line is composed of ~55 tiny 1.6–3.2 px pixels, each a different
+ *   rainbow colour, positioned a few ms apart on the shared orbit loop so
+ *   they collectively *look* like one continuous flowing line.
+ * • Line length on the orbit ≈ the logo's visible width (per user spec).
+ * • One full clockwise revolution in 30 s (configurable).
+ * • The leader of the line is a slightly brighter "tip" that emits 24 ultra-
+ *   tiny rainbow sparks which burst outward and fade — the "fire ember"
+ *   particles the user asked for.
+ * • 7 bottom-edge ember drops fall with gravity and fade — additional ambient
+ *   fire-drip effect.
+ * • Wicket mode (5 s per revolution, red palette) still works.
  */
-const RAINBOW = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#00C7BE', '#007AFF', '#AF52DE', '#FF2D92'];
+const RAINBOW = ['#FF3B30', '#FF7A00', '#FFD60A', '#34C759', '#00C7BE', '#007AFF', '#AF52DE', '#FF2D92'];
 const RED_BURST = ['#FF1744', '#FF5252', '#D50000', '#FF8A80'];
 
-const TAIL_COUNT = 10;        // 1 fireball leader + 9 smoke-tail dots
-const SPARK_COUNT = 24;       // tiny rainbow "burst" pixels around the fireball
-const CORNER_STEPS = 5;       // sub-steps per rounded corner → smoother arc
+// Line density — 55 pixels → ~1.2 px gap on the line so it looks continuous.
+const LINE_PIXEL_COUNT = 55;
+const SPARK_COUNT = 24;
+const CORNER_STEPS = 6;           // sub-steps per rounded corner → smoother arc
 
 const LogoFireTail: React.FC<LogoFireTailProps> = ({
   size,
@@ -51,23 +55,34 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
   const effectiveNormalDuration = normalDurationMs ?? durationMs ?? 30000;
   const duration = mode === 'wicket' ? wicketDurationMs : effectiveNormalDuration;
 
-  // ===== Orbit geometry — the fireball's CENTER traces a rounded rectangle
+  // ===== Orbit geometry — the pixel line's CENTER traces a rounded rectangle
   // that matches the *visible* logo graphic (not the padded PNG canvas), so
-  // the ball kisses the logo border with zero visible gap.
-  const visibleSize = size * logoContentFraction;          // visible logo edge length
-  const leaderRadius = Math.max(3, Math.round(visibleSize * 0.085)); // smooth core
-  const halfOrbit = visibleSize / 2;                       // orbit rect half-side
-  const cornerRadius = Math.max(5, Math.round(visibleSize * 0.20));  // rounded-corner radius
-  const containerPad = leaderRadius + 2;                   // room for ball outside orbit
-  const containerSize = size + containerPad * 2;           // keep wrap as big as logo
+  // the line kisses the logo border with zero visible gap.
+  const visibleSize = size * logoContentFraction;                          // visible logo edge length
+  const halfOrbit = visibleSize / 2;                                       // orbit rect half-side
+  const cornerRadius = Math.max(5, Math.round(visibleSize * 0.22));        // rounded corner radius
+  const leaderRadius = Math.max(1.8, visibleSize * 0.032);                 // leading tip pixel radius
+  const containerPad = Math.max(6, Math.round(leaderRadius * 3));          // room outside orbit for glow/sparks
+  const containerSize = size + containerPad * 2;
 
-  // Build rounded-rect keyframes (clockwise from top-left corner start)
+  // Approximate perimeter of the rounded rectangle: 4 straight segments of
+  // length (visibleSize - 2r) plus one full circle of radius r for the four
+  // rounded corners (πr per two corners × 2 = 2πr).
+  const approxPerimeter = useMemo(() => {
+    const r = Math.min(cornerRadius, halfOrbit * 0.9);
+    return 4 * (visibleSize - 2 * r) + 2 * Math.PI * r;
+  }, [visibleSize, halfOrbit, cornerRadius]);
+
+  // The LINE occupies roughly `visibleSize` of the orbit perimeter at any
+  // given moment → same as logo width, per user spec.
+  const lineFraction = Math.min(0.45, visibleSize / approxPerimeter);
+
+  // Build rounded-rect keyframes (clockwise from midpoint of top edge)
   const { inputs, txOut, tyOut } = useMemo(() => {
     const pts: { x: number; y: number }[] = [];
     const r = Math.min(cornerRadius, halfOrbit * 0.9);
-    const side = halfOrbit; // orbit is +/- side
+    const side = halfOrbit;
 
-    // Helper to push points along a 90° arc
     const addArc = (cx: number, cy: number, startAngle: number) => {
       for (let k = 1; k <= CORNER_STEPS; k++) {
         const a = startAngle + (Math.PI / 2) * (k / CORNER_STEPS);
@@ -75,7 +90,6 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
       }
     };
 
-    // Start at the midpoint of the top edge so motion feels centered
     pts.push({ x: -side + r, y: -side });             // TL corner end (top edge start)
     pts.push({ x: +side - r, y: -side });             // TR corner start
     addArc(+side - r, -side + r, -Math.PI / 2);       // TR corner arc → right edge start
@@ -86,13 +100,8 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
     pts.push({ x: -side, y: -side + r });             // TL corner start
     addArc(-side + r, -side + r, Math.PI);            // TL corner arc → back to start
 
-    // === Arc-length-parameterised inputs ===
-    // Previously `inputs` were evenly spaced (i / (n-1)), which caused the ball
-    // to *slow down* at corners because the arc keyframes are spatially close
-    // together but consumed the same time share as the long straight segments.
-    // We now space inputs by cumulative *arc length*, so the ball moves at a
-    // constant visual speed along the whole perimeter — no pauses at corners,
-    // exactly one smooth revolution every `duration` ms.
+    // Arc-length parameterised inputs so the line moves at constant visual
+    // speed (no stalls at corners where keyframes cluster).
     const segLen: number[] = [0];
     for (let i = 1; i < pts.length; i++) {
       segLen.push(Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
@@ -105,7 +114,6 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
     }
     const total = Math.max(1e-6, cum[cum.length - 1]);
     const inp = cum.map((c) => c / total);
-    // Safety: Animated.interpolate requires strictly increasing inputRange
     for (let i = 1; i < inp.length; i++) {
       if (inp[i] <= inp[i - 1]) inp[i] = inp[i - 1] + 1e-6;
     }
@@ -118,52 +126,69 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
   }, [halfOrbit, cornerRadius]);
 
   // ===== Animated values
-  const anims = useRef(Array.from({ length: TAIL_COUNT }, () => new Animated.Value(0))).current;
-  // Spark particles have their own small cyclic animators (0→1 loop)
-  const sparkAnims = useRef(Array.from({ length: SPARK_COUNT }, () => new Animated.Value(0))).current;
-  // Ember drops — tiny rainbow particles that fall from the orbit's bottom edge
-  // (as if the fireball sheds embers due to gravity). Pure ambient touch.
+  const anims = useRef(
+    Array.from({ length: LINE_PIXEL_COUNT }, () => new Animated.Value(0))
+  ).current;
+  const sparkAnims = useRef(
+    Array.from({ length: SPARK_COUNT }, () => new Animated.Value(0))
+  ).current;
   const EMBER_COUNT = 7;
-  const emberAnims = useRef(Array.from({ length: EMBER_COUNT }, () => new Animated.Value(0))).current;
+  const emberAnims = useRef(
+    Array.from({ length: EMBER_COUNT }, () => new Animated.Value(0))
+  ).current;
 
   const emberParams = useMemo(() => {
     return Array.from({ length: EMBER_COUNT }, (_, i) => {
-      // Even-ish spread across the bottom edge of the orbit, with jitter
       const baseX = -halfOrbit + (halfOrbit * 2 * (i + 0.5)) / EMBER_COUNT;
-      const jitter = ((i * 37) % 14) - 7; // -7 … +6
+      const jitter = ((i * 37) % 14) - 7;
       return {
         x: baseX + jitter,
-        period: 1700 + ((i * 233) % 900),   // 1.7 – 2.6 s
+        period: 1700 + ((i * 233) % 900),
         delay: (i * 260) % 1800,
-        travel: Math.round(halfOrbit * 0.9) + ((i * 3) % 6), // fall distance
+        travel: Math.round(halfOrbit * 0.9) + ((i * 3) % 6),
         color: RAINBOW[i % RAINBOW.length],
-        pxSize: 1.8 + ((i * 5) % 3) * 0.4,  // 1.8 – 3.0 px
+        pxSize: 1.8 + ((i * 5) % 3) * 0.4,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [halfOrbit]);
 
-  // Deterministic per-spark parameters (angle / period / delay) — memoised so
-  // sparks don't "jump" to new positions on every re-render.
   const sparkParams = useMemo(() => {
     return Array.from({ length: SPARK_COUNT }, (_, i) => {
       const angle = (i / SPARK_COUNT) * Math.PI * 2 + (i % 3) * 0.37;
-      const period = 1400 + ((i * 173) % 1400); // 1.4s – 2.8s
+      const period = 1400 + ((i * 173) % 1400);
       const delay = (i * 91) % 1600;
-      const travel = leaderRadius * (1.6 + ((i * 7) % 10) / 10); // 1.6R – 2.5R
+      const travel = leaderRadius * (2.2 + ((i * 7) % 10) / 10);
       const color = RAINBOW[i % RAINBOW.length];
-      const pxSize = 1.5 + ((i * 3) % 3) * 0.6; // 1.5 – 3.3 px
+      const pxSize = 1.4 + ((i * 3) % 3) * 0.5;
       return { angle, period, delay, travel, color, pxSize };
     });
   }, [leaderRadius]);
 
-  // Main orbit loop (leader + smoke tail)
+  // Per-pixel static config (size, colour, opacity) so the tail looks like a
+  // smoky tapered rainbow line.
+  const linePixels = useMemo(() => {
+    return Array.from({ length: LINE_PIXEL_COUNT }, (_, i) => {
+      const t = i / Math.max(1, LINE_PIXEL_COUNT - 1);          // 0 at leader → 1 at tail
+      // Leader tip is slightly larger + brighter, pixels taper towards the tail
+      const pxSize = leaderRadius * 2 * (1 - t * 0.65) + 1.0;
+      const opacity = i === 0 ? 1 : Math.max(0.08, 1 - t * 0.9);
+      // Rainbow colour cycles roughly twice along the line so the user sees
+      // "alag alag rainbow colour nikalti" at every instant.
+      const paletteIdx = Math.floor(t * (RAINBOW.length * 2)) % RAINBOW.length;
+      const color = RAINBOW[paletteIdx];
+      const glow = pxSize * (1.4 + (1 - t) * 1.2);             // softer for tail
+      return { t, pxSize, opacity, color, glow };
+    });
+  }, [leaderRadius]);
+
+  // Main orbit loop — one shared 0→1 cycle, staggered start time per pixel so
+  // they form a line of length `lineFraction * perimeter` at every instant.
   useEffect(() => {
     const loops: Animated.CompositeAnimation[] = [];
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    const tailSpanFraction = mode === 'wicket' ? 0.14 : 0.09;
-    const perDotDelayMs = (duration * tailSpanFraction) / TAIL_COUNT;
+    const perPixelDelayMs = (duration * lineFraction) / LINE_PIXEL_COUNT;
 
     anims.forEach((anim, i) => {
       anim.setValue(0);
@@ -175,7 +200,7 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
           useNativeDriver: true,
         })
       );
-      const timer = setTimeout(() => loop.start(), Math.round(perDotDelayMs * i));
+      const timer = setTimeout(() => loop.start(), Math.round(perPixelDelayMs * i));
       loops.push(loop);
       timers.push(timer);
     });
@@ -184,10 +209,9 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
       timers.forEach((t) => clearTimeout(t));
       loops.forEach((l) => l.stop());
     };
-  }, [duration, mode, anims]);
+  }, [duration, mode, anims, lineFraction]);
 
-  // Spark burst loops — each particle runs its own tiny 0→1 loop; the scale /
-  // opacity / radial-offset interpolations make it fly out then fade/return.
+  // Spark bursts — each particle runs its own tiny 0→1 loop.
   useEffect(() => {
     const loops: Animated.CompositeAnimation[] = [];
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -226,7 +250,7 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
         Animated.timing(anim, {
           toValue: 1,
           duration: period,
-          easing: Easing.in(Easing.quad), // ease-in → feels like gravity
+          easing: Easing.in(Easing.quad),
           useNativeDriver: true,
         })
       );
@@ -242,14 +266,13 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
   }, [emberAnims, emberParams, mode]);
 
   const palette = mode === 'wicket' ? RED_BURST : RAINBOW;
-  const smokeColorFor = (i: number) => palette[(i - 1) % palette.length];
 
   return (
     <View
       style={[styles.wrap, { width: containerSize, height: containerSize }]}
       pointerEvents="box-none"
     >
-      {/* Static logo content — bottom-most so fireball + sparks orbit ABOVE */}
+      {/* Static logo content — bottom-most so the line + sparks render ABOVE */}
       <View
         style={[
           styles.content,
@@ -267,8 +290,8 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
       </View>
 
       {/* Ember drops — tiny rainbow pixels fall from the orbit's bottom edge,
-          accelerating as if by gravity and fading out. Ambient "shedding
-          embers" vibe behind the fireball but in front of the logo. */}
+          accelerating as if by gravity and fading out. Ambient shedding-embers
+          vibe behind the line but in front of the logo. */}
       {emberAnims.map((anim, i) => {
         const p = emberParams[i];
         const ty = anim.interpolate({ inputRange: [0, 1], outputRange: [0, p.travel] });
@@ -304,52 +327,54 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
         );
       })}
 
+      {/* The RAINBOW LINE — 55 staggered pixels that collectively form a
+          continuous line of length ≈ logo width, with smoky tapering tail. */}
       {anims.map((anim, i) => {
         const tx = anim.interpolate({ inputRange: inputs, outputRange: txOut });
         const ty = anim.interpolate({ inputRange: inputs, outputRange: tyOut });
 
-        const t = i / Math.max(1, TAIL_COUNT - 1);
-        const dotRadius = leaderRadius * (1 - t * 0.55);
-        const dotOpacity = i === 0 ? 1 : 0.82 * (1 - t * 0.75);
-
+        const cfg = linePixels[i];
         const isLeader = i === 0;
+        // In wicket mode, override colours with red palette but keep the tapers
+        const color = mode === 'wicket'
+          ? palette[i % palette.length]
+          : cfg.color;
 
         return (
           <Animated.View
-            key={i}
+            key={`line-${i}`}
             pointerEvents="none"
             style={[
               styles.dotWrap,
               {
-                left: containerSize / 2 - dotRadius,
-                top: containerSize / 2 - dotRadius,
-                width: dotRadius * 2,
-                height: dotRadius * 2,
-                opacity: dotOpacity,
+                left: containerSize / 2 - cfg.pxSize / 2,
+                top: containerSize / 2 - cfg.pxSize / 2,
+                width: cfg.pxSize,
+                height: cfg.pxSize,
+                opacity: cfg.opacity,
                 transform: [{ translateX: tx }, { translateY: ty }],
               },
             ]}
           >
-            {isLeader ? (
-              <Fireball
+            <View
+              style={{
+                width: cfg.pxSize,
+                height: cfg.pxSize,
+                borderRadius: cfg.pxSize / 2,
+                backgroundColor: color,
+                shadowColor: color,
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: isLeader ? 1 : 0.85,
+                shadowRadius: cfg.glow,
+                elevation: isLeader ? 14 : Math.max(2, 9 - Math.floor(i / 6)),
+              }}
+            />
+            {isLeader && (
+              <LeaderSparks
                 radius={leaderRadius}
                 mode={mode}
                 sparkAnims={sparkAnims}
                 sparkParams={sparkParams}
-              />
-            ) : (
-              <View
-                style={{
-                  width: dotRadius * 2,
-                  height: dotRadius * 2,
-                  borderRadius: dotRadius,
-                  backgroundColor: smokeColorFor(i),
-                  shadowColor: smokeColorFor(i),
-                  shadowOffset: { width: 0, height: 0 },
-                  shadowOpacity: 0.9,
-                  shadowRadius: dotRadius * (1.2 + t * 1.4),
-                  elevation: Math.max(2, 8 - i),
-                }}
               />
             )}
           </Animated.View>
@@ -359,98 +384,42 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
   );
 };
 
-/** Smooth fireball — no visible pixel grains on the core; instead a ring of
- *  tiny rainbow sparks is emitted around it and fades back, creating an
- *  "uncountable-pixels" burst effect that feels organic, not pixelated. */
-const Fireball: React.FC<{
+/** Leader sparks — 24 ultra-tiny rainbow particles radiate out from the front
+ *  of the line + fade back, giving the "fire ember" effect the user asked
+ *  for. Sparks disappear (opacity → 0) within ~1 cycle so they feel ephemeral. */
+const LeaderSparks: React.FC<{
   radius: number;
   mode: 'normal' | 'wicket';
   sparkAnims: Animated.Value[];
   sparkParams: { angle: number; period: number; delay: number; travel: number; color: string; pxSize: number }[];
-}> = ({ radius, mode, sparkAnims, sparkParams }) => {
-  const haloOuter = mode === 'wicket' ? '#D50000' : '#FF3B30';
-  const haloMid = mode === 'wicket' ? '#FF1744' : '#FF6B00';
-  const haloInner = mode === 'wicket' ? '#FF5252' : '#FFB300';
-  const coreColor = mode === 'wicket' ? '#FFEBEE' : '#FFF8E1';
-
+}> = ({ radius, sparkAnims, sparkParams }) => {
   return (
-    <View style={{ width: radius * 2, height: radius * 2 }}>
-      {/* Outer halo — aura */}
-      <View
-        style={{
-          position: 'absolute',
-          left: -radius * 0.9,
-          top: -radius * 0.9,
-          width: radius * 3.8,
-          height: radius * 3.8,
-          borderRadius: radius * 1.9,
-          backgroundColor: haloOuter,
-          opacity: 0.22,
-        }}
-      />
-      {/* Middle halo — flame */}
-      <View
-        style={{
-          position: 'absolute',
-          left: -radius * 0.45,
-          top: -radius * 0.45,
-          width: radius * 2.9,
-          height: radius * 2.9,
-          borderRadius: radius * 1.45,
-          backgroundColor: haloMid,
-          opacity: 0.5,
-        }}
-      />
-      {/* Inner flame ring */}
-      <View
-        style={{
-          position: 'absolute',
-          left: -radius * 0.18,
-          top: -radius * 0.18,
-          width: radius * 2.35,
-          height: radius * 2.35,
-          borderRadius: radius * 1.175,
-          backgroundColor: haloInner,
-          opacity: 0.7,
-        }}
-      />
-      {/* Smooth bright core (solid, no grains) */}
-      <View
-        style={{
-          width: radius * 2,
-          height: radius * 2,
-          borderRadius: radius,
-          backgroundColor: coreColor,
-          shadowColor: haloMid,
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 1,
-          shadowRadius: radius * 1.8,
-          elevation: 14,
-        }}
-      />
-
-      {/* Rainbow spark burst — 24 ultra-tiny particles radiate out + fade back.
-          In wicket mode the rainbow palette is still used so the spark burst
-          stays lively (the emergency look comes from the red halos, not the
-          sparks). */}
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: -radius,
+        top: -radius,
+        width: radius * 2,
+        height: radius * 2,
+      }}
+    >
       {sparkParams.map((sp, i) => {
         const anim = sparkAnims[i];
-        // Offset along the spark's angle from 0 → travel → 0
         const offset = anim.interpolate({
           inputRange: [0, 0.55, 1],
           outputRange: [0, sp.travel, 0],
         });
         const opacity = anim.interpolate({
           inputRange: [0, 0.1, 0.55, 0.9, 1],
-          outputRange: [0, 1, 0.95, 0.2, 0],
+          outputRange: [0, 1, 0.9, 0.15, 0],
         });
-        // Convert polar offset → x/y deltas from the fireball's center
         const dx = Animated.multiply(offset, Math.cos(sp.angle));
         const dy = Animated.multiply(offset, Math.sin(sp.angle));
 
         return (
           <Animated.View
-            key={i}
+            key={`spark-${i}`}
             pointerEvents="none"
             style={{
               position: 'absolute',
@@ -463,8 +432,8 @@ const Fireball: React.FC<{
               shadowColor: sp.color,
               shadowOffset: { width: 0, height: 0 },
               shadowOpacity: 1,
-              shadowRadius: sp.pxSize * 1.2,
-              elevation: 8,
+              shadowRadius: sp.pxSize * 1.4,
+              elevation: 9,
               opacity,
               transform: [{ translateX: dx }, { translateY: dy }],
             }}

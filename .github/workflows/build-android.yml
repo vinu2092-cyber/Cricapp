@@ -128,19 +128,22 @@ jobs:
             - `handleWatchAd` in `app/match/[id].tsx` no longer fire-and-forgets the ad — it **awaits** `showRewardedAd()` and only increments the watched counter on a real `EARNED_REWARD` event. Same fix on the home-screen watch-ad button in `app/index.tsx`.
             - 10-failure threshold before a no-fill fallback credit is given (not a full Pro auto-unlock).
 
-            ### NOT changed (per user decision)
-            - Interstitial click-target stays at **40–60 clicks** (as currently in v1.0.7/1.0.8).
-            - Banner stays as **MEDIUM_RECTANGLE** (as currently in v1.0.7/1.0.8).
-
             ### Rewarded Ad Unit ID corrected
-            - Real unit ID (verified from AdMob console screenshot of "UnlockProAd"): `ca-app-pub-9675798593675825/6702704058`.
-            - A previous auto-commit (`3f8382b`) had mistakenly "fixed" this to `6702740458` — that unit does not exist on the AdMob account, which is why rewarded ads stopped loading on real devices. Restored to the correct value in both `app.json` and `AdMobContext.native.tsx`.
+            - Real unit ID (verified from AdMob console screenshot of "UnlockProAd"): `ca-app-pub-9675798593675825/6702704058`. A previous auto-commit had mistakenly changed it to `6702740458` — that unit does not exist on the AdMob account, which is why rewarded ads stopped loading. Restored to the correct value in both `app.json` and `AdMobContext.native.tsx`.
+
+            ### UI Polish (same release)
+            - **Scoreboard max height** increased from 20 % → **30 %** of screen (`app/match/[id].tsx`). Added a 16 % minimum so the scoreboard looks proportioned on tall phones. Commentary naturally flows into the remaining ~70 % via the parent ScrollView. Fixes the "scoreboard overflow / content clipped" reports on several devices.
+            - **Header logo ~18 % larger** (`src/components/Header.tsx`): `LogoFireTail size` 85 → 100, `styles.logo` 72 × 72 → 85 × 85, header height 110 → 125. Right-side buttons (Inbox / Settings / Unlock) still fit comfortably on phones as narrow as 360 dp — no overlap.
+            - **LogoFireTail** rewritten: the orbiting fireball + dot-tail has been replaced with a **continuous rainbow pixel line** (55 tiny 2–5 px pixels staggered on one shared 30-second loop) whose length ≈ logo width and which kisses the logo border. The leading tip still emits 24 tiny sparks that burst out + fade, and 7 rainbow ember drops fall with gravity from the bottom edge — the "fire-pixel angare" the user asked for. Wicket-mode red burst still works.
 
             ### Files changed
             - `frontend/plugins/withUnityAdsMediation.js` (restored)
-            - `frontend/app.json` (plugin re-registered, ProGuard rules restored, version 1.0.9, versionCode 9)
-            - `frontend/app/match/[id].tsx` (handleWatchAd honors ad result)
+            - `frontend/app.json` (plugin re-registered, ProGuard rules restored, rewarded ID corrected, version 1.0.9, versionCode 9)
+            - `frontend/app/match/[id].tsx` (rewarded fix + scoreboard 30 % cap)
             - `frontend/app/index.tsx` (watch-ad button honors ad result, 10-fail threshold)
+            - `frontend/src/context/AdMobContext.native.tsx` (rewarded unit ID corrected)
+            - `frontend/src/components/Header.tsx` (logo ~18 % larger, header height 125)
+            - `frontend/src/components/LogoFireTail.tsx` (rewritten → rainbow pixel line)
             - `.github/workflows/build-android.yml`
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
