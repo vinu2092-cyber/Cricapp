@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { usePro } from '../context/ProContext';
 import { useInbox } from '../context/InboxContext';
+import LogoFireTail from './LogoFireTail';
 
 interface HeaderProps {
   onUnlockPro?: () => void;
@@ -49,11 +50,13 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
     >
       <View style={styles.headerContent}>
         <View style={styles.logoContainer}>
-          <Image
-            source={require('../../assets/images/logo.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+          <LogoFireTail size={96} durationMs={30000}>
+            <Image
+              source={require('../../assets/images/logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </LogoFireTail>
         </View>
         <View style={styles.rightButtons}>
           {/* Inbox Button */}
@@ -122,7 +125,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 100,
+    width: 80,
     height: 80,
   },
   rightButtons: {

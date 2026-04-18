@@ -118,23 +118,27 @@ jobs:
           tag_name: v1.0.8
           name: CricApp v1.0.8
           body: |
-            ## CricApp v1.0.8 — Phase 5 (Compact Scoreboard + Player Detail Modal)
-            ### 🎯 Compact Scoreboard (Dynamic 20% Cap)
-            - `scoreHeader` now has `maxHeight: SCREEN_H * 0.20` with `overflow: hidden` — scoreboard never exceeds 20% of screen regardless of device or display-zoom setting.
-            - Team row redesigned: logo + (name / score / overs) in a horizontal block instead of vertical stack → saves ~30% vertical space.
-            - Padding trimmed everywhere: `paddingTop 8 → 4`, `paddingBottom 6 → 2`, batsmen container `pV 5 → 3`, over summary container `pV 6 → 2`.
-            - Fonts standardised: team score 18 → 15, team name 12 → 11, batsman name 11 → 10, labels 9-10 → 8.
-            - Batsmen + Recent Overs are now single-line (title on left, data on right) instead of stacked blocks.
-            - Result: ~80% of screen left for commentary, matching Cricbuzz/Cricket-Guru feel.
-            ### 🎯 Player Detail Modal (tap-to-expand)
-            - New `PlayerDetailModal.tsx` renders when any player row is tapped in the Squads tab (Playing XI / Substitutes / Bench).
-            - Shows 130px circular photo with green border (Cricbuzz CDN).
-            - Name + role + Captain / Wicket-Keeper / Substitute badges.
-            - Bio box: Intl Team, Batting/Bowling style, Birthplace, DOB.
-            - **Career stats grid**: Batting (Mat/Runs/Avg/SR) + Bowling (Mat/Wkts/Econ/SR) across all formats (Test/ODI/T20I/IPL etc.) fetched from `/stats/v1/player/{id}[/batting|/bowling]` with 2-minute cache.
-            - Graceful fallback: if stats aren't available for a player, shows "Career stats not available."
-            ### Phases 1-4 still in effect
-            - Build Fix (compileSdk 36), rewarded ad ID fix, sync-on-open (tms+iid), Cricbuzz team-squad endpoint, smart ad unlock (2-fail fallthrough).
+            ## CricApp v1.0.8 — Phase 6 (UI polish: scoreboard, colors, logo fire-tail, inbox)
+            ### Scoreboard Compaction
+            - Removed the "Overlay OFF" toggle button from below the scoreboard; overlay is controlled by the pin icon in the header actions row now (no duplicate UI).
+            - Match status line (e.g. "Gujarat Titans won by 5 wkts") moved **into** the center column of the team row, directly under the COMPLETED/LIVE badge — no extra vertical space used.
+            - LAST BATSMEN + RECENT OVERS rows remain single-line (title on left, data on right).
+            - Result: scoreboard takes even less space than Phase 5; commentary has more room.
+            ### Softer Premium Colors (60% solid / 40% transparent)
+            - Commentary container: `rgba(255,255,255,0.60)` (was 0.70)
+            - Event cards: OUT, NEW BATSMAN, BOWLING CHANGE — all converted from solid hex to `rgba(..., 0.60)` with matching borderColor alpha. Less harsh on the eye.
+            - SquadsSection + ScorecardSection row alternating colors: green/red/yellow all bumped 0.70 → 0.60.
+            ### Logo Fire-Tail Animation 🔥
+            - Removed the rainbow edge-border (`AnimatedGlowBorder`) that surrounded the whole app.
+            - New `LogoFireTail` component wraps the header logo: six rainbow dots (red → orange → yellow → green → blue → purple) orbit the logo clockwise. Leading dot is solid, trailing dots fade to 25% opacity — looks like a tiny fire-tail.
+            - **30 seconds per full revolution** exactly (user-requested cadence). Native-driver `Animated.timing` — zero perf impact.
+            ### Admin Messages (Inbox)
+            - Unread messages → light green bg (`rgba(200,230,201,0.60)`) with green left-border.
+            - Read messages → white bg (`rgba(255,255,255,0.60)`).
+            - Removed the 3-row rotating color palette that was overriding the read/unread state.
+            - **Bug fix**: Tapping a message now opens a full-screen detail modal with scrollable body + close/OK button. Previously `onPress` only called `markAsRead` but never navigated anywhere — the user couldn't read long messages.
+            ### Phases 1-5 still in effect
+            - compileSdk 36, Cricbuzz tms+iid pagination, fetchTeamSquad, smart ad unlock fallthrough, Player Detail Modal, 20% scoreboard cap, team logos.
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab

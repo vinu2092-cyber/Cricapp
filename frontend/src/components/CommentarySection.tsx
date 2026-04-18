@@ -680,7 +680,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(255, 255, 255, 0.70)',
+    backgroundColor: 'rgba(255, 255, 255, 0.60)',
     borderRadius: 10,
     marginHorizontal: 0,
     marginVertical: 4,
@@ -688,7 +688,7 @@ const styles = StyleSheet.create({
     elevation: 3,
     minHeight: 200,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
   },
   header: {
     flexDirection: 'row',
@@ -858,16 +858,16 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   eventCardOut: {
-    backgroundColor: '#FFCDD2',     // Soft red background
-    borderColor: '#FF5252',
+    backgroundColor: 'rgba(255, 205, 210, 0.60)',  // Soft red — 60% solid, 40% transparent
+    borderColor: 'rgba(255, 82, 82, 0.75)',
   },
   eventCardNewBatsman: {
-    backgroundColor: '#C8E6C9',     // Pastel green background
-    borderColor: '#4CAF50',
+    backgroundColor: 'rgba(200, 230, 201, 0.60)',  // Pastel green — 60% solid, 40% transparent
+    borderColor: 'rgba(76, 175, 80, 0.75)',
   },
   eventCardBowler: {
-    backgroundColor: '#BBDEFB',     // Light blue background
-    borderColor: '#1976D2',
+    backgroundColor: 'rgba(187, 222, 251, 0.60)',  // Light blue — 60% solid, 40% transparent
+    borderColor: 'rgba(25, 118, 210, 0.75)',
   },
   eventCardHeader: {
     backgroundColor: '#D32F2F',

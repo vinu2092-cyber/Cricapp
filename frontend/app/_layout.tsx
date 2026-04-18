@@ -9,7 +9,9 @@ import { ProProvider } from '../src/context/ProContext';
 import { AdMobProvider, useAdMob } from '../src/context/AdMobContext.native';
 import { NotificationProvider } from '../src/context/NotificationContext';
 import { InboxProvider } from '../src/context/InboxContext';
-import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder';
+import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder'; // no longer used — kept import only if referenced elsewhere
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _AnimatedGlowBorderUnused = AnimatedGlowBorder;
 import ErrorScreen from '../src/components/ErrorScreen';
 import SplashScreen from '../src/components/SplashScreen';
 
@@ -140,14 +142,12 @@ function AppWithSplash() {
   return (
     <AppOpenAdHandler>
       <NotificationDeepLinkHandler>
-        <AnimatedGlowBorder>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              animation: 'slide_from_right',
-            }}
-          />
-        </AnimatedGlowBorder>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
       </NotificationDeepLinkHandler>
     </AppOpenAdHandler>
   );

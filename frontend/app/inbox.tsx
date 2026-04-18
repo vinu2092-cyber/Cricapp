@@ -1,16 +1,13 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ImageBackground } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ImageBackground, Modal, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useInbox } from '../src/context/InboxContext';
 
-// Solid opaque alternating colors for readability against wallpaper
-const ROW_COLORS = [
-  'rgba(76, 175, 80, 0.92)',    // Solid green
-  'rgba(244, 67, 54, 0.88)',    // Solid reddish
-  'rgba(255, 193, 7, 0.90)',    // Solid yellow
-];
+// Unread vs read palette — 60% solid, 40% transparent (user-requested)
+const UNREAD_BG = 'rgba(200, 230, 201, 0.60)'; // light green
+const READ_BG = 'rgba(255, 255, 255, 0.60)';   // white
 
 // Format timestamp to user's local timezone: DD MMM YYYY, hh:mm AM/PM
 const formatMessageDate = (ts: number): string => {
@@ -30,25 +27,32 @@ const formatMessageDate = (ts: number): string => {
 
 export default function InboxScreen() {
   const router = useRouter();
-  const { messages, unreadCount, markAsRead, markAllAsRead, cleanupExpired } = useInbox();
+  const { messages, markAsRead, cleanupExpired } = useInbox();
+
+  // Selected message for the detail modal — tapping a row opens this.
+  const [selectedMessage, setSelectedMessage] = useState<any>(null);
 
   useEffect(() => {
     // Run 48-hour cleanup when inbox is opened
     cleanupExpired();
-    // Mark all as read when user opens inbox
-    if (unreadCount > 0) {
-      markAllAsRead();
-    }
+    // NOTE: we intentionally do NOT mark-all-as-read on open anymore — the user
+    // wants unread (green) vs read (white) to be meaningful per-message. A row
+    // flips to white only once the user taps it (markAsRead fires).
   }, []);
+
+  const handleOpenMessage = (item: any) => {
+    setSelectedMessage(item);
+    if (!item.read) markAsRead(item.id);
+  };
 
   const renderMessage = ({ item, index }: { item: any; index: number }) => (
     <TouchableOpacity
       style={[
         styles.messageItem,
-        { backgroundColor: ROW_COLORS[index % 3] },
+        { backgroundColor: item.read ? READ_BG : UNREAD_BG },
         !item.read && styles.messageUnread,
       ]}
-      onPress={() => markAsRead(item.id)}
+      onPress={() => handleOpenMessage(item)}
       activeOpacity={0.7}
       data-testid={`inbox-message-${index}`}
     >
@@ -62,10 +66,16 @@ export default function InboxScreen() {
         {item.title}
       </Text>
 
-      {/* Message Body */}
-      <Text style={styles.messageBody}>
+      {/* Message Body (collapsed preview) */}
+      <Text style={styles.messageBody} numberOfLines={2}>
         {item.body}
       </Text>
+
+      {/* Tap-to-read affordance */}
+      <View style={styles.tapHintRow}>
+        <Text style={styles.tapHint}>Tap to read full message</Text>
+        <Ionicons name="chevron-forward" size={14} color="#555" />
+      </View>
     </TouchableOpacity>
   );
 
@@ -101,6 +111,34 @@ export default function InboxScreen() {
             showsVerticalScrollIndicator={false}
           />
         )}
+
+        {/* Full-message detail modal */}
+        <Modal
+          visible={!!selectedMessage}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedMessage(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalDate}>
+                  {selectedMessage ? formatMessageDate(selectedMessage.timestamp) : ''}
+                </Text>
+                <TouchableOpacity onPress={() => setSelectedMessage(null)} data-testid="inbox-modal-close">
+                  <Ionicons name="close" size={22} color="#333" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.modalTitle}>{selectedMessage?.title || ''}</Text>
+              <ScrollView style={styles.modalBodyScroll} showsVerticalScrollIndicator={false}>
+                <Text style={styles.modalBody}>{selectedMessage?.body || ''}</Text>
+              </ScrollView>
+              <TouchableOpacity style={styles.modalOkBtn} onPress={() => setSelectedMessage(null)}>
+                <Text style={styles.modalOkTxt}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </ImageBackground>
   );
@@ -130,40 +168,106 @@ const styles = StyleSheet.create({
   listContent: { paddingVertical: 8 },
 
   messageItem: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     marginHorizontal: 12,
     marginVertical: 4,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
+    borderColor: 'rgba(0, 0, 0, 0.08)',
   },
   messageUnread: {
     borderLeftWidth: 3,
-    borderLeftColor: '#4CAF50',
+    borderLeftColor: '#2E7D32',
   },
 
-  // Bold date header at top of each message
   dateHeader: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#FFF',
-    marginBottom: 6,
+    color: '#555',
+    marginBottom: 4,
     letterSpacing: 0.3,
   },
 
   messageTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#FFF',
-    marginBottom: 6,
+    color: '#333',
+    marginBottom: 4,
   },
-  messageTitleUnread: { color: '#FFF', fontWeight: '700' },
+  messageTitleUnread: { color: '#1B5E20', fontWeight: '800' },
 
   messageBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#444',
+  },
+  tapHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 6,
+    gap: 2,
+  },
+  tapHint: {
+    fontSize: 11,
+    color: '#555',
+    fontStyle: 'italic',
+  },
+
+  // Detail modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 18,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 460,
+    maxHeight: '80%',
+    backgroundColor: '#FAFAFA',
+    borderRadius: 14,
+    padding: 16,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalDate: {
+    fontSize: 12,
+    color: '#777',
+    fontWeight: '600',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1B5E20',
+    marginBottom: 12,
+  },
+  modalBodyScroll: {
+    maxHeight: 340,
+  },
+  modalBody: {
     fontSize: 15,
     lineHeight: 22,
-    color: 'rgba(255,255,255,0.9)',
-    textAlign: 'justify' as any,
+    color: '#222',
+  },
+  modalOkBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 14,
+    backgroundColor: '#2E7D32',
+    paddingVertical: 8,
+    paddingHorizontal: 22,
+    borderRadius: 18,
+  },
+  modalOkTxt: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

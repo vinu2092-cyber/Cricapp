@@ -779,7 +779,10 @@ export default function MatchDetail() {
               </View>
             </View>
 
-            <MatchStatusBadge state={match.status} isLive={match.status === 'live'} />
+            <View style={styles.centerCol}>
+              <MatchStatusBadge state={match.status} isLive={match.status === 'live'} />
+              {match.statusText ? <Text style={styles.statusTxtCentered} numberOfLines={2}>{match.statusText}</Text> : null}
+            </View>
 
             <View style={styles.teamBlock}>
               {match.teams[1].imageId || match.teams[1].teamId ? (
@@ -798,8 +801,6 @@ export default function MatchDetail() {
               </View>
             </View>
           </View>
-
-          {match.statusText ? <Text style={styles.statusTxt} numberOfLines={1}>{match.statusText}</Text> : null}
 
           {/* Current Batsmen — single row with title on left */}
           {(match.status === 'live' || match.status === 'recent') && match.batsmen && match.batsmen.length > 0 && (
@@ -835,82 +836,9 @@ export default function MatchDetail() {
             </View>
           )}
 
-          {/* Pro Overlay Toggles - Only show for Pro users */}
-          {effectiveIsPro && (
-            <View style={styles.proRow}>
-              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-                {/* Native Overlay (Draw Over Other Apps) - Android Only */}
-                {isFloatingWidgetAvailable() && (
-                  <TouchableOpacity
-                    style={[styles.unlockBtn, { backgroundColor: nativeOverlayActive ? '#FF6B00' : '#333' }]}
-                    onPress={async () => {
-                      if (nativeOverlayActive) {
-                        // Turn off native overlay
-                        await hideFloatingWidget();
-                        setNativeOverlayActive(false);
-                      } else {
-                        // Check permission first
-                        const hasPermission = await checkOverlayPermission();
-                        if (!hasPermission) {
-                          Alert.alert(
-                            'Enable Overlay Permission',
-                            'To show live score over other apps (like WhatsApp, YouTube), you need to enable "Display over other apps" permission.\n\nTap "Enable" to open settings.',
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              {
-                                text: 'Enable',
-                                onPress: async () => {
-                                  setPendingOverlayRequest(true);
-                                  await requestOverlayPermission();
-                                },
-                              },
-                            ]
-                          );
-                          return;
-                        }
-                        
-                        // Start native overlay
-                        const scoreData = {
-                          team1Name: match.teams[0]?.shortName || 'TM1',
-                          team2Name: match.teams[1]?.shortName || 'TM2',
-                          team1Score: match.teams[0]?.runs !== undefined 
-                            ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` 
-                            : '-',
-                          team2Score: match.teams[1]?.runs !== undefined 
-                            ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` 
-                            : '-',
-                          team1Overs: match.teams[0]?.overs?.toString() || '',
-                          team2Overs: match.teams[1]?.overs?.toString() || '',
-                          statusText: match.statusText || '',
-                          commentary: match.commentary?.[0]?.english || '',
-                        };
-                        
-                        const success = await showFloatingWidget(scoreData);
-                        if (success) {
-                          setNativeOverlayActive(true);
-                          Alert.alert(
-                            'Floating Widget Active!',
-                            'Live score will now show over other apps. You can minimize CricApp and the score will still be visible!\n\n• Tap widget to minimize\n• Drag to move\n• Tap ✕ to close',
-                            [{ text: 'Got it!' }]
-                          );
-                        }
-                      }
-                    }}
-                    data-testid="native-overlay-toggle"
-                  >
-                    <Ionicons 
-                      name={nativeOverlayActive ? 'layers' : 'layers-outline'} 
-                      size={14} 
-                      color="#FFF" 
-                    />
-                    <Text style={styles.unlockTxt}>
-                      {nativeOverlayActive ? 'Overlay ON' : 'Overlay OFF'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          )}
+          {/* Pro Overlay Toggles — moved to a pin button in the header actions row
+              above (line 731) for screen-space optimisation. Removed from here so the
+              scoreboard stays compact (user's "space optimization" request). */}
         </View>
 
         {/* Content Tab Bar - Commentary / Scorecard / Squads */}
@@ -1083,6 +1011,7 @@ const styles = StyleSheet.create({
   },
   actionBtnActive: { backgroundColor: 'rgba(76,175,80,0.2)' },
   teamRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 2 },
+  centerCol: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   teamBlock: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', gap: 6 },
   teamLogo: { width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.08)' },
   teamMeta: { alignItems: 'flex-start' },
@@ -1090,6 +1019,7 @@ const styles = StyleSheet.create({
   teamScore: { color: '#FFF', fontSize: 15, fontWeight: 'bold', lineHeight: 17 },
   overs: { color: '#999', fontSize: 9, lineHeight: 11 },
   statusTxt: { color: '#4CAF50', fontSize: 10, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
+  statusTxtCentered: { color: '#4CAF50', fontSize: 10, textAlign: 'center', marginTop: 2, fontStyle: 'italic', maxWidth: 130 },
   // Live match batsmen section - ultra compact (single-row display)
   batsmenContainer: {
     flexDirection: 'row',

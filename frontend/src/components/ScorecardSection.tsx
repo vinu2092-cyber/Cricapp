@@ -62,9 +62,9 @@ function didBat(bat: any): boolean {
 
 // 70% solid alternating rows for readability
 const ROW_COLORS = [
-  'rgba(232, 245, 233, 0.70)',  // Light green - 70% solid
-  'rgba(255, 235, 238, 0.70)',  // Light reddish - 70% solid
-  'rgba(255, 249, 196, 0.70)',  // Light yellow - 70% solid
+  'rgba(232, 245, 233, 0.60)',  // Light green - 60% solid, 40% transparent
+  'rgba(255, 235, 238, 0.60)',  // Light reddish - 60% solid, 40% transparent
+  'rgba(255, 249, 196, 0.60)',  // Light yellow - 60% solid, 40% transparent
 ];
 const getRowBg = (idx: number) => ROW_COLORS[idx % 3];
 

@@ -23,9 +23,9 @@ interface Props {
 
 // Solid opaque alternating shades for readability against wallpaper
 const ROW_COLORS = [
-  'rgba(232, 245, 233, 0.70)',  // Light green - 70% solid
-  'rgba(255, 235, 238, 0.70)',  // Light red - 70% solid
-  'rgba(255, 249, 196, 0.70)',  // Light yellow - 70% solid
+  'rgba(232, 245, 233, 0.60)',  // Light green - 60% solid, 40% transparent
+  'rgba(255, 235, 238, 0.60)',  // Light red - 60% solid, 40% transparent
+  'rgba(255, 249, 196, 0.60)',  // Light yellow - 60% solid, 40% transparent
 ];
 const getRowBg = (idx: number) => ROW_COLORS[idx % 3];
 

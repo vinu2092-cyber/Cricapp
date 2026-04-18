@@ -5,43 +5,44 @@ CricApp (com.cricapp.live) — React Native / Expo Android app, live on Play Sto
 Repo: https://github.com/vinu2092-cyber/Cricapp.git
 Current version: **v1.0.8** (versionCode 8)
 
-## 2026-04-17 — Phase 5 (Compact Scoreboard + Player Detail Modal)
+## 2026-04-17 — Phase 6 (UI polish: scoreboard, colors, logo fire-tail, inbox)
 
-### Compact Scoreboard — Dynamic 20% Cap
-- `scoreHeader` now enforces `maxHeight: SCREEN_H * 0.20` via `Dimensions.get('window')` with `overflow: hidden` → guaranteed not to exceed 20% on any device or display-zoom setting.
-- Team block redesigned: **logo + (name / score / overs) side-by-side** instead of vertical stack → ~30% vertical space reclaimed.
-- Padding trimmed across the board:
-  - `scoreHeader` paddingTop 8 → 4, paddingBottom 6 → 2, border 2 → 1
-  - `batsmenContainer` paddingVertical 5 → 3, now horizontal row layout
-  - `overSummaryContainer` paddingVertical 6 → 2, now horizontal row layout
-  - `unlockBtn` paddingVertical 8 → 4, paddingHorizontal 16 → 10
-- Font sizes standardised: team score 18 → 15, team name 12 → 11, batsman name 11 → 10, labels 9-10 → 8.
-- Batsmen + Recent Overs rows are now single-line (title on left, values on right) instead of title-above-values stacks.
-- Result: ~80% of screen reclaimed for commentary, matching Cricbuzz/Cricket-Guru visual weight.
+### Scoreboard further compaction (`app/match/[id].tsx`)
+- Removed the "Overlay OFF" toggle button from below the scoreboard — overlay is now controlled exclusively via the pin icon in the header actions row (no duplicate UI).
+- Match status line (e.g., "Gujarat Titans won by 5 wkts") moved **into** the center column, directly under the COMPLETED/LIVE badge. Uses zero extra vertical space.
+- LAST BATSMEN + RECENT OVERS rows remain single-line (title on left, values on right) from Phase 5.
 
-### Player Detail Modal (tap any squad player)
-- New component `src/components/PlayerDetailModal.tsx` — opens when any row in the Squads tab (Playing XI / Substitutes / Bench) is tapped.
-- Pulls player profile from Cricbuzz:
-  - `/stats/v1/player/{id}` → bio (name, role, batting/bowling style, intl team, DOB)
-  - `/stats/v1/player/{id}/batting` → batting career by format
-  - `/stats/v1/player/{id}/bowling` → bowling career by format
-  - Added `fetchPlayerProfile(playerId)` in `api.ts` that parallel-fetches all three and caches the result for 2 min.
-- UI:
-  - 130px circular photo with green border (Cricbuzz CDN: `/i1/c{faceImageId}/player.jpg` at 192×192)
-  - Name + role, CAPTAIN / WICKET-KEEPER / SUBSTITUTE badges
-  - Bio box (Intl Team / Batting / Bowling / Birthplace / DOB)
-  - Career stats grid: Mat / Runs / Avg / SR for batting, Mat / Wkts / Econ / SR for bowling, across all formats (Test / ODI / T20I / IPL …)
-  - Graceful fallback when stats aren't available
-- `SquadsSection`:
-  - `SquadPlayer` type now carries `id` → used for the API call
-  - Every player row wrapped in `TouchableOpacity` with `activeOpacity: 0.6`
-  - Each has a unique `data-testid` like `player-t1-playing-0`, `player-t2-bench-3` etc.
+### Softer premium colors (60% solid / 40% transparent)
+- `CommentarySection` container: `rgba(255,255,255,0.70) → 0.60`
+- Event cards (CommentarySection):
+  - OUT: `#FFCDD2 → rgba(255,205,210,0.60)` with border `rgba(255,82,82,0.75)`
+  - NEW BATSMAN: `#C8E6C9 → rgba(200,230,201,0.60)` with border `rgba(76,175,80,0.75)`
+  - BOWLING CHANGE: `#BBDEFB → rgba(187,222,251,0.60)` with border `rgba(25,118,210,0.75)`
+- `ScorecardSection.ROW_COLORS` + `SquadsSection.ROW_COLORS`: all three (green/red/yellow) bumped 0.70 → 0.60.
+
+### Logo fire-tail animation (`src/components/LogoFireTail.tsx` — NEW)
+- Removed the rainbow edge border that was wrapping the whole app (`AnimatedGlowBorder` no longer mounted in `app/_layout.tsx`).
+- New `LogoFireTail` component renders **six rainbow dots** (red → orange → yellow → green → blue → purple) that orbit the logo clockwise.
+- Leading dot is solid/full; each trailing dot fades to 25% opacity + shrinks slightly — looks like a tiny fire-tail chasing itself.
+- **30 seconds per full revolution** (linear easing) — user-requested cadence.
+- Uses `Animated.timing` with `useNativeDriver: true` → zero JS-thread overhead.
+- Mounted in `Header.tsx` around the logo Image (logo slightly resized 100→80px so the orbit fits).
+
+### Admin messages / Inbox (`app/inbox.tsx`)
+- Replaced the 3-row rotating palette with simple unread/read semantics:
+  - **Unread** → light green bg `rgba(200,230,201,0.60)` + green left-border (3px)
+  - **Read** → white bg `rgba(255,255,255,0.60)`
+- Removed the auto "mark-all-as-read on open" so unread state actually means something per-message.
+- **Bug fix** — tap event was a no-op (only `markAsRead`). Replaced with a proper open-detail flow:
+  - New `selectedMessage` state + full-screen `Modal` with scrollable body, date header, title, body, and OK/close buttons.
+  - `onPress` now opens the modal AND marks the message as read (which flips its card white next time the list re-renders).
 
 ## Earlier phases (all still in effect)
-- **Phase 4** — `fetchTeamSquad(matchId, teamId)` powers Substitutes + Bench with photos; smart ad unlock (2-fail fallthrough → free Pro).
-- **Phase 3** — Commentary Gap Fix: Cricbuzz pagination uses `tms + iid`, not `timestamp`; walks back through innings to ball 0.1.
-- **Phase 2** — Rewarded ad ID corrected to `/6702740458`; 100%-width event cards (margin 12, 13–14px fonts); team logos in match list + header; scorecard avatars 24 → 32px.
-- **Phase 1** — `compileSdk/targetSdk` bumped 35 → 36 for androidx.activity/core 1.11+/1.17+ compatibility.
+- **Phase 5** — Compact scoreboard (20% height cap, horizontal team blocks), Player Detail Modal tap-to-expand with bio + career stats grid.
+- **Phase 4** — `fetchTeamSquad(matchId, teamId)` for Substitutes + Bench with photos; smart ad unlock (2-fail fallthrough).
+- **Phase 3** — Commentary gap fix using Cricbuzz `tms + iid` pagination; walks back through innings to ball 0.1.
+- **Phase 2** — Rewarded ad ID corrected; event cards 100% width; team logos in match list + header; scorecard avatars 32px.
+- **Phase 1** — `compileSdk/targetSdk` bumped 35 → 36 for androidx.activity/core 1.11+/1.17+ build compatibility.
 
 ## How to release
 1. User hits **"Save to GitHub"** in Emergent.
@@ -49,5 +50,6 @@ Current version: **v1.0.8** (versionCode 8)
 3. Upload AAB to Play Console Closed Testing.
 
 ## Backlog
-- Optional: cache `commentaryNextTimestamp` + `commentaryNextIid` per match in AsyncStorage so cold-start picks up exactly where it left off.
-- Local bundled-asset fallback map of ~50 top IPL/intl player photos for cases where `faceImageId` is genuinely null from Cricbuzz.
+- Persist `commentaryNextTimestamp + commentaryNextIid` per match to resume cold-start sync from exactly where it left off.
+- Bundled-asset fallback map of ~50 top IPL/intl player photos for rare cases where Cricbuzz returns null `faceImageId`.
+- Optional: "Compare Players" feature that lets the user pick two squad members and diff their career stats side-by-side.
