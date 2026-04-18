@@ -52,7 +52,7 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
     >
       <View style={styles.headerContent}>
         <View style={styles.logoContainer}>
-          <LogoFireTail size={72} durationMs={30000}>
+          <LogoFireTail size={85} durationMs={30000}>
             <Image
               source={require('../../assets/images/logo.png')}
               style={styles.logo}
