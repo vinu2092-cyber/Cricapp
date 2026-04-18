@@ -9,6 +9,7 @@ import { ProProvider } from '../src/context/ProContext';
 import { AdMobProvider, useAdMob } from '../src/context/AdMobContext.native';
 import { NotificationProvider } from '../src/context/NotificationContext';
 import { InboxProvider } from '../src/context/InboxContext';
+import { FireTailAlertProvider } from '../src/context/FireTailAlertContext';
 import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder'; // no longer used — kept import only if referenced elsewhere
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _AnimatedGlowBorderUnused = AnimatedGlowBorder;
@@ -160,8 +161,10 @@ export default function RootLayout() {
         <AdMobProvider>
           <NotificationProvider>
             <InboxProvider>
-              <StatusBar style="light" translucent />
-              <AppWithSplash />
+              <FireTailAlertProvider>
+                <StatusBar style="light" translucent />
+                <AppWithSplash />
+              </FireTailAlertProvider>
             </InboxProvider>
           </NotificationProvider>
         </AdMobProvider>
