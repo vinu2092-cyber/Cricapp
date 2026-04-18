@@ -292,9 +292,10 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   // Alternating row background colors - only 2 pastel shades (yellow + green) for soft look
   // per v1.0.8 spec. No red on regular rows (red reserved for OUT event cards only).
   const getAlternatingBg = (index: number): string => {
+    // 60% solid / 40% transparent — matches Scorecard & Squads tiles
     const colors = [
-      '#FFF9C4',  // Pastel yellow
-      '#C8E6C9',  // Pastel green
+      'rgba(255, 249, 196, 0.60)', // Pastel yellow
+      'rgba(200, 230, 201, 0.60)', // Pastel green
     ];
     return colors[index % 2];
   };
@@ -705,7 +706,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(255, 255, 255, 0.30)',
+    backgroundColor: 'rgba(255, 255, 255, 0.60)',
     borderRadius: 10,
     marginHorizontal: 0,
     marginVertical: 4,
@@ -883,16 +884,16 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   eventCardOut: {
-    backgroundColor: 'rgba(255, 205, 210, 0.30)',  // Soft red — 60% solid, 40% transparent
-    borderColor: 'rgba(255, 82, 82, 0.50)',
+    backgroundColor: 'rgba(255, 205, 210, 0.60)',  // Soft red — 60% solid, 40% transparent
+    borderColor: 'rgba(255, 82, 82, 0.75)',
   },
   eventCardNewBatsman: {
-    backgroundColor: 'rgba(200, 230, 201, 0.30)',  // Pastel green — 60% solid, 40% transparent
-    borderColor: 'rgba(76, 175, 80, 0.50)',
+    backgroundColor: 'rgba(200, 230, 201, 0.60)',  // Pastel green — 60% solid, 40% transparent
+    borderColor: 'rgba(76, 175, 80, 0.75)',
   },
   eventCardBowler: {
-    backgroundColor: 'rgba(187, 222, 251, 0.30)',  // Light blue — 60% solid, 40% transparent
-    borderColor: 'rgba(25, 118, 210, 0.50)',
+    backgroundColor: 'rgba(187, 222, 251, 0.60)',  // Light blue — 60% solid, 40% transparent
+    borderColor: 'rgba(25, 118, 210, 0.75)',
   },
   eventCardHeader: {
     backgroundColor: '#D32F2F',

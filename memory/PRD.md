@@ -200,3 +200,55 @@ Current version: **v1.0.8** (versionCode 8)
    - Commentary / Scorecard / Squads: wallpaper visible through tiles (~30%
      opacity), eye-friendly.
    - Firebase admin broadcast sent once → shows up once in Inbox.
+
+
+## 2026-04-18 (3) — v1.0.8 polish pass #3 (premium fireball + uniform 60% tiles)
+
+### A. Commentary / Scorecard / Squads — uniform 60% solid / 40% transparent
+- Previous pass took opacities too low → wallpaper bled through and text became
+  hard to read on Scorecard / Squads. Commentary tiles were untouched (solid hex
+  `#FFF9C4`, `#C8E6C9`) and therefore looked fully opaque.
+- This pass:
+  - `CommentarySection.tsx` — `getAlternatingBg` now returns
+    `rgba(255,249,196,0.60)` / `rgba(200,230,201,0.60)` (pastel yellow / green at
+    60%). Containers + event-card backgrounds already at 0.60, borders restored
+    to 0.75 for definition.
+  - `ScorecardSection.tsx` — row palette back to 0.60; outer section 0.70.
+  - `SquadsSection.tsx` — row palette back to 0.60; outer section 0.70;
+    secondary tiles 0.50.
+- Result: all three tabs now share the same 60/40 contrast — wallpaper
+  still visible but text stays readable.
+
+### B. LogoFireTail — smooth premium fireball with rainbow spark burst
+- Removed the 6 big visible pixel grains on the fireball core (user called this
+  "pixelated / kachra").
+- Core is now a **single smooth fireball** = solid cream-white core + 3
+  progressively-softer aura rings (outer red halo → flame → amber ring → white
+  core) with native shadow for a glow feel.
+- Added a **subtle rainbow spark burst**: 24 ultra-tiny (1.5–3.3 px) rainbow
+  particles that radiate out from the fireball to ~2.5× its radius then fade
+  back in. Each particle has its own random angle, period (1.4–2.8 s) and start
+  delay, so the eye can't count them — it reads as organic fire crackle.
+- Orbit path changed from a hard rectangle to a **rounded rectangle** (30
+  keyframes, corner radius ≈ 18% of logo size) so it feels like it's tracing the
+  logo's own rounded shape, clockwise, 30 s / revolution (5 s in wicket mode).
+- Ball geometry now exactly matches the logo edge (halfOrbit = size / 2,
+  containerPad only wide enough for ball + shadow) — **fireball visibly
+  touches the logo border**, no floating gap.
+- Smoke tail kept (9 rainbow dots) but made a touch smaller and softer for a
+  cleaner premium look.
+
+### Files changed (this pass)
+- `frontend/src/components/CommentarySection.tsx`
+- `frontend/src/components/ScorecardSection.tsx`
+- `frontend/src/components/SquadsSection.tsx`
+- `frontend/src/components/LogoFireTail.tsx`
+
+### Next action items
+1. **Press "Save to GitHub"** — Actions builds APK + AAB on main.
+2. Verify on device:
+   - Commentary / Scorecard / Squads → all three tabs tiles look equally
+     60%-solid (wallpaper visible but text clearly readable).
+   - Header logo orbit: single smooth fireball hugging the logo border, rainbow
+     smoke tail behind it, occasional tiny rainbow sparks popping out and back.
+   - Wicket alert → same smooth ball turns red and speeds up for 10 s.

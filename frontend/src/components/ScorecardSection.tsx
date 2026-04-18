@@ -62,9 +62,9 @@ function didBat(bat: any): boolean {
 
 // 70% solid alternating rows for readability
 const ROW_COLORS = [
-  'rgba(232, 245, 233, 0.30)',  // Light green - 60% solid, 40% transparent
-  'rgba(255, 235, 238, 0.30)',  // Light reddish - 60% solid, 40% transparent
-  'rgba(255, 249, 196, 0.30)',  // Light yellow - 60% solid, 40% transparent
+  'rgba(232, 245, 233, 0.60)',  // Light green - 60% solid, 40% transparent
+  'rgba(255, 235, 238, 0.60)',  // Light reddish - 60% solid, 40% transparent
+  'rgba(255, 249, 196, 0.60)',  // Light yellow - 60% solid, 40% transparent
 ];
 const getRowBg = (idx: number) => ROW_COLORS[idx % 3];
 
@@ -410,7 +410,7 @@ const s = StyleSheet.create({
   inningsTabText: { color: 'rgba(255,255,255,0.6)', fontWeight: '600', fontSize: 13 },
   inningsTabTextActive: { color: '#FFF' },
 
-  section: { marginHorizontal: 12, marginTop: 12, backgroundColor: 'rgba(255,255,255,0.40)', borderRadius: 10, overflow: 'hidden', elevation: 2 },
+  section: { marginHorizontal: 12, marginTop: 12, backgroundColor: 'rgba(255,255,255,0.70)', borderRadius: 10, overflow: 'hidden', elevation: 2 },
   sectionTitle: { backgroundColor: '#1B5E20', color: '#FFF', fontSize: 13, fontWeight: '700', paddingVertical: 8, paddingHorizontal: 14, letterSpacing: 0.5 },
 
   headerRow: { flexDirection: 'row', backgroundColor: '#E8F5E9', paddingVertical: 8, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#C8E6C9' },
