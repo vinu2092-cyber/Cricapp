@@ -47,7 +47,7 @@ function deriveProviderName(host: string): string {
 }
 
 // ============ FETCH CONFIG VIA REST API (no SDK needed) ============
-// Reads 3 hosts (api_host, api_host_p2, api_host_p3) and their keys from Firestore
+// Reads 2 hosts (api_host, api_host_p2) and their keys from Firestore
 async function fetchFirebaseConfig(): Promise<void> {
   try {
     debugLog('Fetching config via REST API...');
@@ -75,11 +75,18 @@ async function fetchFirebaseConfig(): Promise<void> {
     const currentProvider = (fields?.current_provider?.stringValue || 'cricbuzz-cricket').replace(/\s+/g, '');
     debugLog(`current_provider: ${currentProvider}`);
 
-    // ---- Read all 3 hosts and their keys ----
+    // ---- Read the 2 supported hosts and their keys ----
+    // NOTE (2026-04-18): Host 3 (api_host_p3 / api_key_p3) has been REMOVED
+    // from this flow because its API (cricbuzz-real-time-cricket-api) does
+    // not serve the per-match detail / commentary / scorecard / squads
+    // endpoints the app relies on. Any values still set in Firestore under
+    // `api_host_p3` / `api_key_p3` are silently ignored.
+    //
+    // Both supported slots (`api_key` + `api_key_p2`) accept an unlimited
+    // number of comma-separated RapidAPI keys — tested up to 10 per slot.
     const hostConfigs: { host: string; keysRaw: string; suffix: string }[] = [
       { host: (fields?.api_host?.stringValue || '').replace(/\s+/g, ''), keysRaw: (fields?.api_key?.stringValue || '').trim(), suffix: '' },
       { host: (fields?.api_host_p2?.stringValue || '').replace(/\s+/g, ''), keysRaw: (fields?.api_key_p2?.stringValue || '').trim(), suffix: '_p2' },
-      { host: (fields?.api_host_p3?.stringValue || '').replace(/\s+/g, ''), keysRaw: (fields?.api_key_p3?.stringValue || '').trim(), suffix: '_p3' },
     ];
 
     // Collect ALL unique keys from all slots — these are user's RapidAPI keys and
@@ -177,11 +184,12 @@ async function fetchFirebaseConfigSDK(): Promise<void> {
 
     const currentProvider = (data?.current_provider || 'cricbuzz-cricket').replace(/\s+/g, '');
 
-    // Read all 3 hosts and keys (same structure as REST)
+    // Read the 2 supported hosts and keys (same structure as REST).
+    // Host 3 (api_host_p3 / api_key_p3) intentionally omitted — see REST path
+    // above for the full explanation.
     const hostConfigs = [
       { host: (data?.api_host || '').replace(/\s+/g, ''), keysRaw: (data?.api_key || '').trim(), suffix: '' },
       { host: (data?.api_host_p2 || '').replace(/\s+/g, ''), keysRaw: (data?.api_key_p2 || '').trim(), suffix: '_p2' },
-      { host: (data?.api_host_p3 || '').replace(/\s+/g, ''), keysRaw: (data?.api_key_p3 || '').trim(), suffix: '_p3' },
     ];
 
     // Shared key pool: union of all slot keys — enables every configured host to

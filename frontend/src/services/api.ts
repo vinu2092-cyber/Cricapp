@@ -34,8 +34,10 @@ const HOST_1 = "cricbuzz-cricket.p.rapidapi.com";
 // ---- Provider 2: cricbuzz-cricket2 ----
 const HOST_2 = "cricbuzz-cricket2.p.rapidapi.com";
 
-// ---- Provider 3: cricbuzz-real-time-cricket-api ----
-const HOST_3 = "cricbuzz-real-time-cricket-api.p.rapidapi.com";
+// NOTE: Host 3 (cricbuzz-real-time-cricket-api) was REMOVED on 2026-04-18 —
+// that provider's API does not serve per-match detail / commentary /
+// scorecard / squads endpoints (only listings), so it cannot power the
+// full app. Firestore `api_host_p3` / `api_key_p3` are now ignored.
 
 // Hardcoded keys REMOVED — app now relies on Firebase Remote Config for API credentials
 // If Firebase is unavailable, the app shows a "Syncing..." state
@@ -108,44 +110,10 @@ const PROVIDERS: Record<string, ProviderConfig> = {
       scorecard: (id: string) => `/mcenter/v1/${id}/scard`,
       teamSquad: (id: string, teamId: string) => `/mcenter/v1/${id}/team/${teamId}`,
     },
-    parseMatchList: extractAllCricbuzz,
-    parseMatchDetail: transformDetailCricbuzz,
-    parseCommentary: parseCommentaryCricbuzz,
-    isCricbuzzLike: true,
-  },
-  // ---- Host 3 (cricbuzz-real-time-cricket-api by yukticode) ----
-  //
-  // IMPORTANT: This is a DIFFERENT API from Host 1/2 despite the similar name.
-  // Verified via live probing:
-  //   ✅  /matches/live        /matches/recent        /matches/upcoming
-  //       (no "/v1/" prefix, but the response shape is identical — same
-  //        `typeMatches[]` → `seriesMatches[]` → `seriesAdWrapper/matches[]`
-  //        tree, so `extractAllCricbuzz` parses it fine.)
-  //   ✅  /series/get-matches?seriesId=…
-  //   ✅  /stats/get-records?statsType=…
-  //   ❌  ANY per-match endpoint — `/mcenter/v1/{id}`, `/mcenter/v1/{id}/comm`,
-  //       `/mcenter/v1/{id}/scard`, `/matches/info?matchId=…`, `/match/{id}`,
-  //       etc.  All return 404 "Endpoint '...' does not exist".
-  //
-  // Because of the last point we declare `matchDetail / commentary /
-  // scorecard / teamSquad` as **unsupportedTypes** — the fetch loop will then
-  // automatically fall through to Host 1 / Host 2 for match-center data,
-  // while still letting Host 3 serve the listing endpoints (where its keys
-  // are actually subscribed).
-  'cricbuzz-real-time': {
-    host: HOST_3,
-    endpoints: {
-      live: '/matches/live',
-      recent: '/matches/recent',
-      upcoming: '/matches/upcoming',
-      // These are declared for type safety only — they will never be called
-      // because `unsupportedTypes` below excludes them.
-      matchDetail: (id: string) => `/mcenter/v1/${id}`,
-      commentary: (id: string) => `/mcenter/v1/${id}/comm`,
-      scorecard: (id: string) => `/mcenter/v1/${id}/scard`,
-      teamSquad: (id: string, teamId: string) => `/mcenter/v1/${id}/team/${teamId}`,
-    },
-    unsupportedTypes: ['detail', 'comm', 'scard', 'team'],
+    // Live-probed 2026-04-18: Host 2 serves live / recent / upcoming /
+    // matchDetail / commentary / scorecard ✅ but returns 404 for
+    // `/mcenter/v1/{id}/team/{teamId}`. Squads must therefore go to Host 1.
+    unsupportedTypes: ['team'],
     parseMatchList: extractAllCricbuzz,
     parseMatchDetail: transformDetailCricbuzz,
     parseCommentary: parseCommentaryCricbuzz,
@@ -225,7 +193,7 @@ async function fetchData(
   const allProviders = _getAllProviders ? _getAllProviders() : [];
 
   // All known Cricbuzz hosts (for provider config lookup)
-  const ALL_HOSTS = [HOST_1, HOST_2, HOST_3];
+  const ALL_HOSTS = [HOST_1, HOST_2];
 
   // ROTATION LOGIC: Try each provider sequentially.
   // For each provider: try ALL its keys on its OWN host.

@@ -453,3 +453,50 @@ nahi mil raha").
 3. For match DETAIL (commentary / scorecard / squads) you must ensure at
    least one active RapidAPI key is subscribed to `cricbuzz-cricket.p.rapidapi.com`
    (Host 1) OR `cricbuzz-cricket2.p.rapidapi.com` (Host 2) in Firestore.
+
+
+## 2026-04-18 (8) — Host 3 removed · Host 2 kept · up to 10 keys per host
+
+### Live-verification (2026-04-18) with user's 3 current keys
+| Host | live | matchDetail | commentary | scorecard | team/{id} |
+|------|:----:|:-----------:|:----------:|:---------:|:---------:|
+| 1 — cricbuzz-cricket | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 2 — cricbuzz-cricket2 | ✅ | ✅ | ✅ | ✅ | ❌ **404** |
+| 3 — cricbuzz-real-time-cricket-api | ✅* | ❌ 404 | ❌ 404 | ❌ 404 | ❌ 404 |
+
+*Host 3 listings work but on non-standard paths (no `/v1/`); EVERY per-match
+endpoint returns 404 on Host 3.
+
+### Decisions (per user instruction)
+- **Host 3 — REMOVED** from the routing layer. Can't power the full app, so no
+  point rotating keys through it. Firestore `api_host_p3` / `api_key_p3`
+  fields are silently ignored.
+- **Host 2 — KEPT** with a narrower scope: serves live / recent / upcoming /
+  matchDetail / commentary / scorecard. Its `/mcenter/v1/{id}/team/{teamId}`
+  endpoint is 404 — so squads calls skip Host 2 and go straight to Host 1.
+- **Up to 10 keys per host** — `parseKeys` already handles an unlimited
+  comma-separated list; no code change was needed. User can now drop up to 10
+  keys into `api_key` and 10 into `api_key_p2` in Firestore.
+
+### Code changes
+- `frontend/src/services/api.ts`
+  - Removed `HOST_3` constant + the `cricbuzz-real-time` provider from
+    `PROVIDERS`. `ALL_HOSTS` is now `[HOST_1, HOST_2]`.
+  - Host 2 gains `unsupportedTypes: ['team']` — squads requests auto-fallthrough
+    to Host 1.
+- `frontend/src/services/FirebaseKeyService.ts`
+  - REST + SDK paths now read only `api_host` / `api_key` and
+    `api_host_p2` / `api_key_p2`; `api_host_p3` / `api_key_p3` are no longer
+    consulted.
+  - Updated doc-comment.
+
+### What this means for the user's Firestore right now
+- Move any working RapidAPI keys into `api_key_p2` (already set) or `api_key`.
+- You can drop the `api_host_p3` / `api_key_p3` fields entirely — they're
+  inert now.
+- When the Host 2 quota resets tomorrow, the app will automatically resume
+  pulling match detail / commentary / scorecard through Host 2 keys.
+
+### Files changed
+- `frontend/src/services/api.ts`
+- `frontend/src/services/FirebaseKeyService.ts`
