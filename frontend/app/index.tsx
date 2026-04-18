@@ -578,23 +578,34 @@ export default function Index() {
                       }
                     } else {
                       // Ad failed to load / no fill — track failure.
-                      // After 2 consecutive ad-load failures, auto-unlock so the user
-                      // never gets stuck behind a Google ad inventory issue.
+                      // After 10 consecutive ad-load failures, credit the user with
+                      // ONE ad (not full Pro unlock). This keeps ad revenue flowing
+                      // while preventing users from being stuck behind inventory gaps.
+                      const FAIL_THRESHOLD = 10;
                       const fails = adFails + 1;
                       setAdFails(fails);
-                      if (fails >= 2) {
-                        setProFromAdMob(true);
+                      if (fails >= FAIL_THRESHOLD) {
                         setAdFails(0);
-                        setLocalAdsWatched(0);
-                        Alert.alert(
-                          'Free Pro Unlocked!',
-                          'Ad service is busy right now — we have unlocked Pro for you for 30 minutes anyway. Enjoy!',
-                          [{ text: 'Thanks!', onPress: () => setShowProModal(false) }]
-                        );
+                        const next = localAdsWatched + 1;
+                        setLocalAdsWatched(next);
+                        if (next >= 2) {
+                          setProFromAdMob(true);
+                          setLocalAdsWatched(0);
+                          Alert.alert(
+                            'PRO Unlocked!',
+                            'Ad service was temporarily busy — we credited your progress. Enjoy 30 minutes of Pro!',
+                            [{ text: 'Thanks!', onPress: () => setShowProModal(false) }]
+                          );
+                        } else {
+                          Alert.alert(
+                            'Ad service busy',
+                            `Credited 1 ad (after ${FAIL_THRESHOLD} retries). ${2 - next} more needed to unlock Pro.`
+                          );
+                        }
                       } else {
                         Alert.alert(
                           'Ad not available',
-                          'Please tap once more — if it still does not load, you will get free Pro access automatically.'
+                          `Please try again (${fails}/${FAIL_THRESHOLD} retries). If ads stay unavailable, you will get a credit automatically.`
                         );
                       }
                     }

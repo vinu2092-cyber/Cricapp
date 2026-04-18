@@ -204,6 +204,8 @@ export default function MatchDetail() {
   const [proExpiry, setProExpiry] = useState<number | null>(null);
   const [adsWatchedCount, setAdsWatchedCount] = useState(0);
   const [showProModal, setShowProModal] = useState(false);
+  const [adWatchLoading, setAdWatchLoading] = useState(false);
+  const [adFails, setAdFails] = useState(0);
 
   // Native floating widget states
   const [nativeOverlayActive, setNativeOverlayActive] = useState(false);
@@ -609,30 +611,82 @@ export default function MatchDetail() {
     }
   };
 
-  // Logic C: Watch 2 Rewarded Ads for Pro — REWARD GRANT fallback (counts even on ad failure)
+  // Logic C: Watch 2 Rewarded Ads for Pro — counts ONLY on real ad watched.
+  // If the rewarded ad repeatedly fails to load (no-fill / network), we still
+  // eventually let the user progress after 10 consecutive failures (counts
+  // as just 1 ad credit, NOT auto-unlock). This keeps revenue flowing while
+  // preventing users from being stuck behind Google inventory hiccups.
+  const AD_FAIL_THRESHOLD = 10;
   const handleWatchAd = async () => {
-    await showRewardedAd(); // fire-and-forget; failure still credits the user
-    const newCount = adsWatchedCount + 1;
-    setAdsWatchedCount(newCount);
+    if (adWatchLoading) return;
+    setAdWatchLoading(true);
+    let shown = false;
+    try {
+      shown = await showRewardedAd();
+    } catch {
+      shown = false;
+    }
+    setAdWatchLoading(false);
 
-    if (newCount >= 2) {
-      // All 2 ads watched - unlock Pro!
-      setTempPro(true);
-      setProExpiry(Date.now() + 30 * 60 * 1000);
-      setProFromAdMob(true);
-      setAdsWatchedCount(0);
-      setShowProModal(false);
-      Alert.alert(
-        'Pro Unlocked!',
-        'Voice Commentary, Floating Scoreboard and Ad-free for 30 minutes!',
-        [{ text: 'Enjoy!' }]
-      );
+    if (shown) {
+      // Genuine ad watched — reset fail counter, award progress.
+      setAdFails(0);
+      const newCount = adsWatchedCount + 1;
+      setAdsWatchedCount(newCount);
+
+      if (newCount >= 2) {
+        setTempPro(true);
+        setProExpiry(Date.now() + 30 * 60 * 1000);
+        setProFromAdMob(true);
+        setAdsWatchedCount(0);
+        setShowProModal(false);
+        Alert.alert(
+          'Pro Unlocked!',
+          'Voice Commentary, Floating Scoreboard and Ad-free for 30 minutes!',
+          [{ text: 'Enjoy!' }]
+        );
+      } else {
+        Alert.alert(
+          'Ad Watched!',
+          `${newCount}/2 ads done. ${2 - newCount} more to unlock Pro!`,
+          [{ text: 'Continue' }]
+        );
+      }
     } else {
-      Alert.alert(
-        'Ad Watched!',
-        `${newCount}/2 ads done. ${2 - newCount} more to unlock Pro!`,
-        [{ text: 'Continue' }]
-      );
+      // Ad failed to load / no-fill. Track consecutive failures.
+      const fails = adFails + 1;
+      setAdFails(fails);
+
+      if (fails >= AD_FAIL_THRESHOLD) {
+        // After 10 consecutive ad-load failures, credit the user with ONE ad
+        // (not a full Pro unlock). They still need a second genuine ad — or
+        // another 10 failures — to actually unlock Pro.
+        setAdFails(0);
+        const newCount = adsWatchedCount + 1;
+        setAdsWatchedCount(newCount);
+        if (newCount >= 2) {
+          setTempPro(true);
+          setProExpiry(Date.now() + 30 * 60 * 1000);
+          setProFromAdMob(true);
+          setAdsWatchedCount(0);
+          setShowProModal(false);
+          Alert.alert(
+            'Pro Unlocked!',
+            'Ad service was temporarily unavailable — we credited your progress. Enjoy 30 minutes of Pro!',
+            [{ text: 'Enjoy!' }]
+          );
+        } else {
+          Alert.alert(
+            'Ad service busy',
+            `Credited 1 ad (after ${AD_FAIL_THRESHOLD} retries). ${2 - newCount} more needed to unlock Pro.`
+          );
+        }
+      } else {
+        Alert.alert(
+          'Ad not available',
+          `Please try once more (${fails}/${AD_FAIL_THRESHOLD} retries). If ads stay unavailable, you will get a credit automatically.`
+        );
+      }
     }
   };
 
@@ -953,12 +1007,17 @@ export default function MatchDetail() {
             </View>
 
             <TouchableOpacity
-              style={styles.watchBtn}
+              style={[styles.watchBtn, adWatchLoading && { opacity: 0.6 }]}
+              disabled={adWatchLoading}
               onPress={handleWatchAd}
             >
-              <Ionicons name="play-circle" size={22} color="#FFF" />
+              {adWatchLoading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Ionicons name="play-circle" size={22} color="#FFF" />
+              )}
               <Text style={styles.watchBtnTxt}>
-                {`Watch Ad ${adsWatchedCount + 1} of 2`}
+                {adWatchLoading ? 'Loading ad…' : `Watch Ad ${adsWatchedCount + 1} of 2`}
               </Text>
             </TouchableOpacity>
 

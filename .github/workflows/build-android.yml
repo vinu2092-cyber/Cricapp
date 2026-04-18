@@ -115,30 +115,26 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.8
-          name: CricApp v1.0.8
+          tag_name: v1.0.9
+          name: CricApp v1.0.9
           body: |
-            ## CricApp v1.0.8 — Phase 6 (UI polish: scoreboard, colors, logo fire-tail, inbox)
-            ### Scoreboard Compaction
-            - Removed the "Overlay OFF" toggle button from below the scoreboard; overlay is controlled by the pin icon in the header actions row now (no duplicate UI).
-            - Match status line (e.g. "Gujarat Titans won by 5 wkts") moved **into** the center column of the team row, directly under the COMPLETED/LIVE badge — no extra vertical space used.
-            - LAST BATSMEN + RECENT OVERS rows remain single-line (title on left, data on right).
-            - Result: scoreboard takes even less space than Phase 5; commentary has more room.
-            ### Softer Premium Colors (60% solid / 40% transparent)
-            - Commentary container: `rgba(255,255,255,0.60)` (was 0.70)
-            - Event cards: OUT, NEW BATSMAN, BOWLING CHANGE — all converted from solid hex to `rgba(..., 0.60)` with matching borderColor alpha. Less harsh on the eye.
-            - SquadsSection + ScorecardSection row alternating colors: green/red/yellow all bumped 0.70 → 0.60.
-            ### Logo Fire-Tail Animation 🔥
-            - Removed the rainbow edge-border (`AnimatedGlowBorder`) that surrounded the whole app.
-            - New `LogoFireTail` component wraps the header logo: six rainbow dots (red → orange → yellow → green → blue → purple) orbit the logo clockwise. Leading dot is solid, trailing dots fade to 25% opacity — looks like a tiny fire-tail.
-            - **30 seconds per full revolution** exactly (user-requested cadence). Native-driver `Animated.timing` — zero perf impact.
-            ### Admin Messages (Inbox)
-            - Unread messages → light green bg (`rgba(200,230,201,0.60)`) with green left-border.
-            - Read messages → white bg (`rgba(255,255,255,0.60)`).
-            - Removed the 3-row rotating color palette that was overriding the read/unread state.
-            - **Bug fix**: Tapping a message now opens a full-screen detail modal with scrollable body + close/OK button. Previously `onPress` only called `markAsRead` but never navigated anywhere — the user couldn't read long messages.
-            ### Phases 1-5 still in effect
-            - compileSdk 36, Cricbuzz tms+iid pagination, fetchTeamSquad, smart ad unlock fallthrough, Player Detail Modal, 20% scoreboard cap, team logos.
+            ## CricApp v1.0.9 — Ad Revenue Restore (critical fix)
+            ### Root cause of zero revenue (v1.0.7 / v1.0.8)
+            - `app/match/[id].tsx → handleWatchAd` was calling `showRewardedAd()` in fire-and-forget mode and ALWAYS incrementing the watched-ad counter — whether a real ad played or not. Two taps → 30-min Pro → no banner / interstitial / app-open / rewarded ads for 30 minutes. Users refreshed Pro every 30 min indefinitely, so AdMob saw almost zero impressions.
+            - Same pattern on home screen `app/index.tsx` watch-ad button had a 2-failure auto-Pro fallback that kicked in too aggressively.
+
+            ### Fix
+            - `handleWatchAd` now **awaits** `showRewardedAd()` and only credits progress when the SDK returns `true` (genuine `EARNED_REWARD` event fired).
+            - On ad failure (no-fill / network / SDK error) we track consecutive failures. **After 10 consecutive failures** we credit the user with ONE ad (not a full Pro unlock) so users never get stuck behind Google inventory gaps — but revenue continues to flow.
+            - Same 10-fail threshold applied to the home-screen watch-ad button.
+            - Added loading state + `ActivityIndicator` on the watch-ad button so users don't double-tap.
+            - `ADS_REQUIRED` stays at 2 (per your earlier change from 3 → 2). Pro duration stays at 30 minutes.
+
+            ### Files changed
+            - `frontend/app/match/[id].tsx`
+            - `frontend/app/index.tsx`
+            - `frontend/app.json` (version 1.0.8 → 1.0.9, versionCode 8 → 9)
+            - `.github/workflows/build-android.yml` (release tag bump)
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab
