@@ -23,7 +23,7 @@ const AD_IDS = {
   appOpen: 'ca-app-pub-9675798593675825/4826782503',
   interstitial: 'ca-app-pub-9675798593675825/8438724452',
   banner: 'ca-app-pub-9675798593675825/8616886104',
-  rewarded: 'ca-app-pub-9675798593675825/6702740458',
+  rewarded: 'ca-app-pub-9675798593675825/6702704058',
 };
 
 /**

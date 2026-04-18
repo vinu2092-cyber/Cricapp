@@ -131,7 +131,10 @@ jobs:
             ### NOT changed (per user decision)
             - Interstitial click-target stays at **40–60 clicks** (as currently in v1.0.7/1.0.8).
             - Banner stays as **MEDIUM_RECTANGLE** (as currently in v1.0.7/1.0.8).
-            - Ad Unit IDs verified against v1.0.6 — all 5 IDs match exactly. Rewarded ID in v1.0.6 code had a typo (`6702704058`) that was corrected later to `6702740458`; the current correct value is kept as-is.
+
+            ### Rewarded Ad Unit ID corrected
+            - Real unit ID (verified from AdMob console screenshot of "UnlockProAd"): `ca-app-pub-9675798593675825/6702704058`.
+            - A previous auto-commit (`3f8382b`) had mistakenly "fixed" this to `6702740458` — that unit does not exist on the AdMob account, which is why rewarded ads stopped loading on real devices. Restored to the correct value in both `app.json` and `AdMobContext.native.tsx`.
 
             ### Files changed
             - `frontend/plugins/withUnityAdsMediation.js` (restored)
