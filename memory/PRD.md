@@ -398,3 +398,58 @@ Current version: **v1.0.8** (versionCode 8)
 ### Files changed (this pass)
 - `frontend/src/context/AdMobContext.native.tsx` — revert to immutable
   production AD_IDS; keep only the safe Firebase-driven test-device list.
+
+
+## 2026-04-18 (7) — Host 3 (cricbuzz-real-time-cricket-api) now fetches data
+
+### Root cause (verified via live probing)
+Host 3 is a *different* API despite the similar brand name. We tested 40+
+endpoint patterns against the user's own key and confirmed:
+
+| What Host 3 HAS               | What Host 3 does NOT have                 |
+| ----------------------------- | ----------------------------------------- |
+| `GET /matches/live`           | `GET /matches/v1/live`                    |
+| `GET /matches/recent`         | `GET /matches/v1/recent`                  |
+| `GET /matches/upcoming`       | `GET /matches/v1/upcoming`                |
+| `GET /series/get-matches`     | `GET /mcenter/v1/{id}` (404)              |
+| `GET /series/get-squads`      | `GET /mcenter/v1/{id}/comm` (404)         |
+| `GET /stats/get-records`      | `GET /mcenter/v1/{id}/scard` (404)        |
+| `GET /news/list`              | `GET /matches/{id}` / `/match/{id}` etc.  |
+
+So the app was hitting **`/matches/v1/live`** on Host 3 → `404 Endpoint does
+not exist` → no data. That's the exact bug the user reported ("host 3 se data
+nahi mil raha").
+
+### Fix
+- `frontend/src/services/api.ts` PROVIDERS config:
+  - `cricbuzz-real-time` (Host 3) listing endpoints changed to the paths that
+    actually exist: `/matches/live`, `/matches/recent`, `/matches/upcoming`.
+    Response shape is identical to Host 1 (`typeMatches[]` → `seriesMatches[]`
+    → `seriesAdWrapper/matches[]`), so `extractAllCricbuzz` parses it fine.
+  - Added a new optional `unsupportedTypes` array in `ProviderConfig`. For
+    Host 3 we declare `['detail', 'comm', 'scard', 'team']` — because those
+    endpoints simply do not exist on this API. The fetch loop now skips any
+    provider whose `unsupportedTypes` includes the requested endpoint type
+    and moves on to the next provider.
+- Live-verified with user's key `768efe1ef8…` — now returns **200 OK / 8.7 KB**
+  JSON from Host 3 `/matches/live`.
+
+### Important caveat user should know
+- Host 3 alone cannot serve **match detail / commentary / scorecard / squads**
+  — those endpoints literally don't exist on the `cricbuzz-real-time-cricket-api`
+  product. Full functionality still needs at least one key subscribed to
+  Host 1 (`cricbuzz-cricket`) or Host 2 (`cricbuzz-cricket2`).
+- We also observed user's Host 3 key returning 403 "Not subscribed" on Host 1
+  and 429 "DAILY quota exceeded" on Host 2. So when Host 2 quota resets,
+  match-detail calls will transparently fall through Host 1 → Host 2 → and
+  skip Host 3. Listings always work via Host 3.
+
+### Files changed
+- `frontend/src/services/api.ts`
+
+### Next action items
+1. **Save to GitHub** → Actions builds APK + AAB.
+2. On device: matches LIST (home screen) will now populate via Host 3 keys.
+3. For match DETAIL (commentary / scorecard / squads) you must ensure at
+   least one active RapidAPI key is subscribed to `cricbuzz-cricket.p.rapidapi.com`
+   (Host 1) OR `cricbuzz-cricket2.p.rapidapi.com` (Host 2) in Firestore.

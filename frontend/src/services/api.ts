@@ -66,6 +66,14 @@ interface ProviderConfig {
     scorecard: (id: string) => string;
     teamSquad: (id: string, teamId: string) => string;
   };
+  /**
+   * Endpoint types NOT supported by this provider. The fetch loop will skip
+   * this provider's keys for these endpoint types and try the next provider.
+   * Example: cricbuzz-real-time-cricket-api (Host 3) exposes only match
+   * listings + series + stats, and does NOT serve per-match commentary /
+   * scorecard / squads endpoints.
+   */
+  unsupportedTypes?: Array<'live' | 'recent' | 'upcoming' | 'detail' | 'comm' | 'scard' | 'team'>;
   parseMatchList: (data: any) => Match[];
   parseMatchDetail: (raw: any) => Match;
   parseCommentary: (data: any, matchId: string) => Commentary[];
@@ -105,17 +113,39 @@ const PROVIDERS: Record<string, ProviderConfig> = {
     parseCommentary: parseCommentaryCricbuzz,
     isCricbuzzLike: true,
   },
+  // ---- Host 3 (cricbuzz-real-time-cricket-api by yukticode) ----
+  //
+  // IMPORTANT: This is a DIFFERENT API from Host 1/2 despite the similar name.
+  // Verified via live probing:
+  //   ✅  /matches/live        /matches/recent        /matches/upcoming
+  //       (no "/v1/" prefix, but the response shape is identical — same
+  //        `typeMatches[]` → `seriesMatches[]` → `seriesAdWrapper/matches[]`
+  //        tree, so `extractAllCricbuzz` parses it fine.)
+  //   ✅  /series/get-matches?seriesId=…
+  //   ✅  /stats/get-records?statsType=…
+  //   ❌  ANY per-match endpoint — `/mcenter/v1/{id}`, `/mcenter/v1/{id}/comm`,
+  //       `/mcenter/v1/{id}/scard`, `/matches/info?matchId=…`, `/match/{id}`,
+  //       etc.  All return 404 "Endpoint '...' does not exist".
+  //
+  // Because of the last point we declare `matchDetail / commentary /
+  // scorecard / teamSquad` as **unsupportedTypes** — the fetch loop will then
+  // automatically fall through to Host 1 / Host 2 for match-center data,
+  // while still letting Host 3 serve the listing endpoints (where its keys
+  // are actually subscribed).
   'cricbuzz-real-time': {
     host: HOST_3,
     endpoints: {
-      live: '/matches/v1/live',
-      recent: '/matches/v1/recent',
-      upcoming: '/matches/v1/upcoming',
+      live: '/matches/live',
+      recent: '/matches/recent',
+      upcoming: '/matches/upcoming',
+      // These are declared for type safety only — they will never be called
+      // because `unsupportedTypes` below excludes them.
       matchDetail: (id: string) => `/mcenter/v1/${id}`,
       commentary: (id: string) => `/mcenter/v1/${id}/comm`,
       scorecard: (id: string) => `/mcenter/v1/${id}/scard`,
       teamSquad: (id: string, teamId: string) => `/mcenter/v1/${id}/team/${teamId}`,
     },
+    unsupportedTypes: ['detail', 'comm', 'scard', 'team'],
     parseMatchList: extractAllCricbuzz,
     parseMatchDetail: transformDetailCricbuzz,
     parseCommentary: parseCommentaryCricbuzz,
@@ -205,6 +235,16 @@ async function fetchData(
     // Find the correct provider config for this host
     const configName = Object.keys(PROVIDERS).find(k => PROVIDERS[k].host === provider.host) || DEFAULT_PROVIDER;
     const config = getProviderConfig(configName);
+
+    // Skip this provider if it doesn't support the requested endpoint type.
+    // Host 3 (`cricbuzz-real-time`), for example, does not serve match-detail
+    // / commentary / scorecard / teamSquad endpoints — those are only on
+    // Host 1 / Host 2.
+    if (config.unsupportedTypes && config.unsupportedTypes.includes(endpointType)) {
+      console.log(`[API] Provider ${configName} does not support "${endpointType}" — skipping to next provider`);
+      continue;
+    }
+
     const endpoint = getEndpointForType(config, endpointType, matchId, teamId);
 
     for (const key of provider.keys) {
@@ -237,6 +277,11 @@ async function fetchData(
     for (const host of hostsToTry) {
       const configName = Object.keys(PROVIDERS).find(k => PROVIDERS[k].host === host) || DEFAULT_PROVIDER;
       const config = getProviderConfig(configName);
+      // Skip hosts that don't support this endpoint type (e.g. Host 3 for
+      // match-detail / commentary / scorecard / squads).
+      if (config.unsupportedTypes && config.unsupportedTypes.includes(endpointType)) {
+        continue;
+      }
       const endpoint = getEndpointForType(config, endpointType, matchId, teamId);
       try {
         const result = await tryApiCall(endpoint, fb.apiKey, host, queryParams);
