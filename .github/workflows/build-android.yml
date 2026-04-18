@@ -79,8 +79,28 @@ jobs:
         working-directory: frontend/android
         run: |
           chmod +x gradlew
-          gradle wrapper --gradle-version 8.14.3
+          # Directly pin the wrapper to 8.14.3 WITHOUT invoking the `wrapper`
+          # task. The wrapper task does a network HEAD check against
+          # services.gradle.org which intermittently fails on GitHub runners
+          # (build #86 failed here). We bypass the check by writing the
+          # properties file directly and setting `validateDistributionUrl=false`.
+          # The wrapper JAR that Expo prebuild generates is version-agnostic
+          # and will happily download + run 8.14.3 from the URL below.
+          cat > gradle/wrapper/gradle-wrapper.properties <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.3-bin.zip
+          networkTimeout=30000
+          validateDistributionUrl=false
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          echo "--- gradle-wrapper.properties ---"
+          cat gradle/wrapper/gradle-wrapper.properties
           chmod +x gradlew
+          # Sanity check — run help to force wrapper to download the pinned
+          # distribution once, so later build steps don't race on download.
+          ./gradlew --no-daemon -q help | head -20 || true
 
       - name: Build Release APK
         working-directory: frontend/android
