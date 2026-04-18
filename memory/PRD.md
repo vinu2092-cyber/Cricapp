@@ -361,3 +361,40 @@ Current version: **v1.0.8** (versionCode 8)
      Firestore as described above, or flip `use_test_ads=true`).
 3. On-screen: tiles 10% more solid across all three tabs; fireball glides
    through corners at constant speed without pausing.
+
+
+## 2026-04-18 (6) — REVENUE-SAFE AdMob test-device flow
+
+### User-reported concern
+> "मैंने अपने फोन के लिए टेस्ट ऐड की आईडी लगाई हुई थी... ऐसा कोई बदलाव नहीं करना
+>  जिससे non-test device को real ad दिखना बंद हो जाए."
+
+### Audit of previous pass
+- Previous pass introduced **two** Firestore-driven toggles:
+  1. `test_device_ids` (SAFE — only marks listed device hashes as test devices)
+  2. `use_test_ads: boolean` (**UNSAFE** — if accidentally set to `true` in
+     Firestore it would have swapped every AD-unit ID to Google's `TestIds.*`
+     *for every installed user worldwide*, zeroing out ad revenue).
+
+### Fix
+- Removed the `use_test_ads` toggle and the entire TestIds swap path. Ad-unit
+  IDs are now a single `const AD_IDS = {...}` block that is **never mutated
+  at runtime** — production real IDs are always used for every user.
+- Kept `test_device_ids` from Firestore (SAFE by design): the AdMob SDK only
+  renders test creatives for devices whose hash is in that list. Every other
+  device — i.e., every real user — keeps receiving real ads and revenue.
+- Dropped the now-unused `TestIds` import from `react-native-google-mobile-ads`.
+- Diagnostic log updated to explicitly state "real users are NEVER affected".
+
+### Net effect for real users
+- **Zero behavioural change.** They still receive production AdMob ads exactly
+  as before this whole AdMob pass began. Revenue path intact.
+
+### Net effect for the user's own device
+- If the user's device test-hash is in Firestore `test_device_ids`, the SDK
+  serves test creatives for the real production ad units — exactly how
+  `Unlock → rewarded` used to work before the outage.
+
+### Files changed (this pass)
+- `frontend/src/context/AdMobContext.native.tsx` — revert to immutable
+  production AD_IDS; keep only the safe Firebase-driven test-device list.
