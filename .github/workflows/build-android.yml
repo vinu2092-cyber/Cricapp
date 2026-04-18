@@ -79,13 +79,29 @@ jobs:
         working-directory: frontend/android
         run: |
           chmod +x gradlew
-          # Directly pin the wrapper to 8.14.3 WITHOUT invoking the `wrapper`
-          # task. The wrapper task does a network HEAD check against
-          # services.gradle.org which intermittently fails on GitHub runners
-          # (build #86 failed here). We bypass the check by writing the
-          # properties file directly and setting `validateDistributionUrl=false`.
-          # The wrapper JAR that Expo prebuild generates is version-agnostic
-          # and will happily download + run 8.14.3 from the URL below.
+          mkdir -p gradle/wrapper
+          # ----- gradle-wrapper.jar -----
+          # Expo prebuild does NOT ship gradle-wrapper.jar inside the generated
+          # android/ folder, so the wrapper cannot even start. Build #86 relied
+          # on `gradle wrapper --gradle-version 8.14.3` to regenerate it, but
+          # that task's URL-validation step intermittently fails on GitHub
+          # runners (PR #86 failure). We download the JAR directly from the
+          # Gradle project's own source tree at tag v8.14.3 — a stable URL on
+          # raw.githubusercontent.com. The wrapper JAR is small (~43 KB) and
+          # is the same binary Gradle itself ships.
+          JAR_URL="https://github.com/gradle/gradle/raw/v8.14.3/gradle/wrapper/gradle-wrapper.jar"
+          echo "Downloading gradle-wrapper.jar from $JAR_URL"
+          for i in 1 2 3; do
+            if curl -fL --retry 3 --connect-timeout 30 --max-time 120 \
+                 -o gradle/wrapper/gradle-wrapper.jar "$JAR_URL"; then
+              echo "wrapper.jar downloaded on attempt $i"
+              break
+            fi
+            echo "Attempt $i failed, retrying…"
+            sleep 3
+          done
+          test -s gradle/wrapper/gradle-wrapper.jar || { echo "wrapper.jar download failed"; exit 1; }
+          # ----- gradle-wrapper.properties -----
           cat > gradle/wrapper/gradle-wrapper.properties <<'EOF'
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
@@ -95,12 +111,14 @@ jobs:
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
           EOF
+          chmod +x gradlew
+          echo "--- wrapper files ---"
+          ls -la gradle/wrapper/
           echo "--- gradle-wrapper.properties ---"
           cat gradle/wrapper/gradle-wrapper.properties
-          chmod +x gradlew
-          # Sanity check — run help to force wrapper to download the pinned
-          # distribution once, so later build steps don't race on download.
-          ./gradlew --no-daemon -q help | head -20 || true
+          # Pre-warm: forces the wrapper to fetch Gradle 8.14.3 once so
+          # subsequent build steps don't race on the download.
+          ./gradlew --no-daemon -q --version
 
       - name: Build Release APK
         working-directory: frontend/android
