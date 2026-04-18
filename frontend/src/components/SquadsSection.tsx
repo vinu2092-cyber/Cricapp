@@ -23,9 +23,9 @@ interface Props {
 
 // Solid opaque alternating shades for readability against wallpaper
 const ROW_COLORS = [
-  'rgba(232, 245, 233, 0.60)',  // Light green - 60% solid, 40% transparent
-  'rgba(255, 235, 238, 0.60)',  // Light red - 60% solid, 40% transparent
-  'rgba(255, 249, 196, 0.60)',  // Light yellow - 60% solid, 40% transparent
+  'rgba(232, 245, 233, 0.30)',  // Light green - 60% solid, 40% transparent
+  'rgba(255, 235, 238, 0.30)',  // Light red - 60% solid, 40% transparent
+  'rgba(255, 249, 196, 0.30)',  // Light yellow - 60% solid, 40% transparent
 ];
 const getRowBg = (idx: number) => ROW_COLORS[idx % 3];
 
@@ -814,7 +814,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderBottomWidth: 0.5,
     borderBottomColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.70)',
+    backgroundColor: 'rgba(255,255,255,0.40)',
     alignItems: 'center',
   },
   playerLeft: {
@@ -880,7 +880,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     marginHorizontal: 12,
-    backgroundColor: 'rgba(255,255,255,0.50)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
     borderRadius: 8,
     alignItems: 'center',
     marginBottom: 4,

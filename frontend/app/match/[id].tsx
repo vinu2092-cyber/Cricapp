@@ -1006,7 +1006,7 @@ const styles = StyleSheet.create({
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
   backBtn: { padding: 2, marginRight: 4 },
-  seriesName: { color: '#ffd700', fontSize: 11, flex: 1, fontWeight: '600' },
+  seriesName: { color: '#ffd700', fontSize: 13, flex: 1, fontWeight: '700' },
   headerActions: { flexDirection: 'row', gap: 4 },
   actionBtn: {
     padding: 5,
@@ -1017,13 +1017,13 @@ const styles = StyleSheet.create({
   teamRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 2 },
   centerCol: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   teamBlock: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', gap: 6 },
-  teamLogo: { width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.08)' },
+  teamLogo: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)' },
   teamMeta: { alignItems: 'flex-start' },
-  teamName: { color: '#CCC', fontSize: 11, fontWeight: '600', lineHeight: 13 },
-  teamScore: { color: '#FFF', fontSize: 15, fontWeight: 'bold', lineHeight: 17 },
-  overs: { color: '#999', fontSize: 9, lineHeight: 11 },
-  statusTxt: { color: '#4CAF50', fontSize: 10, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
-  statusTxtCentered: { color: '#4CAF50', fontSize: 10, textAlign: 'center', marginTop: 2, fontStyle: 'italic', maxWidth: 130 },
+  teamName: { color: '#E8E8E8', fontSize: 13, fontWeight: '700', lineHeight: 15 },
+  teamScore: { color: '#FFF', fontSize: 18, fontWeight: '800', lineHeight: 20 },
+  overs: { color: '#BBB', fontSize: 11, lineHeight: 13, fontWeight: '600' },
+  statusTxt: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
+  statusTxtCentered: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginTop: 2, fontStyle: 'italic', maxWidth: 150, fontWeight: '600' },
   // Live match batsmen section - ultra compact (single-row display)
   batsmenContainer: {
     flexDirection: 'row',
@@ -1037,11 +1037,11 @@ const styles = StyleSheet.create({
   },
   batsmenTitle: {
     color: '#4CAF50',
-    fontSize: 8,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    minWidth: 36,
+    minWidth: 42,
   },
   batsmenRow: {
     flexDirection: 'row',
@@ -1054,17 +1054,18 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   batsmanName: {
-    color: '#CCC',
-    fontSize: 10,
+    color: '#E8E8E8',
+    fontSize: 12,
+    fontWeight: '600',
   },
   strikerName: {
     color: '#FFD700',
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
   batsmanScore: {
     color: '#FFF',
-    fontSize: 11,
-    fontWeight: 'bold',
+    fontSize: 13,
+    fontWeight: '800',
   },
   // Over summary section - ultra compact
   overSummaryContainer: {
@@ -1079,11 +1080,11 @@ const styles = StyleSheet.create({
   },
   overSummaryTitle: {
     color: '#4CAF50',
-    fontSize: 8,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    minWidth: 48,
+    minWidth: 52,
   },
   overSummaryScroll: {
     flex: 1,

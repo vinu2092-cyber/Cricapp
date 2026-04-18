@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ImageBackground,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { usePro } from '../context/ProContext';
@@ -19,6 +20,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { isPro, getProTimeRemaining } = usePro();
   const { unreadCount } = useInbox();
   const [timeRemaining, setTimeRemaining] = useState<string>('');
@@ -45,12 +47,12 @@ const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
   return (
     <ImageBackground
       source={require('../../assets/images/header-grass.png')}
-      style={styles.headerBackground}
+      style={[styles.headerBackground, { paddingTop: insets.top, height: 110 + insets.top }]}
       resizeMode="cover"
     >
       <View style={styles.headerContent}>
         <View style={styles.logoContainer}>
-          <LogoFireTail size={96} durationMs={30000}>
+          <LogoFireTail size={72} durationMs={30000}>
             <Image
               source={require('../../assets/images/logo.png')}
               style={styles.logo}
@@ -125,8 +127,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 80,
-    height: 80,
+    width: 72,
+    height: 72,
   },
   rightButtons: {
     flexDirection: 'row',

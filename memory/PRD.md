@@ -125,3 +125,78 @@ Current version: **v1.0.8** (versionCode 8)
   4. Scoreboard visible at ~20% of screen; commentary ~80%.
   5. Header logo is circled by a single fireball with a rainbow smoke tail, orbiting in a
      square/rectangle around the logo. On wicket → speeds up + turns red for 10s.
+
+
+## 2026-04-18 (2) — v1.0.8 polish pass #2
+
+### A. Scoreboard fonts made larger (same 20% height cap)
+- `app/match/[id].tsx`
+  - seriesName 11 → 13, teamName 11 → 13, teamScore 15 → 18, overs 9 → 11,
+    statusTxtCentered 10 → 12, batsmenTitle 8 → 10, batsmanName 10 → 12,
+    batsmanScore 11 → 13, overSummaryTitle 8 → 10.
+  - teamName colour #CCC → #E8E8E8, overs #999 → #BBB for better legibility on
+    the dark header.
+  - teamLogo 26 → 28.
+
+### B. Commentary / Scorecard / Squads — 30% lighter & 30% more transparent
+- Global replacements across `CommentarySection.tsx`, `ScorecardSection.tsx`,
+  `SquadsSection.tsx`:
+  - `rgba(..., 0.60) → rgba(..., 0.30)`
+  - `rgba(..., 0.70) → rgba(..., 0.40)`
+  - `rgba(..., 0.50) → rgba(..., 0.25)`
+- Event-card borders softened: `0.75 → 0.50`.
+- Underlying base colours (light green / light red / light yellow / pastel blue)
+  kept the same — with the halved opacity the background wallpaper shows
+  through more, giving the requested lighter look.
+
+### C. Header — icons below the status strip + fireball hugs the logo
+- `src/components/Header.tsx`
+  - Now imports `useSafeAreaInsets` and applies `paddingTop: insets.top` + grows
+    the header height by `insets.top`, so the Inbox / Settings / Unlock buttons
+    sit UNDER the device status bar (no more overlap with time / battery).
+  - Logo size 80 → 72, LogoFireTail `size` prop also 72 so the ball orbit
+    perimeter lines up exactly with the logo edge.
+- `src/components/LogoFireTail.tsx`
+  - Ball orbit rectangle now matches the logo's exact size (no 3% outer margin
+    any more) — fireball touches the logo border.
+  - Core redesigned: **one speckled rainbow fireball** with 6 multi-colour
+    pixel "grains" (red / orange / yellow / green / blue / purple) painted on the
+    bright core, so the ball fires multiple rainbow colours simultaneously while
+    remaining visually a single ball.
+  - Smoke tail unchanged in concept: 9 soft rainbow dots trailing behind the
+    fireball with expanding shadow radius → rainbow-smoke look.
+  - Wicket-alert mode: grains collapse to red-only + pure red halos = emergency
+    red fireball.
+
+### D. Inbox — admin broadcast was showing twice
+- `src/context/InboxContext.tsx`
+  - On an incoming FCM foreground message the handler stores the message in the
+    inbox AND reschedules a local notification so the tray shows it. The Expo
+    `addNotificationReceivedListener` then also fires for that local
+    notification and was storing the message a *second* time (different IDs,
+    so the id-based dedup didn't catch it).
+  - Fix: the scheduled local notification now carries `_skipInbox: true` in its
+    data; the Expo listener reads the flag and bails out. Result: one FCM
+    broadcast = one inbox entry.
+
+### Files changed (this pass)
+- `frontend/app/match/[id].tsx` — scoreboard font bump
+- `frontend/src/components/CommentarySection.tsx` — 30% transparency + softer borders
+- `frontend/src/components/ScorecardSection.tsx` — 30% transparency
+- `frontend/src/components/SquadsSection.tsx` — 30% transparency
+- `frontend/src/components/Header.tsx` — safe-area insets + smaller logo (72)
+- `frontend/src/components/LogoFireTail.tsx` — rewrite: speckled single fireball,
+  orbit hugs logo edge
+- `frontend/src/context/InboxContext.tsx` — `_skipInbox` flag to dedup FCM
+
+### Next action items
+1. **Press "Save to GitHub"** → GitHub Actions builds APK + AAB on `main`.
+2. Install APK and verify:
+   - Header: icons no longer overlap device status bar.
+   - Header: single fireball with rainbow grains + rainbow-smoke tail runs
+     exactly along the logo border (no visible gap).
+   - Scoreboard: team names / scores / overs clearly readable; overall
+     scoreboard still ≤ 20% of screen.
+   - Commentary / Scorecard / Squads: wallpaper visible through tiles (~30%
+     opacity), eye-friendly.
+   - Firebase admin broadcast sent once → shows up once in Inbox.

@@ -182,12 +182,15 @@ export const InboxProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const msgTitle = notification?.title || (data?.title as string) || 'CricApp';
           const msgBody = notification?.body || (data?.body as string) || '';
 
-          // Show local notification immediately (foreground FCM doesn't auto-display)
+          // Show local notification immediately (foreground FCM doesn't auto-display).
+          // IMPORTANT: flag the scheduled notification with `_skipInbox: true` so
+          // our Expo `addNotificationReceivedListener` below does NOT double-add
+          // this same message to the inbox — FCM onMessage already stores it.
           await Notifications.scheduleNotificationAsync({
             content: {
               title: msgTitle,
               body: msgBody,
-              data: { ...data, screen: data?.screen || 'inbox', type: data?.type || 'admin-broadcast' },
+              data: { ...data, screen: data?.screen || 'inbox', type: data?.type || 'admin-broadcast', _skipInbox: true },
               sound: 'default',
               ...(Platform.OS === 'android' && { channelId: 'match-alerts', priority: 'high' }),
             },
@@ -254,6 +257,13 @@ export const InboxProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       // Skip match-related notifications from inbox (they show as alerts)
       const type = data?.type || '';
       if (type === 'match-reminder' || type === 'wicket' || type === 'four' || type === 'six' || type === 'milestone' || type === 'result') {
+        return;
+      }
+
+      // Skip local re-broadcasts that were scheduled from an FCM onMessage handler —
+      // the FCM listener already added this exact message to the inbox, so storing
+      // it again from the Expo receiver would show it twice in the inbox.
+      if ((data as any)?._skipInbox) {
         return;
       }
 
