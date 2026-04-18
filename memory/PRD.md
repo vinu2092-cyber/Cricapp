@@ -252,3 +252,42 @@ Current version: **v1.0.8** (versionCode 8)
    - Header logo orbit: single smooth fireball hugging the logo border, rainbow
      smoke tail behind it, occasional tiny rainbow sparks popping out and back.
    - Wicket alert → same smooth ball turns red and speeds up for 10 s.
+
+
+## 2026-04-18 (4) — Ember drops + logo-hugging orbit
+
+### Why the ball still looked "far from the logo"
+- The `logo.png` file is 1024×1024 with **16.4% transparent padding on every
+  side** — the visible logo graphic occupies only **67.2%** of the PNG canvas.
+- Our orbit was sized to the canvas (±size/2) so the ball visually floated
+  ~12 px away from the actual logo edge even though the math said "touching".
+
+### Fix
+- Added `logoContentFraction` prop to `LogoFireTail` (default 0.68, tuned to our
+  logo). Orbit half-side is now `size * 0.68 / 2` — the ball traces the *visible*
+  graphic edge, not the padded canvas. Container size stays `size` so header
+  layout is unaffected.
+- Corner radius and spark burst scale with the same visible size, so the whole
+  animation feels anchored to the visible logo shape.
+
+### Enhancement — Ember drops (🔥 gravity feel)
+- 7 ultra-tiny rainbow pixels (1.8–3.0 px) spawn at even-spaced positions along
+  the **bottom edge of the orbit** and fall downward with `Easing.in(quad)`
+  (accelerating → gravity feel) over 1.7–2.6 s, then fade out.
+- Slight sideways drift (±1–4 px) is added per ember so the drops look organic
+  and don't form a vertical grid.
+- Stagger: 0 ms / 260 ms / 520 ms… so multiple embers are in flight at any
+  moment without being synchronised.
+- Result: the whole fireball now reads as an actual burning ember shedding
+  embers, not a rotating cartoon ring.
+
+### Files changed (this pass)
+- `frontend/src/components/LogoFireTail.tsx` — `logoContentFraction` prop +
+  rewrite of orbit geometry + ember loop & render block.
+
+### Next action items
+1. **Save to GitHub** → Actions builds APK + AAB.
+2. Install + verify:
+   - Fireball now visibly touches the CricApp logo edge (no floating gap).
+   - Tiny rainbow embers drip down from below the logo and fade — subtle.
+   - Wicket alert still swaps halos to red and speeds up.

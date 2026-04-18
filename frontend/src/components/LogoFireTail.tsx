@@ -9,6 +9,13 @@ interface LogoFireTailProps {
   wicketDurationMs?: number;    // fast mode duration; default 5_000 (5s)
   /** Legacy alias (older Header passed this) — treated as `normalDurationMs`. */
   durationMs?: number;
+  /**
+   * Fraction of `size` actually occupied by the *visible* logo graphic.
+   * Most PNG icons have ~16% transparent padding baked in, so the orbit
+   * should hug the visible content, not the canvas box. Defaults to 0.68
+   * (matches our CricApp logo's 67.2% content ratio).
+   */
+  logoContentFraction?: number;
 }
 
 /**
@@ -37,19 +44,22 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
   normalDurationMs,
   wicketDurationMs = 5000,
   durationMs,
+  logoContentFraction = 0.68,
 }) => {
   const { mode } = useFireTailAlert();
 
   const effectiveNormalDuration = normalDurationMs ?? durationMs ?? 30000;
   const duration = mode === 'wicket' ? wicketDurationMs : effectiveNormalDuration;
 
-  // ===== Orbit geometry — the fireball's CENTER traces a rounded rectangle of
-  // the same side length as the logo, so the ball kisses the logo border.
-  const leaderRadius = Math.max(3, Math.round(size * 0.065)); // smaller, smoother
-  const halfOrbit = size / 2;
-  const cornerRadius = Math.max(6, Math.round(size * 0.18)); // visual corner radius of the logo shape
-  const containerPad = leaderRadius + 2; // room for the ball outside the orbit
-  const containerSize = size + containerPad * 2;
+  // ===== Orbit geometry — the fireball's CENTER traces a rounded rectangle
+  // that matches the *visible* logo graphic (not the padded PNG canvas), so
+  // the ball kisses the logo border with zero visible gap.
+  const visibleSize = size * logoContentFraction;          // visible logo edge length
+  const leaderRadius = Math.max(3, Math.round(visibleSize * 0.085)); // smooth core
+  const halfOrbit = visibleSize / 2;                       // orbit rect half-side
+  const cornerRadius = Math.max(5, Math.round(visibleSize * 0.20));  // rounded-corner radius
+  const containerPad = leaderRadius + 2;                   // room for ball outside orbit
+  const containerSize = size + containerPad * 2;           // keep wrap as big as logo
 
   // Build rounded-rect keyframes (clockwise from top-left corner start)
   const { inputs, txOut, tyOut } = useMemo(() => {
@@ -89,6 +99,27 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
   const anims = useRef(Array.from({ length: TAIL_COUNT }, () => new Animated.Value(0))).current;
   // Spark particles have their own small cyclic animators (0→1 loop)
   const sparkAnims = useRef(Array.from({ length: SPARK_COUNT }, () => new Animated.Value(0))).current;
+  // Ember drops — tiny rainbow particles that fall from the orbit's bottom edge
+  // (as if the fireball sheds embers due to gravity). Pure ambient touch.
+  const EMBER_COUNT = 7;
+  const emberAnims = useRef(Array.from({ length: EMBER_COUNT }, () => new Animated.Value(0))).current;
+
+  const emberParams = useMemo(() => {
+    return Array.from({ length: EMBER_COUNT }, (_, i) => {
+      // Even-ish spread across the bottom edge of the orbit, with jitter
+      const baseX = -halfOrbit + (halfOrbit * 2 * (i + 0.5)) / EMBER_COUNT;
+      const jitter = ((i * 37) % 14) - 7; // -7 … +6
+      return {
+        x: baseX + jitter,
+        period: 1700 + ((i * 233) % 900),   // 1.7 – 2.6 s
+        delay: (i * 260) % 1800,
+        travel: Math.round(halfOrbit * 0.9) + ((i * 3) % 6), // fall distance
+        color: RAINBOW[i % RAINBOW.length],
+        pxSize: 1.8 + ((i * 5) % 3) * 0.4,  // 1.8 – 3.0 px
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [halfOrbit]);
 
   // Deterministic per-spark parameters (angle / period / delay) — memoised so
   // sparks don't "jump" to new positions on every re-render.
@@ -161,6 +192,33 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
     };
   }, [sparkAnims, sparkParams, mode]);
 
+  // Ember-drop loops — accelerating fall (gravity) with opacity fade.
+  useEffect(() => {
+    const loops: Animated.CompositeAnimation[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    emberAnims.forEach((anim, i) => {
+      anim.setValue(0);
+      const { period, delay } = emberParams[i];
+      const loop = Animated.loop(
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: period,
+          easing: Easing.in(Easing.quad), // ease-in → feels like gravity
+          useNativeDriver: true,
+        })
+      );
+      const timer = setTimeout(() => loop.start(), delay);
+      loops.push(loop);
+      timers.push(timer);
+    });
+
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      loops.forEach((l) => l.stop());
+    };
+  }, [emberAnims, emberParams, mode]);
+
   const palette = mode === 'wicket' ? RED_BURST : RAINBOW;
   const smokeColorFor = (i: number) => palette[(i - 1) % palette.length];
 
@@ -185,6 +243,44 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
       >
         {children}
       </View>
+
+      {/* Ember drops — tiny rainbow pixels fall from the orbit's bottom edge,
+          accelerating as if by gravity and fading out. Ambient "shedding
+          embers" vibe behind the fireball but in front of the logo. */}
+      {emberAnims.map((anim, i) => {
+        const p = emberParams[i];
+        const ty = anim.interpolate({ inputRange: [0, 1], outputRange: [0, p.travel] });
+        const tx = anim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, ((i % 2 === 0 ? 1 : -1) * (i % 3 + 1) * 1.2)],
+        });
+        const opacity = anim.interpolate({
+          inputRange: [0, 0.15, 0.7, 1],
+          outputRange: [0, 0.95, 0.5, 0],
+        });
+        return (
+          <Animated.View
+            key={`ember-${i}`}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: containerSize / 2 + p.x - p.pxSize / 2,
+              top: containerSize / 2 + halfOrbit - p.pxSize / 2,
+              width: p.pxSize,
+              height: p.pxSize,
+              borderRadius: p.pxSize / 2,
+              backgroundColor: p.color,
+              shadowColor: p.color,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 1,
+              shadowRadius: p.pxSize * 1.3,
+              elevation: 7,
+              opacity,
+              transform: [{ translateX: tx }, { translateY: ty }],
+            }}
+          />
+        );
+      })}
 
       {anims.map((anim, i) => {
         const tx = anim.interpolate({ inputRange: inputs, outputRange: txOut });
