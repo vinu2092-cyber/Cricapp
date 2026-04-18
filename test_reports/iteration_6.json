@@ -6,7 +6,7 @@
     "external_url_issue": [
       {
         "endpoint": "External URL from app.json",
-        "issue": "https://match-updates-22.preview.emergentagent.com/api/ returns 404 - external routing not configured",
+        "issue": "https://cricapp-staging.preview.emergentagent.com/api/ returns 404 - external routing not configured",
         "impact": "Frontend cannot connect to backend via external URL",
         "fix_priority": "HIGH",
         "workaround": "Backend works perfectly on localhost:8001"
@@ -45,7 +45,7 @@
     "frontend": "100% (static analysis - all features implemented correctly)"
   },
   "updated_files": ["/app/backend_test.py"],
-  "action_item_for_main_agent": "Fix external URL routing: The backend URL https://match-updates-22.preview.emergentagent.com/api/ returns 404. Backend works perfectly on localhost:8001 but external proxy/ingress routing needs configuration to make API accessible to frontend.",
+  "action_item_for_main_agent": "Fix external URL routing: The backend URL https://cricapp-staging.preview.emergentagent.com/api/ returns 404. Backend works perfectly on localhost:8001 but external proxy/ingress routing needs configuration to make API accessible to frontend.",
   "should_call_test_agent_after_fix": "false",
   "should_main_agent_test_itself": "true"
 }
