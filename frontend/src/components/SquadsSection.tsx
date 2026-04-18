@@ -23,9 +23,9 @@ interface Props {
 
 // Solid opaque alternating shades for readability against wallpaper
 const ROW_COLORS = [
-  'rgba(232, 245, 233, 0.60)',  // Light green - 60% solid, 40% transparent
-  'rgba(255, 235, 238, 0.60)',  // Light red - 60% solid, 40% transparent
-  'rgba(255, 249, 196, 0.60)',  // Light yellow - 60% solid, 40% transparent
+  'rgba(232, 245, 233, 0.70)',  // Light green - 60% solid, 40% transparent
+  'rgba(255, 235, 238, 0.70)',  // Light red - 60% solid, 40% transparent
+  'rgba(255, 249, 196, 0.70)',  // Light yellow - 60% solid, 40% transparent
 ];
 const getRowBg = (idx: number) => ROW_COLORS[idx % 3];
 
@@ -775,7 +775,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
 
 const styles = StyleSheet.create({
   container: { paddingBottom: 20 },
-  center: { padding: 40, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', margin: 16, borderRadius: 12 },
+  center: { padding: 40, alignItems: 'center', backgroundColor: 'rgba(0,0,0, 0.40)', margin: 16, borderRadius: 12 },
   loadingText: { color: '#999', marginTop: 12, fontSize: 14 },
   errorText: { color: '#999', fontSize: 16, marginBottom: 12, marginTop: 8 },
   retryBtn: { backgroundColor: '#4CAF50', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
@@ -783,7 +783,7 @@ const styles = StyleSheet.create({
 
   teamBanner: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(34,34,34,0.9)',
+    backgroundColor: 'rgba(34,34,34, 0.95)',
     marginHorizontal: 12,
     marginTop: 12,
     borderRadius: 10,
@@ -813,8 +813,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 8,
     borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.70)',
+    borderBottomColor: 'rgba(0,0,0, 0.18)',
+    backgroundColor: 'rgba(255,255,255, 0.80)',
     alignItems: 'center',
   },
   playerLeft: {
@@ -833,7 +833,7 @@ const styles = StyleSheet.create({
   divider: {
     width: 1,
     height: '80%',
-    backgroundColor: 'rgba(0,0,0,0.1)',
+    backgroundColor: 'rgba(0,0,0, 0.20)',
     marginHorizontal: 4,
   },
   emptyPlayer: { flex: 1 },
@@ -880,7 +880,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     marginHorizontal: 12,
-    backgroundColor: 'rgba(255,255,255,0.50)',
+    backgroundColor: 'rgba(255,255,255, 0.60)',
     borderRadius: 8,
     alignItems: 'center',
     marginBottom: 4,

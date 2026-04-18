@@ -62,9 +62,9 @@ function didBat(bat: any): boolean {
 
 // 70% solid alternating rows for readability
 const ROW_COLORS = [
-  'rgba(232, 245, 233, 0.60)',  // Light green - 60% solid, 40% transparent
-  'rgba(255, 235, 238, 0.60)',  // Light reddish - 60% solid, 40% transparent
-  'rgba(255, 249, 196, 0.60)',  // Light yellow - 60% solid, 40% transparent
+  'rgba(232, 245, 233, 0.70)',  // Light green - 60% solid, 40% transparent
+  'rgba(255, 235, 238, 0.70)',  // Light reddish - 60% solid, 40% transparent
+  'rgba(255, 249, 196, 0.70)',  // Light yellow - 60% solid, 40% transparent
 ];
 const getRowBg = (idx: number) => ROW_COLORS[idx % 3];
 
@@ -390,7 +390,7 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
 
 const s = StyleSheet.create({
   container: { paddingBottom: 20 },
-  center: { padding: 40, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', margin: 16, borderRadius: 12 },
+  center: { padding: 40, alignItems: 'center', backgroundColor: 'rgba(0,0,0, 0.40)', margin: 16, borderRadius: 12 },
   loadingText: { color: '#999', marginTop: 12, fontSize: 14 },
   errorText: { color: '#999', fontSize: 16, marginBottom: 12 },
   retryBtn: { backgroundColor: '#4CAF50', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
@@ -407,10 +407,10 @@ const s = StyleSheet.create({
   inningsRow: { flexDirection: 'row', backgroundColor: '#1B5E20', borderRadius: 8, margin: 12, marginBottom: 0, overflow: 'hidden' },
   inningsTab: { flex: 1, paddingVertical: 10, alignItems: 'center' },
   inningsTabActive: { backgroundColor: '#4CAF50' },
-  inningsTabText: { color: 'rgba(255,255,255,0.6)', fontWeight: '600', fontSize: 13 },
+  inningsTabText: { color: 'rgba(255,255,255, 0.70)', fontWeight: '600', fontSize: 13 },
   inningsTabTextActive: { color: '#FFF' },
 
-  section: { marginHorizontal: 12, marginTop: 12, backgroundColor: 'rgba(255,255,255,0.70)', borderRadius: 10, overflow: 'hidden', elevation: 2 },
+  section: { marginHorizontal: 12, marginTop: 12, backgroundColor: 'rgba(255,255,255, 0.80)', borderRadius: 10, overflow: 'hidden', elevation: 2 },
   sectionTitle: { backgroundColor: '#1B5E20', color: '#FFF', fontSize: 13, fontWeight: '700', paddingVertical: 8, paddingHorizontal: 14, letterSpacing: 0.5 },
 
   headerRow: { flexDirection: 'row', backgroundColor: '#E8F5E9', paddingVertical: 8, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#C8E6C9' },

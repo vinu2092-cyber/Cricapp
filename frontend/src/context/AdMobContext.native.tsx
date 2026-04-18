@@ -15,12 +15,47 @@ import mobileAds, {
 import { usePro } from './ProContext';
 
 // Production Ad IDs - Real AdMob IDs
-const AD_IDS = {
+const PROD_AD_IDS = {
   appOpen: 'ca-app-pub-9675798593675825/4826782503',
   interstitial: 'ca-app-pub-9675798593675825/8438724452',
   banner: 'ca-app-pub-9675798593675825/8616886104',
   rewarded: 'ca-app-pub-9675798593675825/6702740458',
 };
+
+// Mutable runtime AD_IDS — swapped for TestIds when Firestore `use_test_ads=true`
+// lets the user quickly validate the entire ad flow on their personal device
+// without an AdMob console change.
+let AD_IDS = { ...PROD_AD_IDS };
+let TEST_ADS_ACTIVE = false;
+
+/**
+ * Fetch Firebase Remote Config (`app_config/settings`) to obtain:
+ *   - `test_device_ids`  (comma-separated)  → registers test devices
+ *   - `use_test_ads`     (boolean)          → swaps real AD IDs for Google's
+ *                                             TestIds (fills instantly on any
+ *                                             device — useful for QA).
+ * Failing silently is intentional — if Firestore is unreachable, fall back to
+ * empty test list + production IDs.
+ */
+async function fetchAdMobConfigFromFirebase(): Promise<{ testDeviceIds: string[]; useTestAds: boolean }> {
+  try {
+    const res = await fetch(
+      'https://firestore.googleapis.com/v1/projects/cricapp-2092/databases/(default)/documents/app_config/settings'
+    );
+    const json: any = await res.json();
+    const fields = json?.fields || {};
+    const raw = (fields?.test_device_ids?.stringValue || '').trim();
+    const useTestAds = fields?.use_test_ads?.booleanValue === true;
+    const ids = raw
+      .split(/[,\s;]+/)
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 0);
+    return { testDeviceIds: ids, useTestAds };
+  } catch (e) {
+    console.warn('[AdMob] Could not load Firebase ad config:', e);
+    return { testDeviceIds: [], useTestAds: false };
+  }
+}
 
 // Track if SDK is initialized (for load gating)
 let sdkInitialized = false;
@@ -221,8 +256,28 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       // Step 2: Always initialize SDK regardless of consent result
       try {
+        // Pull test-device config from Firestore so the user can register
+        // their personal device (or flip to Google TestIds) WITHOUT a rebuild.
+        const { testDeviceIds, useTestAds } = await fetchAdMobConfigFromFirebase();
+        if (useTestAds) {
+          TEST_ADS_ACTIVE = true;
+          AD_IDS = {
+            appOpen: TestIds.APP_OPEN,
+            interstitial: TestIds.INTERSTITIAL,
+            banner: TestIds.BANNER,
+            rewarded: TestIds.REWARDED,
+          };
+          console.log('[AdMob] Firebase use_test_ads=TRUE → using Google TestIds for this session.');
+        } else {
+          AD_IDS = { ...PROD_AD_IDS };
+        }
+        // Always register EMULATOR id (harmless on real devices) plus any
+        // user-supplied device IDs from Firestore `test_device_ids`.
+        const mergedTestIds = Array.from(new Set([...testDeviceIds, 'EMULATOR']));
+        console.log('[AdMob] testDeviceIdentifiers =', JSON.stringify(mergedTestIds));
+
         await mobileAds().setRequestConfiguration({
-          testDeviceIdentifiers: [],
+          testDeviceIdentifiers: mergedTestIds,
         });
         const adapterStatuses = await mobileAds().initialize();
         console.log('[AdMob] SDK initialized successfully');
@@ -234,7 +289,14 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // Step 3: Load ads
         console.log('[AdMob] SDK ready - setting up rewarded ad. Ad Unit:', AD_IDS.rewarded);
-        console.log('[AdMob] All Ad Units:', JSON.stringify(AD_IDS));
+        console.log('[AdMob] All Ad Units:', JSON.stringify(AD_IDS), 'TEST_ADS_ACTIVE=', TEST_ADS_ACTIVE);
+        // Hint the user how to self-register their device if real ads don't fill
+        console.log(
+          '[AdMob] 💡 If production ads still show \"NO_FILL\" on your device, scroll' +
+            ' the logcat for a line like \"Use RequestConfiguration.Builder' +
+            '.setTestDeviceIds([...])\" and put THAT hash into Firestore ' +
+            'app_config/settings.test_device_ids (comma-separated).'
+        );
         setupAndLoadRewardedAd();
         loadInterstitialAd();
       } catch (initErr) {

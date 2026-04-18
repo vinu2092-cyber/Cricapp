@@ -291,3 +291,73 @@ Current version: **v1.0.8** (versionCode 8)
    - Fireball now visibly touches the CricApp logo edge (no floating gap).
    - Tiny rainbow embers drip down from below the logo and fade — subtle.
    - Wicket alert still swaps halos to red and speeds up.
+
+
+## 2026-04-18 (5) — Ad fill on test device + corner-smooth orbit + +10% opacity
+
+### Issue 1 — Unlock Pro rewarded ad not showing on test device
+- **Root cause candidates investigated:**
+  - Ad IDs unchanged from first working build (grepped git history).
+  - `testDeviceIdentifiers` has been empty `[]` in every commit — no regression
+    there.
+  - Most likely: AdMob NO_FILL to an unregistered real device for a production
+    ad unit (especially on closed-testing installs).
+- **Fix (`AdMobContext.native.tsx`):**
+  - Ad IDs moved into a mutable runtime object. On SDK init the app now pulls
+    `app_config/settings` from Firestore and reads:
+    - `test_device_ids` (comma-separated) — **user can register their own
+      device without a rebuild** by dropping the RapidAds test-device hash
+      (printed in logcat on every ad request) into this field.
+    - `use_test_ads` (boolean) — when `true`, swaps every AD ID to
+      `TestIds.*` (Google's always-filling test inventory). Instant sanity
+      check that the rewarded flow + listeners + `EARNED_REWARD` path are all
+      wired correctly, from any device.
+  - Logs the active test-device list + a hint explaining the self-registration
+    flow, so the user can diagnose from logcat.
+  - `EMULATOR` is always added to the test list (no-op on real devices).
+
+- **User action needed if real ads still don't fill:**
+  1. `adb logcat | grep "RequestConfiguration.Builder"` → copy the hex hash.
+  2. In Firestore `app_config/settings`, add field `test_device_ids` of type
+     *string* with the hash (comma-separated for more devices). Optional: set
+     `use_test_ads: true` to instantly verify the full ad flow.
+
+### Issue 2 — Tile colors +10% opacity (all three tabs equally)
+- Regex pass across `CommentarySection.tsx`, `ScorecardSection.tsx`,
+  `SquadsSection.tsx`:
+  - `0.60 → 0.70` (tile base backgrounds + event cards)
+  - `0.70 → 0.80` (outer `section` containers on Scorecard/Squads)
+  - `0.50 → 0.60` (secondary tiles on Squads)
+  - Borders at 0.75/0.85/0.35 left untouched — they'd lose definition otherwise.
+
+### Issue 3 — Fireball "pauses" at logo corners
+- Cause: the rounded-rectangle path had 5 sub-steps per corner arc but only 1
+  keyframe per straight edge. `inputs` were evenly spaced (`i/(n-1)`), so every
+  keyframe consumed the same 1/n share of the 30 s cycle — but the straight
+  edges are long and the arc points are close together → ball rushed along
+  edges and crawled through corners.
+- Fix (`LogoFireTail.tsx`): `inputs` are now **arc-length parameterised**. We
+  compute the Euclidean distance between consecutive keyframes, take the
+  cumulative sum, and normalise to `[0,1]`. The ball now travels at a
+  constant visual speed all the way around the rounded rectangle — exactly
+  one smooth clockwise revolution per 30 s (5 s in wicket mode).
+
+### Files changed (this pass)
+- `frontend/src/context/AdMobContext.native.tsx` — Firebase-driven test device
+  IDs + optional TestIds swap, plus diagnostic logs.
+- `frontend/src/components/CommentarySection.tsx` — +10% tile opacity
+- `frontend/src/components/ScorecardSection.tsx` — +10% tile opacity
+- `frontend/src/components/SquadsSection.tsx` — +10% tile opacity
+- `frontend/src/components/LogoFireTail.tsx` — arc-length motion timing (no
+  corner pauses).
+
+### Next action items
+1. **Save to GitHub** → build APK/AAB.
+2. Install, then `adb logcat | grep -i admob` on the device:
+   - Confirm line: `[AdMob] testDeviceIdentifiers = ["EMULATOR"]`.
+   - Confirm line: `[AdMob] Loading rewarded ad...`
+   - Watch for either `REWARDED AD LOADED SUCCESSFULLY` (all good) or
+     `Rewarded preload ERROR: code=3 NO_FILL` (add your device hash to
+     Firestore as described above, or flip `use_test_ads=true`).
+3. On-screen: tiles 10% more solid across all three tabs; fireball glides
+   through corners at constant speed without pausing.

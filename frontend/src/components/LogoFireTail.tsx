@@ -86,8 +86,30 @@ const LogoFireTail: React.FC<LogoFireTailProps> = ({
     pts.push({ x: -side, y: -side + r });             // TL corner start
     addArc(-side + r, -side + r, Math.PI);            // TL corner arc → back to start
 
-    const n = pts.length;
-    const inp = pts.map((_, i) => i / (n - 1));
+    // === Arc-length-parameterised inputs ===
+    // Previously `inputs` were evenly spaced (i / (n-1)), which caused the ball
+    // to *slow down* at corners because the arc keyframes are spatially close
+    // together but consumed the same time share as the long straight segments.
+    // We now space inputs by cumulative *arc length*, so the ball moves at a
+    // constant visual speed along the whole perimeter — no pauses at corners,
+    // exactly one smooth revolution every `duration` ms.
+    const segLen: number[] = [0];
+    for (let i = 1; i < pts.length; i++) {
+      segLen.push(Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    }
+    const cum: number[] = [];
+    let acc = 0;
+    for (const d of segLen) {
+      acc += d;
+      cum.push(acc);
+    }
+    const total = Math.max(1e-6, cum[cum.length - 1]);
+    const inp = cum.map((c) => c / total);
+    // Safety: Animated.interpolate requires strictly increasing inputRange
+    for (let i = 1; i < inp.length; i++) {
+      if (inp[i] <= inp[i - 1]) inp[i] = inp[i - 1] + 1e-6;
+    }
+
     return {
       inputs: inp,
       txOut: pts.map((p) => p.x),

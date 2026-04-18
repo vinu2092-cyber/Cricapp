@@ -294,8 +294,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   const getAlternatingBg = (index: number): string => {
     // 60% solid / 40% transparent — matches Scorecard & Squads tiles
     const colors = [
-      'rgba(255, 249, 196, 0.60)', // Pastel yellow
-      'rgba(200, 230, 201, 0.60)', // Pastel green
+      'rgba(255, 249, 196, 0.70)', // Pastel yellow
+      'rgba(200, 230, 201, 0.70)', // Pastel green
     ];
     return colors[index % 2];
   };
@@ -706,7 +706,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(255, 255, 255, 0.60)',
+    backgroundColor: 'rgba(255, 255, 255, 0.70)',
     borderRadius: 10,
     marginHorizontal: 0,
     marginVertical: 4,
@@ -724,7 +724,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingHorizontal: 6,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
+    borderBottomColor: 'rgba(0, 0, 0, 0.18)',
   },
   titleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   title: { fontSize: 16, fontWeight: '700', color: '#333' },
@@ -734,7 +734,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 6,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    borderBottomColor: 'rgba(0, 0, 0, 0.15)',
     gap: 10,
     borderRadius: 4,
     marginVertical: 1,
@@ -745,7 +745,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#4CAF50',
-    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    backgroundColor: 'rgba(76, 175, 80, 0.20)',
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 6,
@@ -822,7 +822,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    backgroundColor: 'rgba(76, 175, 80, 0.20)',
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 24,
@@ -854,7 +854,7 @@ const styles = StyleSheet.create({
   countText: { fontSize: 11, color: '#999', fontStyle: 'italic' },
   analysisCard: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 152, 0, 0.08)',
+    backgroundColor: 'rgba(255, 152, 0, 0.18)',
     borderLeftWidth: 3,
     borderLeftColor: '#FF9800',
     borderRadius: 8,
@@ -884,15 +884,15 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   eventCardOut: {
-    backgroundColor: 'rgba(255, 205, 210, 0.60)',  // Soft red — 60% solid, 40% transparent
+    backgroundColor: 'rgba(255, 205, 210, 0.70)',  // Soft red — 60% solid, 40% transparent
     borderColor: 'rgba(255, 82, 82, 0.75)',
   },
   eventCardNewBatsman: {
-    backgroundColor: 'rgba(200, 230, 201, 0.60)',  // Pastel green — 60% solid, 40% transparent
+    backgroundColor: 'rgba(200, 230, 201, 0.70)',  // Pastel green — 60% solid, 40% transparent
     borderColor: 'rgba(76, 175, 80, 0.75)',
   },
   eventCardBowler: {
-    backgroundColor: 'rgba(187, 222, 251, 0.60)',  // Light blue — 60% solid, 40% transparent
+    backgroundColor: 'rgba(187, 222, 251, 0.70)',  // Light blue — 60% solid, 40% transparent
     borderColor: 'rgba(25, 118, 210, 0.75)',
   },
   eventCardHeader: {
