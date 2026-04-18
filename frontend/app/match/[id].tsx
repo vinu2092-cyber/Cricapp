@@ -220,7 +220,7 @@ export default function MatchDetail() {
 
   // Click counter for interstitial (Logic B)
   const [clicks, setClicks] = useState(0);
-  const [clickTarget] = useState(Math.floor(Math.random() * 11) + 50);
+  const [clickTarget] = useState(Math.floor(Math.random() * 6) + 10);
 
   const effectiveIsPro = globalIsPro || tempPro;
 

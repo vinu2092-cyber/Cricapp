@@ -115,25 +115,27 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.9
-          name: CricApp v1.0.9
+          tag_name: v1.0.10
+          name: CricApp v1.0.10
           body: |
-            ## CricApp v1.0.9 — Ad Revenue Restore (critical fix)
-            ### Root cause of zero revenue (v1.0.7 / v1.0.8)
-            - `app/match/[id].tsx → handleWatchAd` was calling `showRewardedAd()` in fire-and-forget mode and ALWAYS incrementing the watched-ad counter — whether a real ad played or not. Two taps → 30-min Pro → no banner / interstitial / app-open / rewarded ads for 30 minutes. Users refreshed Pro every 30 min indefinitely, so AdMob saw almost zero impressions.
-            - Same pattern on home screen `app/index.tsx` watch-ad button had a 2-failure auto-Pro fallback that kicked in too aggressively.
+            ## CricApp v1.0.10 — Full Ad Revenue Restore (v1.0.6 conditions re-applied)
+            AdMob Ads Activity dashboard showed revenue dropped to near-zero on 16–17 Apr 2026 after v1.0.7 shipped. Restored **exactly the v1.0.6 ad conditions** that were silently removed in v1.0.7 + fixed the rewarded-ad fire-and-forget bug introduced later.
 
-            ### Fix
-            - `handleWatchAd` now **awaits** `showRewardedAd()` and only credits progress when the SDK returns `true` (genuine `EARNED_REWARD` event fired).
-            - On ad failure (no-fill / network / SDK error) we track consecutive failures. **After 10 consecutive failures** we credit the user with ONE ad (not a full Pro unlock) so users never get stuck behind Google inventory gaps — but revenue continues to flow.
-            - Same 10-fail threshold applied to the home-screen watch-ad button.
-            - Added loading state + `ActivityIndicator` on the watch-ad button so users don't double-tap.
-            - `ADS_REQUIRED` stays at 2 (per your earlier change from 3 → 2). Pro duration stays at 30 minutes.
+            ### Changes restored from v1.0.6
+            - **Unity Ads mediation back** — `frontend/plugins/withUnityAdsMediation.js` restored + plugin re-registered in `app.json`. AdMob Console has Unity Ads configured as a bidding source; without the SDK in the APK, every Unity-routed impression was lost. ProGuard rules for `com.unity3d.ads.**` and `com.google.ads.mediation.unity.**` restored in `app.json` → `extraProguardRules`.
+            - **Interstitial click-target** restored to **10–15 clicks** (was 40–60 in v1.0.7+). `AdMobContext.native.tsx` + `app/match/[id].tsx`.
+            - **Banner size** restored to `ANCHORED_ADAPTIVE_BANNER` (was `MEDIUM_RECTANGLE` in v1.0.7+) — adaptive banner has much better fill rate.
+
+            ### Rewarded-ad bug fix (v1.0.9 work carried forward)
+            - `handleWatchAd` in `app/match/[id].tsx` no longer fire-and-forgets the ad — it **awaits** `showRewardedAd()` and only increments the watched counter on a real `EARNED_REWARD` event. Same fix on the home-screen watch-ad button in `app/index.tsx`.
+            - 10-failure threshold before a no-fill fallback credit is given (not a full Pro auto-unlock). Prevents users from unlocking Pro without actually watching ads.
 
             ### Files changed
-            - `frontend/app/match/[id].tsx`
-            - `frontend/app/index.tsx`
-            - `frontend/app.json` (version 1.0.8 → 1.0.9, versionCode 8 → 9)
+            - `frontend/plugins/withUnityAdsMediation.js` (restored)
+            - `frontend/app.json` (plugin re-registered, ProGuard rules restored, version 1.0.10, versionCode 10)
+            - `frontend/src/context/AdMobContext.native.tsx` (clickTarget 10–15, ANCHORED_ADAPTIVE_BANNER)
+            - `frontend/app/match/[id].tsx` (clickTarget 10–15, handleWatchAd honors ad result)
+            - `frontend/app/index.tsx` (watch-ad button honors ad result, 10-fail threshold)
             - `.github/workflows/build-android.yml` (release tag bump)
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
