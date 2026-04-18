@@ -82,15 +82,31 @@ async function fetchFirebaseConfig(): Promise<void> {
       { host: (fields?.api_host_p3?.stringValue || '').replace(/\s+/g, ''), keysRaw: (fields?.api_key_p3?.stringValue || '').trim(), suffix: '_p3' },
     ];
 
+    // Collect ALL unique keys from all slots — these are user's RapidAPI keys and
+    // may work on any subscribed host. Sharing keys across hosts enables the
+    // primary host to be used even if only its sibling slot has keys configured.
+    const allUniqueKeysSet = new Set<string>();
+    for (const hc of hostConfigs) {
+      for (const k of parseKeys(hc.keysRaw)) allUniqueKeysSet.add(k);
+    }
+    const sharedPool = Array.from(allUniqueKeysSet);
+    debugLog(`Shared key pool (union of all slots): ${sharedPool.length} keys`);
+
     // Build providers list, current_provider FIRST
     const allProviders: ProviderKeys[] = [];
 
     for (const hc of hostConfigs) {
-      if (!hc.host || !hc.keysRaw) {
+      if (!hc.host) {
         debugLog(`Skipping empty host${hc.suffix}`);
         continue;
       }
-      const keys = parseKeys(hc.keysRaw);
+      // Use this slot's own keys when available, else fall back to the shared pool
+      // so every configured host always has keys to try.
+      let keys = parseKeys(hc.keysRaw);
+      if (keys.length === 0 && sharedPool.length > 0) {
+        debugLog(`Slot${hc.suffix} has no own keys; using shared pool for host ${hc.host}`);
+        keys = [...sharedPool];
+      }
       if (keys.length === 0) {
         debugLog(`No valid keys for host${hc.suffix}: ${hc.host}`);
         continue;
@@ -168,10 +184,19 @@ async function fetchFirebaseConfigSDK(): Promise<void> {
       { host: (data?.api_host_p3 || '').replace(/\s+/g, ''), keysRaw: (data?.api_key_p3 || '').trim(), suffix: '_p3' },
     ];
 
+    // Shared key pool: union of all slot keys — enables every configured host to
+    // try every available RapidAPI key.
+    const allUniqueKeysSet = new Set<string>();
+    for (const hc of hostConfigs) {
+      for (const k of parseKeys(hc.keysRaw)) allUniqueKeysSet.add(k);
+    }
+    const sharedPool = Array.from(allUniqueKeysSet);
+
     const allProviders: ProviderKeys[] = [];
     for (const hc of hostConfigs) {
-      if (!hc.host || !hc.keysRaw) continue;
-      const keys = parseKeys(hc.keysRaw);
+      if (!hc.host) continue;
+      let keys = parseKeys(hc.keysRaw);
+      if (keys.length === 0 && sharedPool.length > 0) keys = [...sharedPool];
       if (keys.length === 0) continue;
       const name = deriveProviderName(hc.host);
       allProviders.push({ name, host: hc.host, keys: keys.sort(() => Math.random() - 0.5) });

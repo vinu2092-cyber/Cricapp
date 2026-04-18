@@ -3,124 +3,238 @@ import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { useFireTailAlert } from '../context/FireTailAlertContext';
 
 interface LogoFireTailProps {
-  size: number;                 // diameter (should match the logo container size)
+  size: number;                 // diameter of the (square) logo container
   children: React.ReactNode;
   normalDurationMs?: number;    // one full revolution in normal mode; default 30_000 (30s)
   wicketDurationMs?: number;    // fast mode duration; default 5_000 (5s)
+  /**
+   * Legacy alias — older callers passed `durationMs`. Treated as `normalDurationMs`.
+   */
+  durationMs?: number;
 }
 
 /**
- * Wraps the app logo and renders a rainbow "fire-tail" that orbits the logo
- * clockwise. Reads the global FireTailAlert mode:
- *   - `normal`: rainbow dots, slow (30s per revolution)
- *   - `wicket`: all-red dots, fast (5s per revolution) — triggered for 10s on wicket
+ * LogoFireTail — wraps the app logo and animates a SINGLE fireball around a
+ * RECTANGULAR orbit hugging the logo's square border. Behind the fireball trails
+ * a soft rainbow "smoke tail" — several smaller dots that fade and shrink into
+ * multi-color smoke, so the whole effect reads as one comet/fireball with a
+ * rainbow flame rather than a ring of dots.
  *
- * Auto-swaps between the two modes without re-mounting so the orbit animation
- * is never interrupted (we just restart the Animated loop with a new duration).
+ * Modes (via FireTailAlertContext):
+ *   - `normal`:  slow orbit (default 30s per revolution), rainbow-colored flame
+ *   - `wicket`:  fast orbit (default 5s per revolution), pure-red burst flame
  */
-const RAINBOW = [
-  { color: '#FF3B30', opacity: 1.00, offset: 0 },
-  { color: '#FF9500', opacity: 0.85, offset: 1 },
-  { color: '#FFCC00', opacity: 0.70, offset: 2 },
-  { color: '#34C759', opacity: 0.55, offset: 3 },
-  { color: '#007AFF', opacity: 0.40, offset: 4 },
-  { color: '#AF52DE', opacity: 0.25, offset: 5 },
-];
+const RAINBOW = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#AF52DE'];
+const RED_BURST = ['#FF1744', '#FF5252', '#FF8A80'];
 
-const RED_BURST = [
-  { color: '#FF1744', opacity: 1.00, offset: 0 },
-  { color: '#FF1744', opacity: 0.90, offset: 1 },
-  { color: '#FF5252', opacity: 0.78, offset: 2 },
-  { color: '#FF5252', opacity: 0.62, offset: 3 },
-  { color: '#FF8A80', opacity: 0.45, offset: 4 },
-  { color: '#FF8A80', opacity: 0.28, offset: 5 },
-];
+const TAIL_COUNT = 10; // fireball + 9 smoke-tail dots (rainbow gradient)
 
 const LogoFireTail: React.FC<LogoFireTailProps> = ({
   size,
   children,
-  normalDurationMs = 30000,
+  normalDurationMs,
   wicketDurationMs = 5000,
+  durationMs,
 }) => {
   const { mode } = useFireTailAlert();
-  const spin = useRef(new Animated.Value(0)).current;
-  const loopRef = useRef<Animated.CompositeAnimation | null>(null);
 
-  // Start / restart the orbit loop whenever mode changes so speed updates live.
+  // `durationMs` is a legacy prop — treat it as `normalDurationMs` if provided
+  const effectiveNormalDuration = normalDurationMs ?? durationMs ?? 30000;
+  const duration = mode === 'wicket' ? wicketDurationMs : effectiveNormalDuration;
+
+  // One Animated.Value per orbiter (leader + tail) so we can stagger their phase
+  // offsets naturally by delayed start.
+  const anims = useRef(Array.from({ length: TAIL_COUNT }, () => new Animated.Value(0))).current;
+
+  // (Re)start all loops whenever duration changes (mode flip).
   useEffect(() => {
-    const duration = mode === 'wicket' ? wicketDurationMs : normalDurationMs;
-    if (loopRef.current) {
-      loopRef.current.stop();
-    }
-    spin.setValue(0);
-    const loop = Animated.loop(
-      Animated.timing(spin, {
-        toValue: 1,
-        duration,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    loopRef.current = loop;
-    loop.start();
+    const loops: Animated.CompositeAnimation[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    // Tail spacing in ms: how far behind leader each subsequent dot lags.
+    // We want the full tail to cover ~18% of the cycle so smoke trails naturally
+    // behind the leader without lapping it.
+    const tailSpanFraction = mode === 'wicket' ? 0.14 : 0.10;
+    const perDotDelayMs = (duration * tailSpanFraction) / TAIL_COUNT;
+
+    anims.forEach((anim, i) => {
+      // Snap to 0 so restart begins cleanly.
+      anim.setValue(0);
+
+      const loop = Animated.loop(
+        Animated.timing(anim, {
+          toValue: 1,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      );
+
+      // Stagger start: leader (i=0) starts immediately, each tail dot starts i
+      // ticks later, so at steady state the tail sits behind the leader.
+      const timer = setTimeout(() => {
+        loop.start();
+      }, Math.round(perDotDelayMs * i));
+
+      loops.push(loop);
+      timers.push(timer);
+    });
+
     return () => {
-      loop.stop();
+      timers.forEach((t) => clearTimeout(t));
+      loops.forEach((l) => l.stop());
     };
-  }, [mode, normalDurationMs, wicketDurationMs, spin]);
+  }, [duration, mode, anims]);
 
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  // === Rectangular path ===
+  // The fireball's center traces a square of side (size + 2*margin), centered
+  // on the logo. Corners at t = {0, 0.25, 0.5, 0.75, 1}.
+  const margin = Math.max(2, Math.round(size * 0.03));       // outer padding
+  const half = size / 2 + margin;                            // half side of orbit square
+  const leaderRadius = Math.round(size * 0.085);             // fireball core radius
+  const containerSize = size + margin * 2 + leaderRadius * 2;
 
-  const radius = size / 2;
-  const baseDotSize = mode === 'wicket' ? Math.round(size * 0.17) : Math.round(size * 0.14);
-  const trailLen = Math.round(size * 0.42);
+  // Keyframes: TL → TR → BR → BL → TL (clockwise, starting at top-left)
+  const TX_OUT = [-half, half, half, -half, -half];
+  const TY_OUT = [-half, -half, half, half, -half];
+  const INPUT_CORNERS = [0, 0.25, 0.5, 0.75, 1];
 
   const palette = mode === 'wicket' ? RED_BURST : RAINBOW;
-
-  const step = trailLen / palette.length;
+  // Repeat/cycle palette across all tail dots (so rainbow smoke covers full trail)
+  const paletteFor = (i: number) => {
+    if (i === 0) return '#FFF8E1'; // leader core = bright cream/white (fireball glow)
+    return palette[(i - 1) % palette.length];
+  };
 
   return (
-    <View style={[styles.wrap, { width: size, height: size }]}>
-      {/* Rotating orbit */}
-      <Animated.View
+    <View
+      style={[styles.wrap, { width: containerSize, height: containerSize }]}
+      pointerEvents="box-none"
+    >
+      {anims.map((anim, i) => {
+        const tx = anim.interpolate({ inputRange: INPUT_CORNERS, outputRange: TX_OUT });
+        const ty = anim.interpolate({ inputRange: INPUT_CORNERS, outputRange: TY_OUT });
+
+        // Tail sizing: leader largest + crisp, smoke tail progressively smaller/softer
+        const t = i / Math.max(1, TAIL_COUNT - 1);
+        const dotRadius = leaderRadius * (1 - t * 0.55);   // shrink along tail
+        const dotOpacity = i === 0 ? 1 : 0.85 * (1 - t * 0.80); // fade into smoke
+        const color = paletteFor(i);
+
+        // Leader gets an additional outer "fireball halo" layer for the classic
+        // burning-ball look (darker orange/red aura around white-hot core).
+        const isLeader = i === 0;
+        const haloColor = mode === 'wicket' ? '#FF1744' : '#FF6B00';
+        const haloColor2 = mode === 'wicket' ? '#D50000' : '#FF3B30';
+
+        return (
+          <Animated.View
+            key={i}
+            pointerEvents="none"
+            style={[
+              styles.dotWrap,
+              {
+                // Parked at container center; transform moves it onto the orbit.
+                left: containerSize / 2 - dotRadius,
+                top: containerSize / 2 - dotRadius,
+                width: dotRadius * 2,
+                height: dotRadius * 2,
+                opacity: dotOpacity,
+                transform: [{ translateX: tx }, { translateY: ty }],
+              },
+            ]}
+          >
+            {isLeader ? (
+              <View style={{ width: dotRadius * 2, height: dotRadius * 2 }}>
+                {/* Outer halo — aura */}
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: -dotRadius * 0.6,
+                    top: -dotRadius * 0.6,
+                    width: dotRadius * 3.2,
+                    height: dotRadius * 3.2,
+                    borderRadius: dotRadius * 1.6,
+                    backgroundColor: haloColor2,
+                    opacity: 0.25,
+                  }}
+                />
+                {/* Middle halo — flame */}
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: -dotRadius * 0.3,
+                    top: -dotRadius * 0.3,
+                    width: dotRadius * 2.6,
+                    height: dotRadius * 2.6,
+                    borderRadius: dotRadius * 1.3,
+                    backgroundColor: haloColor,
+                    opacity: 0.5,
+                  }}
+                />
+                {/* Inner flame ring */}
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: -dotRadius * 0.1,
+                    top: -dotRadius * 0.1,
+                    width: dotRadius * 2.2,
+                    height: dotRadius * 2.2,
+                    borderRadius: dotRadius * 1.1,
+                    backgroundColor: '#FFB300',
+                    opacity: 0.7,
+                  }}
+                />
+                {/* White-hot core */}
+                <View
+                  style={{
+                    width: dotRadius * 2,
+                    height: dotRadius * 2,
+                    borderRadius: dotRadius,
+                    backgroundColor: color,
+                    shadowColor: haloColor,
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 1,
+                    shadowRadius: dotRadius * 1.5,
+                    elevation: 12,
+                  }}
+                />
+              </View>
+            ) : (
+              // Smoke-tail dot — soft rainbow puff
+              <View
+                style={{
+                  width: dotRadius * 2,
+                  height: dotRadius * 2,
+                  borderRadius: dotRadius,
+                  backgroundColor: color,
+                  // Diffuse glow grows with tail index → smoke effect
+                  shadowColor: color,
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.9,
+                  shadowRadius: dotRadius * (1.2 + t * 1.4),
+                  elevation: Math.max(2, 8 - i),
+                }}
+              />
+            )}
+          </Animated.View>
+        );
+      })}
+
+      {/* Static logo content */}
+      <View
         style={[
-          styles.orbit,
+          styles.content,
           {
             width: size,
             height: size,
-            transform: [{ rotate }],
+            position: 'absolute',
+            left: (containerSize - size) / 2,
+            top: (containerSize - size) / 2,
           },
         ]}
-        pointerEvents="none"
+        pointerEvents="box-none"
       >
-        {palette.map((t, i) => {
-          // Each tail dot sits at a slightly smaller angle behind the leader,
-          // simulated by translating along the X axis from the center.
-          const angle = (t.offset * 6) * (Math.PI / 180); // 6° between dots
-          const tx = Math.cos(angle) * (radius - baseDotSize / 2);
-          const ty = Math.sin(angle) * (radius - baseDotSize / 2);
-          const dSize = Math.max(3, baseDotSize - i * 1.4);
-          return (
-            <View
-              key={i}
-              style={{
-                position: 'absolute',
-                left: radius + tx - dSize / 2,
-                top: radius + ty - dSize / 2,
-                width: dSize,
-                height: dSize,
-                borderRadius: dSize / 2,
-                backgroundColor: t.color,
-                opacity: t.opacity,
-                // Glow-like halo via elevation on Android (stronger in wicket mode)
-                elevation: i === 0 ? (mode === 'wicket' ? 10 : 6) : 0,
-              }}
-            />
-          );
-        })}
-      </Animated.View>
-
-      {/* Static logo content */}
-      <View style={styles.content} pointerEvents="box-none">
         {children}
       </View>
     </View>
@@ -131,11 +245,10 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
-  orbit: {
+  dotWrap: {
     position: 'absolute',
-    top: 0,
-    left: 0,
   },
   content: {
     alignItems: 'center',

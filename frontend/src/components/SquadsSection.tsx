@@ -226,16 +226,18 @@ export default function SquadsSection({ matchId, isLive }: Props) {
       // Build name → player object map from matchInfo (for faceImageId enrichment of
       // scorecard-sourced players, who don't carry image IDs on their own).
       const buildImageLookup = (teamData: { playing11: any[]; bench: any[]; substitutes: any[]; allSquad: any[] }) => {
-        const map = new Map<string, { faceImageId?: string; imageUrl?: string }>();
+        const map = new Map<string, { faceImageId?: string; imageUrl?: string; id?: string | number }>();
         const addAll = (arr: any[]) => {
           for (const p of arr) {
             const n = (p?.name || p?.fullName || p?.fullname || p?.nickName || p?.playerName || '').toLowerCase().trim();
             if (!n) continue;
+            const rawFace = p.faceImageId || p.imageId || p.image_id || p.faceimageid;
             const entry = {
-              faceImageId: p.faceImageId || p.imageId || p.image_id || p.faceimageid,
+              faceImageId: rawFace !== undefined && rawFace !== null ? String(rawFace) : undefined,
               imageUrl: p.imageUrl || p.image_url,
+              id: p.id || p.playerId || p.player_id,
             };
-            if (entry.faceImageId || entry.imageUrl) {
+            if (entry.faceImageId || entry.imageUrl || entry.id) {
               map.set(n, entry);
             }
           }
@@ -251,13 +253,13 @@ export default function SquadsSection({ matchId, isLive }: Props) {
       const t2ImgLookup = buildImageLookup(t2Data);
 
       // Helper: strip " (C)"/" (WK)" annotations before lookup, then enrich in-place
-      const enrichWithImage = (player: SquadPlayer, lookup: Map<string, { faceImageId?: string; imageUrl?: string }>) => {
-        if (player.faceImageId || player.imageUrl) return;
+      const enrichWithImage = (player: SquadPlayer, lookup: Map<string, { faceImageId?: string; imageUrl?: string; id?: string | number }>) => {
         const key = player.name.replace(/\s*\((C|WK)\)/gi, '').toLowerCase().trim();
         const hit = lookup.get(key);
         if (hit) {
-          player.faceImageId = hit.faceImageId;
-          player.imageUrl = hit.imageUrl;
+          if (!player.faceImageId && hit.faceImageId) player.faceImageId = hit.faceImageId;
+          if (!player.imageUrl && hit.imageUrl) player.imageUrl = hit.imageUrl;
+          if (!player.id && hit.id) player.id = hit.id;
         }
       };
 
@@ -276,6 +278,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         const isCaptain = !!bat.iscaptain;
         const isBowlerToo = t1BowledNames.has(name.toLowerCase());
         t1PlayingList.push({
+          id: bat.id || bat.playerId || bat.player_id,
           name: name + (isCaptain ? ' (C)' : '') + (isKeeper ? ' (WK)' : ''),
           role: isBowlerToo ? 'All-rounder' : (isKeeper ? 'WK-Batter' : 'Batter'),
           isCaptain, isKeeper, category: 'playing',
@@ -286,6 +289,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         const name = bowl.name || bowl.nickname || '';
         if (!name || scardT1Names.has(name.toLowerCase())) continue;
         t1PlayingList.push({
+          id: bowl.id || bowl.playerId || bowl.player_id,
           name: name + (bowl.iscaptain ? ' (C)' : ''),
           role: 'Bowler', isCaptain: !!bowl.iscaptain, isKeeper: false, category: 'playing',
         });
@@ -295,6 +299,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         const name = dnb.name || dnb.nickname || (typeof dnb === 'string' ? dnb : '');
         if (!name || scardT1Names.has(name.toLowerCase())) continue;
         t1PlayingList.push({
+          id: dnb?.id || dnb?.playerId || dnb?.player_id,
           name, role: 'Batter', isCaptain: false, isKeeper: false, category: 'playing',
         });
         scardT1Names.add(name.toLowerCase());
@@ -310,6 +315,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         const isCaptain = !!bat.iscaptain;
         const isBowlerToo = t2BowledNames.has(name.toLowerCase());
         t2PlayingList.push({
+          id: bat.id || bat.playerId || bat.player_id,
           name: name + (isCaptain ? ' (C)' : '') + (isKeeper ? ' (WK)' : ''),
           role: isBowlerToo ? 'All-rounder' : (isKeeper ? 'WK-Batter' : 'Batter'),
           isCaptain, isKeeper, category: 'playing',
@@ -320,6 +326,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         const name = bowl.name || bowl.nickname || '';
         if (!name || scardT2Names.has(name.toLowerCase())) continue;
         t2PlayingList.push({
+          id: bowl.id || bowl.playerId || bowl.player_id,
           name: name + (bowl.iscaptain ? ' (C)' : ''),
           role: 'Bowler', isCaptain: !!bowl.iscaptain, isKeeper: false, category: 'playing',
         });
@@ -329,6 +336,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         const name = dnb.name || dnb.nickname || (typeof dnb === 'string' ? dnb : '');
         if (!name || scardT2Names.has(name.toLowerCase())) continue;
         t2PlayingList.push({
+          id: dnb?.id || dnb?.playerId || dnb?.player_id,
           name, role: 'Batter', isCaptain: false, isKeeper: false, category: 'playing',
         });
         scardT2Names.add(name.toLowerCase());
@@ -339,6 +347,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
           const name = bowl.name || bowl.nickname || '';
           if (!name || scardT2Names.has(name.toLowerCase())) continue;
           t2PlayingList.push({
+            id: bowl.id || bowl.playerId || bowl.player_id,
             name: name + (bowl.iscaptain ? ' (C)' : ''),
             role: 'Bowler', isCaptain: !!bowl.iscaptain, isKeeper: false, category: 'playing',
           });

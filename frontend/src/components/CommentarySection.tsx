@@ -314,10 +314,10 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     return null;
   };
 
-  // Extract player name + runs/balls from a wicket commentary line
-  // e.g. "Bumrah to Kohli, OUT, caught! Kohli 45(32) ..."
-  const parseWicketDetails = (text: string): { player?: string; runs?: string; balls?: string; dismissal?: string } => {
-    const out: { player?: string; runs?: string; balls?: string; dismissal?: string } = {};
+  // Extract player name + runs/balls + partnership from a wicket commentary line
+  // e.g. "Bumrah to Kohli, OUT, caught! Kohli 45(32) ... partnership of 67(58) runs"
+  const parseWicketDetails = (text: string): { player?: string; runs?: string; balls?: string; dismissal?: string; partnershipRuns?: string; partnershipBalls?: string } => {
+    const out: { player?: string; runs?: string; balls?: string; dismissal?: string; partnershipRuns?: string; partnershipBalls?: string } = {};
     // Score pattern: 45(32) or 45*(32)
     const scoreM = text.match(/(\b[A-Z][a-zA-Z'\- ]{1,30}?)\s+(\d+)\*?\((\d+)\)/);
     if (scoreM) {
@@ -328,6 +328,26 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     // Dismissal phrase
     const dismissM = text.match(/\b(c\s+[A-Za-z.'\- ]+?\s+b\s+[A-Za-z.'\- ]+|b\s+[A-Za-z.'\- ]+|lbw\s+b\s+[A-Za-z.'\- ]+|run out|stumped|hit wicket)/i);
     if (dismissM) out.dismissal = dismissM[0].trim();
+    // Partnership: Cricbuzz text like
+    //   "...partnership of 67(58) runs..."
+    //   "...67-run stand off 58 balls..."
+    //   "...the stand is worth 67 runs from 58 balls..."
+    //   "...45-ball 67-run stand..."
+    const patterns: RegExp[] = [
+      /partnership[^0-9]{0,20}(\d{1,3})\s*\(\s*(\d{1,3})\s*\)/i,
+      /partnership[^0-9]{0,10}of\s+(\d{1,3})\s+runs?\s+(?:from|off|in)\s+(\d{1,3})\s+balls?/i,
+      /(\d{1,3})-run\s+(?:stand|partnership)\s+(?:off|from|in)\s+(\d{1,3})\s+balls?/i,
+      /(\d{1,3})\s+runs?\s+(?:from|off|in)\s+(\d{1,3})\s+balls?\s+(?:stand|partnership)/i,
+      /stand[^0-9]{0,10}(?:is\s+worth|was\s+worth)?\s*(\d{1,3})\s+runs?\s+(?:from|off)\s+(\d{1,3})\s+balls?/i,
+    ];
+    for (const re of patterns) {
+      const m = text.match(re);
+      if (m) {
+        out.partnershipRuns = m[1];
+        out.partnershipBalls = m[2];
+        break;
+      }
+    }
     return out;
   };
 
@@ -490,10 +510,15 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                   <View style={styles.eventCardBody}>
                     <EventAvatar imageId={imgId} />
                     <View style={styles.eventCardInfo}>
-                      <Text style={styles.eventCardName}>{d.player || 'Batter'}</Text>
+                      <Text style={styles.eventCardName}>{d.player || 'Batsman'}</Text>
                       {(d.runs && d.balls) ? (
                         <Text style={styles.eventCardStats}>
-                          {d.runs} ({d.balls}) · SR {((Number(d.runs) / Math.max(1, Number(d.balls))) * 100).toFixed(1)}
+                          {d.runs} runs · {d.balls} balls · SR {((Number(d.runs) / Math.max(1, Number(d.balls))) * 100).toFixed(1)}
+                        </Text>
+                      ) : null}
+                      {(d.partnershipRuns && d.partnershipBalls) ? (
+                        <Text style={styles.eventCardPartnership}>
+                          Partnership: {d.partnershipRuns} runs ({d.partnershipBalls} balls)
                         </Text>
                       ) : null}
                       {d.dismissal ? (
@@ -526,7 +551,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                   <View style={styles.eventCardBody}>
                     <EventAvatar imageId={imgId} />
                     <View style={styles.eventCardInfo}>
-                      <Text style={styles.eventCardName}>{name || 'Incoming batter'}</Text>
+                      <Text style={styles.eventCardName}>{name || 'Incoming batsman'}</Text>
                       <Text style={styles.eventCardStatsGreen}>Fresh at the crease</Text>
                     </View>
                   </View>
@@ -902,6 +927,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#B71C1C',
+    marginTop: 2,
+  },
+  eventCardPartnership: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6A1B9A',
     marginTop: 2,
   },
   eventCardStatsGreen: {

@@ -997,7 +997,11 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
     borderBottomWidth: 1,
     borderBottomColor: '#4CAF50',
+    // Scoreboard targets ~20% of screen height; commentary (below) takes ~80%.
+    // We cap at 20% but allow it to be a little shorter when there's no live
+    // batsmen / recent-overs row (recent / upcoming matches).
     maxHeight: SCOREBOARD_MAX_HEIGHT,
+    minHeight: Math.round(SCOREBOARD_MAX_HEIGHT * 0.6),
     overflow: 'hidden',
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
