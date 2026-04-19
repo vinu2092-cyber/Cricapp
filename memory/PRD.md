@@ -49,3 +49,23 @@ Banner & Interstitial work fine.
 - Consider moving App Open Ad to a proper preload-and-cache pattern (store `AppOpenAd` in a ref, show cached on app foreground resume).
 - Add eCPM floor monitoring in AdMob console.
 - Consider mediation waterfall (Meta Audience Network, AppLovin) if AdMob fill remains low.
+
+## 2026-04-19 Update — User shared AdMob screenshots
+
+### Additional Root Causes Discovered (from AdMob console)
+1. **eCPM floor $2.00** set on both AppOpenAd and UnlockProAd (Rewarded) — blocks 90%+ ads in low-CPM markets (India etc). This is the PRIMARY reason ads stopped showing even after code fix.
+2. **AppOpenAd has 0 active mediation groups** (other ads have 1) — may contribute to lower fill.
+3. Ad Activity Report confirms: match rate crashed from 100% → 0% on April 17 (same day buggy code pushed).
+
+### User Decision
+- Keep version at **1.0.10 / versionCode 10** (reverted from my 1.0.11 bump).
+- User will upload this to Play Store Closed Testing.
+
+### Action Items for User
+1. Lower eCPM floor on AppOpenAd and UnlockProAd from $2 to $0.10 (or disable)
+2. Remove/lower 246 country-specific eCPM floors
+3. (Optional) Create mediation group for App open format
+4. Click "Save to GitHub" to trigger build #102+ with fixed code
+5. Install APK and verify via `adb logcat | grep AdMob`
+
+See `/app/ADMOB_CONSOLE_FIX_REQUIRED.md` for full details.

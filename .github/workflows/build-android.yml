@@ -203,11 +203,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.11
-          name: CricApp v1.0.11
+          tag_name: v1.0.10
+          name: CricApp v1.0.10
           body: |
-            ## CricApp v1.0.11 — AdMob Ads Restore (App Open + Rewarded)
-            
+            ## CricApp v1.0.10 — AdMob Ads Restore (App Open + Rewarded)
+
             ### Root Cause Fixed
             - Reverted `AdMobContext.native.tsx` to the v1.0.8 working pattern.
             - Removed aggressive 0s/3s/8s parallel rewarded-ad loads (AdMob throttled them).
@@ -215,11 +215,12 @@ jobs:
             - Fixed rewarded-ad error handler: now creates FRESH instance (not `ad.load()` on failed instance).
             - Restored randomized 5–30s retry backoff (1s flat caused rate-limiting).
             - `_layout.tsx`: set `adShown` flag immediately to block re-renders from firing duplicate App Open Ad loads.
-            
-            ### Preserved from v1.0.10
+
+            ### Preserved
             - Package `com.cricapp.live`, APPLICATION_ID + AD_ID manifest injection, google-services.json wiring.
             - All ad unit IDs unchanged (match AdMob console).
-            
+            - Banner & Interstitial logic unchanged.
+
             ## CricApp v1.0.10 — AdMob Fix + Strict Ad Enforcement
             
             ### Critical Changes
