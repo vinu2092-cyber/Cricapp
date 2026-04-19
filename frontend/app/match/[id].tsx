@@ -680,7 +680,15 @@ export default function MatchDetail() {
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
-            <Text style={styles.seriesName} numberOfLines={1}>{match.seriesName}</Text>
+            {/* Prefer status text (live context: "Day 3 Lunch", "Won by X runs")
+                over series name — more useful & prevents overlap with team scores. */}
+            <Text
+              style={match.statusText ? styles.headerStatus : styles.seriesName}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {match.statusText || match.seriesName}
+            </Text>
             
             <View style={styles.headerActions}>
               {/* Overlay Button - Non-Pro: opens Pro Modal, Pro: toggles overlay */}
@@ -781,8 +789,8 @@ export default function MatchDetail() {
                 />
               ) : null}
               <View style={styles.teamMeta}>
-                <Text style={styles.teamName}>{match.teams[0].shortName}</Text>
-                <Text style={styles.teamScore}>
+                <Text style={styles.teamName} numberOfLines={1}>{match.teams[0].shortName}</Text>
+                <Text style={styles.teamScore} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                   {match.teams[0].runs !== undefined ? `${match.teams[0].runs}/${match.teams[0].wickets || 0}` : '-'}
                   {match.teams[0].overs !== undefined ? <Text style={styles.overs}>  ({match.teams[0].overs} ov)</Text> : null}
                 </Text>
@@ -791,7 +799,6 @@ export default function MatchDetail() {
 
             <View style={styles.centerCol}>
               <MatchStatusBadge state={match.status} isLive={match.status === 'live'} />
-              {match.statusText ? <Text style={styles.statusTxtCentered} numberOfLines={2}>{match.statusText}</Text> : null}
             </View>
 
             <View style={styles.teamBlock}>
@@ -803,8 +810,8 @@ export default function MatchDetail() {
                 />
               ) : null}
               <View style={styles.teamMeta}>
-                <Text style={styles.teamName}>{match.teams[1].shortName}</Text>
-                <Text style={styles.teamScore}>
+                <Text style={styles.teamName} numberOfLines={1}>{match.teams[1].shortName}</Text>
+                <Text style={styles.teamScore} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                   {match.teams[1].runs !== undefined ? `${match.teams[1].runs}/${match.teams[1].wickets || 0}` : '-'}
                   {match.teams[1].overs !== undefined ? <Text style={styles.overs}>  ({match.teams[1].overs} ov)</Text> : null}
                 </Text>
@@ -999,11 +1006,13 @@ export default function MatchDetail() {
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-// Scoreboard strictly capped at 30% of screen height — commentary naturally
-// takes the remaining ~70% (thanks to the SectionList's flex: 1 below).
-// Overflow is hidden so ultra-dense scoreboards never spill into commentary.
-const SCOREBOARD_MAX_HEIGHT = Math.round(SCREEN_H * 0.30);
-const SCOREBOARD_MIN_HEIGHT = Math.round(SCREEN_H * 0.16);
+// Scoreboard targets ≤ 28% of screen height — user wants commentary space maxed.
+// Hard cap prevents dense scoreboards from eating commentary. On tiny screens
+// (users with Large Text / screen zoom enabled), allow a little extra breathing
+// room (up to 34%) so the RECENT over-summary strip never gets clipped.
+const IS_SHORT_SCREEN = SCREEN_H < 700; // zoomed / compact phones
+const SCOREBOARD_MAX_HEIGHT = Math.round(SCREEN_H * (IS_SHORT_SCREEN ? 0.34 : 0.28));
+const SCOREBOARD_MIN_HEIGHT = Math.round(SCREEN_H * 0.14);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
@@ -1026,6 +1035,10 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
   backBtn: { padding: 2, marginRight: 4 },
   seriesName: { color: '#ffd700', fontSize: 13, flex: 1, fontWeight: '700' },
+  // Promoted status line that now lives at the top of the scoreboard instead of
+  // floating in the middle column. Green + bold so it reads like live context
+  // ("Day 3: Lunch Break", "NZ won by 26 runs") without fighting the team scores.
+  headerStatus: { color: '#4CAF50', fontSize: 13, flex: 1, fontWeight: '700', fontStyle: 'italic' },
   headerActions: { flexDirection: 'row', gap: 4 },
   actionBtn: {
     padding: 5,
@@ -1033,14 +1046,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
   actionBtnActive: { backgroundColor: 'rgba(76,175,80,0.2)' },
-  teamRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 2 },
-  centerCol: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  teamBlock: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', gap: 6 },
-  teamLogo: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)' },
-  teamMeta: { alignItems: 'flex-start' },
-  teamName: { color: '#E8E8E8', fontSize: 13, fontWeight: '700', lineHeight: 15 },
-  teamScore: { color: '#FFF', fontSize: 18, fontWeight: '800', lineHeight: 20 },
-  overs: { color: '#BBB', fontSize: 11, lineHeight: 13, fontWeight: '600' },
+  teamRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  // Narrow centre column — it now only holds the LIVE / COMPLETED badge.
+  // Status text lives in the top header row so it can use full width.
+  centerCol: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, flexShrink: 0 },
+  // Team block hugs the centre so long scores (e.g. "288/10 (85.1 ov)") never
+  // spill past the screen edge. flexShrink lets it give up space gracefully.
+  teamBlock: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', gap: 5, flexShrink: 1, minWidth: 0 },
+  teamLogo: { width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.08)' },
+  teamMeta: { alignItems: 'flex-start', flexShrink: 1, minWidth: 0 },
+  teamName: { color: '#E8E8E8', fontSize: 12, fontWeight: '700', lineHeight: 14 },
+  teamScore: { color: '#FFF', fontSize: 17, fontWeight: '800', lineHeight: 20 },
+  overs: { color: '#BBB', fontSize: 10, lineHeight: 13, fontWeight: '600' },
   statusTxt: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
   statusTxtCentered: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginTop: 2, fontStyle: 'italic', maxWidth: 150, fontWeight: '600' },
   // Live match batsmen section - ultra compact (single-row display)
@@ -1050,7 +1067,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
     borderRadius: 5,
     paddingHorizontal: 6,
-    paddingVertical: 3,
+    paddingVertical: 2,
     marginBottom: 2,
     gap: 6,
   },
@@ -1071,10 +1088,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flexShrink: 1,
+    minWidth: 0,
   },
   batsmanName: {
     color: '#E8E8E8',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   strikerName: {
@@ -1083,7 +1102,7 @@ const styles = StyleSheet.create({
   },
   batsmanScore: {
     color: '#FFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   // Over summary section - ultra compact
@@ -1103,14 +1122,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    minWidth: 52,
+    minWidth: 48,
   },
   overSummaryScroll: {
     flex: 1,
-    minHeight: 22,
+    minHeight: 20,
     backgroundColor: 'rgba(0,0,0,0.35)',
     borderRadius: 4,
-    paddingVertical: 2,
+    paddingVertical: 1,
     paddingHorizontal: 4,
   },
   overSummaryScrollContent: {
