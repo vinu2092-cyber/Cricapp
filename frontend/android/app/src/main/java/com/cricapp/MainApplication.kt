@@ -1,4 +1,4 @@
-package com.cricapp.live
+package com.cricapp
 
 import android.app.Application
 import android.content.res.Configuration
@@ -15,7 +15,6 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
-import com.cricapp.live.floatingwidget.FloatingWidgetPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -24,8 +23,6 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
-              // Add FloatingWidgetPackage for native overlay functionality
-              add(FloatingWidgetPackage())
               // Packages that cannot be autolinked yet can be added manually here, for example:
               // add(MyReactNativePackage())
             }

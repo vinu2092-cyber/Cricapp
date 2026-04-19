@@ -91,6 +91,9 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.cricapp.live"
     }
   }
 }
