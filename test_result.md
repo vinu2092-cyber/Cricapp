@@ -180,3 +180,54 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "All 3 phases of v1.0.8 implementation complete. Phase 1: Search bar now searches globally across all tabs and auto-dismisses on navigation. Phase 2: Commentary DB with Sync-on-Open gap detection and 3-day auto-cleanup. Phase 3: Player photos using Cricbuzz CDN with proper fallback. Ready for comprehensive testing. Note: This is a React Native/Expo app - testing will require actual device/emulator or manual verification as browser-based testing is not applicable."
+
+
+# ==================== v1.0.11 CHANGELOG ====================
+# 3 user-reported fixes implemented (no testing agent run per user request):
+#
+# TASK 1 - Scoreboard cleanup
+#   - Removed "THIS OVER" chip strip (unreliable recentOvsStr data)
+#   - Status text now replaces full team names with shortName (e.g.
+#     "Lucknow Super Giants need 88 runs" → "LSG need 88 runs"), saving
+#     horizontal space at the top of the scoreboard.
+#
+# TASK 2 - Commentary correctness
+#   - Removed keyword-based bold/uppercase/red highlighting of FOUR / SIX /
+#     OUT / WICKET / BOWLED etc. in narrative prose. Previously commentators'
+#     metaphorical use ("OUT so perfectly", "BOWLED into the WICKET") was
+#     rendered as though a real dismissal had occurred.
+#   - OUT / SIX / FOUR highlighting is now driven ONLY by the ball's actual
+#     event type (Cricbuzz eventtype + runs fallback).
+#   - Added structured-runs fallback to event detection in api.ts so a ball
+#     worth 6/4 runs renders the SIX / FOUR badge even when eventtype is
+#     blank (fixes reported SIX appearing as normal text).
+#   - Removed duplicate "last ball" info box inside CricketField (it was
+#     late-updating / appearing empty).
+#   - Added safety: empty / whitespace-only commentary rows are filtered
+#     out before rendering, and the red wicket event card only renders
+#     once actual wicket text (>20 chars) has arrived — eliminates the
+#     empty pink box the user circled.
+#
+# TASK 3 - AdMob Rewarded ad UX
+#   - Verified rewarded Ad Unit: ca-app-pub-9675798593675825/6702704058 ✓
+#   - Preload error backoff tightened from 3-10s to 1.5-4s so an ad is
+#     almost always ready when user taps Unlock.
+#   - Added AppState 'active' + 60s keep-alive hooks to re-arm the preload
+#     whenever the rewarded ad is absent.
+#   - showRewardedAd() no longer shows any "Ad Not Available" alert. On
+#     preload miss it silently retries the on-demand load until an ad
+#     arrives or a 45s global cap elapses. Button shows a loading spinner
+#     throughout — user ALWAYS sees an ad once one loads.
+#   - Fixed progress-bar inconsistency: Pro unlock progress was /2 in the
+#     UI but handler needed 3 ads to unlock. Now consistently /3.
+#
+# Files touched:
+#   frontend/app/match/[id].tsx
+#   frontend/src/components/CommentarySection.tsx
+#   frontend/src/components/CricketField.tsx
+#   frontend/src/services/api.ts
+#   frontend/src/context/AdMobContext.native.tsx
+#
+# Version bump: ready for 1.0.11 (app.json versionCode/version to be
+# bumped by CI pipeline on "Save to GitHub" per user's standing workflow).
+# ============================================================

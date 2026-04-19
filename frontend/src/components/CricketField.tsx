@@ -166,36 +166,10 @@ const CricketField: React.FC<CricketFieldProps> = ({
         <View style={styles.boundaryRope} />
       </View>
 
-      {/* Last Ball Info - Hide if over is '0' or empty */}
-      {lastCommentary && lastCommentary.over && lastCommentary.over !== '0' && /\d/.test(lastCommentary.over) && (
-        <View style={[styles.lastBallInfo, { borderLeftColor: getEventColor(lastCommentary.event) }]}>
-          <View style={styles.lastBallHeader}>
-            <Text style={styles.lastBallOver}>{lastCommentary.over}</Text>
-            {lastCommentary.event && lastCommentary.event !== 'normal' && (
-              <View style={[styles.eventBadge, { backgroundColor: getEventColor(lastCommentary.event) }]}>
-                <Text style={styles.eventText}>
-                  {lastCommentary.event?.toUpperCase()}
-                </Text>
-              </View>
-            )}
-            {lastCommentary.runs !== undefined && lastCommentary.runs > 0 && (
-              <Text style={styles.runsText}>+{lastCommentary.runs}</Text>
-            )}
-          </View>
-          <Text style={styles.lastBallText} numberOfLines={2}>
-            {cleanDisplayText(lastCommentary.english)}
-          </Text>
-        </View>
-      )}
-      
-      {/* Status text only box - when over is 0 or missing */}
-      {lastCommentary && (!lastCommentary.over || lastCommentary.over === '0' || !/\d/.test(lastCommentary.over)) && (
-        <View style={[styles.lastBallInfo, { borderLeftColor: '#4CAF50' }]}>
-          <Text style={styles.lastBallText} numberOfLines={2}>
-            {cleanDisplayText(lastCommentary.english)}
-          </Text>
-        </View>
-      )}
+      {/* Last Ball Info box REMOVED (v1.0.11) — per user request.
+          The same info already shows at the top of the Commentary feed
+          (first row), and the extra box here was frequently empty /
+          late-updating, creating a visual gap users reported as a bug. */}
 
       {/* Legend */}
       <View style={styles.legend}>

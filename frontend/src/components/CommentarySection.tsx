@@ -73,42 +73,34 @@ function lookupImg(name: string | undefined, map?: Record<string, string>): stri
   return map[key];
 }
 
-// ============ BOLD TEXT FORMATTING ENGINE ============
-
-// Keywords to bold (case-insensitive match, display in uppercase)
-const BOLD_KEYWORDS = [
-  'FOUR', 'SIX', 'OUT', 'WICKET', 'FIFTY', 'CENTURY', 'HUNDRED',
-  'CAUGHT', 'BOWLED', 'LBW', 'STUMPED', 'RUN OUT', 'HIT WICKET',
-  'DROPPED', 'NO BALL', 'WIDE', 'FREE HIT', 'DRS', 'NOT OUT',
-  'MAIDEN', 'HAT-TRICK', 'DUCK'
-];
+// ============ TEXT FORMATTING ENGINE (v1.0.11 simplified) ============
+//
+// User reported that commentators' metaphorical use of words like "OUT",
+// "WICKET", "FOUR", "SIX", "BOWLED" was getting BOLD + UPPERCASED + RED
+// in the app — looking like a real dismissal when it wasn't (e.g. "split
+// backward point and short third man OUT so perfectly" is praise, not a
+// wicket). We now do NOT perform keyword-based highlighting at all for
+// regular commentary rows — the actual event type (six/four/wicket) is
+// conveyed via the colored event badge + the Cricbuzz-style event card.
+//
+// Only player names in "Bowler to Batter, …" remain bolded because those
+// are unambiguous and help readability.
 
 // Pattern: "PlayerName to PlayerName" - detect bowler-to-batter format
 const BOWLER_BATTER_REGEX = /^([A-Z][a-z]+(?: [A-Z][a-z]+)*)\s+to\s+([A-Z][a-z]+(?: [A-Z][a-z]+)*)/;
 
-// Pattern: Player stats like "Virat Kohli 69(38)*" or "50(32)"
-const PLAYER_STAT_REGEX = /([A-Z][a-z]+(?: [A-Z][a-z]+)+)\s+(\d+\*?\(\d+\)\*?)/g;
-
-// Pattern: Score stats like "69(38)*", "50(32)", "3/24"
-const SCORE_STAT_REGEX = /\b(\d+\*?\(\d+\)\*?)\b/g;
-
 // Pattern: Bowling figures like "[3.0-0-18-4]"
 const BOWLING_FIGURES_REGEX = /\[[\d.]+-\d+-\d+-\d+\]/g;
-
-// Pattern: Stats headers - lines that look like record titles
-const STAT_HEADER_REGEX = /^((?:[A-Z][a-zA-Z']*\s+){1,6}(?:in|for|vs|at|of|against)\s+.+):?\s*$/m;
 
 // Pattern: Speaker name for quotes (e.g., "Virat Kohli:" at start of line)
 const SPEAKER_REGEX = /^([A-Z][a-z]+(?: [A-Z][a-z]+)+):\s*/;
 
 /**
- * Parse commentary text into rich segments for rendering.
- *
- * `isWicketRow` controls whether OUT/WICKET/CAUGHT-style keywords get the
- * RED color treatment. When false (default), these keywords are still bolded
- * & uppercased for emphasis but NOT colored red — this prevents the old bug
- * where commentators' metaphorical "run OUT" / "thrown OUT" in narrative
- * prose turned red even when no wicket actually fell.
+ * Parse commentary text into light-weight segments.
+ * - Speaker prefix (e.g., "Virat Kohli:") → bold blue
+ * - "Bowler to Batter, …" lead-in → both names bold
+ * - Bowling figures like "[3.0-0-18-4]" → bold blue
+ * - Everything else → plain text, NO uppercase / NO keyword coloring
  */
 function parseRichText(text: string, isWicketRow: boolean = false): Array<{ text: string; bold: boolean; color?: string }> {
   if (!text) return [];
@@ -116,7 +108,7 @@ function parseRichText(text: string, isWicketRow: boolean = false): Array<{ text
   const segments: Array<{ text: string; bold: boolean; color?: string }> = [];
   let remaining = text;
 
-  // Check for speaker pattern (post-match quotes)
+  // Speaker pattern (post-match quotes)
   const speakerMatch = remaining.match(SPEAKER_REGEX);
   if (speakerMatch) {
     segments.push({ text: speakerMatch[1] + ':', bold: true, color: '#1565C0' });
@@ -124,14 +116,13 @@ function parseRichText(text: string, isWicketRow: boolean = false): Array<{ text
     if (remaining.startsWith(' ')) remaining = remaining.slice(1);
   }
 
-  // Check for bowler-to-batter pattern at start
+  // Bowler-to-batter lead-in
   const btbMatch = remaining.match(BOWLER_BATTER_REGEX);
   if (btbMatch && !speakerMatch) {
-    segments.push({ text: btbMatch[1], bold: true }); // Bowler name bold
+    segments.push({ text: btbMatch[1], bold: true }); // Bowler
     segments.push({ text: ' to ', bold: false });
-    segments.push({ text: btbMatch[2], bold: true }); // Batter name bold
+    segments.push({ text: btbMatch[2], bold: true }); // Batter
     remaining = remaining.slice(btbMatch[0].length);
-    // Check for comma + result after names
     const afterNames = remaining.match(/^,\s*/);
     if (afterNames) {
       segments.push({ text: ', ', bold: false });
@@ -139,56 +130,20 @@ function parseRichText(text: string, isWicketRow: boolean = false): Array<{ text
     }
   }
 
-  // Process remaining text for bold keywords
+  // Bowling figures highlighting in the remaining text
   if (remaining.length > 0) {
-    // Build regex for all bold keywords
-    const keywordPattern = BOLD_KEYWORDS.map(k => k.replace(/\s+/g, '\\s+')).join('|');
-    const keywordRegex = new RegExp(`\\b(${keywordPattern})\\b`, 'gi');
-
-    let lastIndex = 0;
-    let match;
-
-    while ((match = keywordRegex.exec(remaining)) !== null) {
-      // Add text before the keyword
-      if (match.index > lastIndex) {
-        segments.push({ text: remaining.slice(lastIndex, match.index), bold: false });
+    const matches = Array.from(remaining.matchAll(BOWLING_FIGURES_REGEX));
+    if (matches.length === 0) {
+      segments.push({ text: remaining, bold: false });
+    } else {
+      let cursor = 0;
+      for (const m of matches) {
+        const idx = m.index ?? 0;
+        if (idx > cursor) segments.push({ text: remaining.slice(cursor, idx), bold: false });
+        segments.push({ text: m[0], bold: true, color: '#1565C0' });
+        cursor = idx + m[0].length;
       }
-
-      // Determine color for the keyword
-      const kw = match[1].toUpperCase();
-      let color: string | undefined;
-      if (kw === 'FOUR') color = '#4CAF50';
-      else if (kw === 'SIX') color = '#9C27B0';
-      // Wicket-family words ONLY colored red on confirmed wicket rows — stops
-      // metaphorical "thrown OUT / bowled around the park" in regular
-      // commentary from appearing as a red alarm keyword.
-      else if (isWicketRow && ['OUT', 'WICKET', 'CAUGHT', 'BOWLED', 'LBW', 'STUMPED', 'RUN OUT', 'HIT WICKET'].includes(kw)) color = '#FF4444';
-      else if (['FIFTY', 'CENTURY', 'HUNDRED'].includes(kw)) color = '#FF9800';
-      else if (kw === 'DROPPED') color = '#FF6B00';
-
-      segments.push({ text: match[1].toUpperCase(), bold: true, color });
-      lastIndex = match.index + match[1].length;
-    }
-
-    // Add remaining text after last keyword
-    if (lastIndex < remaining.length) {
-      const tail = remaining.slice(lastIndex);
-      // Check for bowling figures
-      const bowlMatch = tail.match(BOWLING_FIGURES_REGEX);
-      if (bowlMatch) {
-        let tailRemaining = tail;
-        for (const bm of bowlMatch) {
-          const idx = tailRemaining.indexOf(bm);
-          if (idx > 0) {
-            segments.push({ text: tailRemaining.slice(0, idx), bold: false });
-          }
-          segments.push({ text: bm, bold: true, color: '#1565C0' });
-          tailRemaining = tailRemaining.slice(idx + bm.length);
-        }
-        if (tailRemaining) segments.push({ text: tailRemaining, bold: false });
-      } else {
-        segments.push({ text: tail, bold: false });
-      }
+      if (cursor < remaining.length) segments.push({ text: remaining.slice(cursor), bold: false });
     }
   }
 
@@ -439,17 +394,24 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   //
   // We also keep only the latest innings so completed matches don't show
   // over numbers from both innings mixed together (RR 19.4 + KKR 19.4).
+  //
+  // v1.0.11 — additionally drop rows whose `english` is empty / whitespace.
+  // These used to render an empty pink wicket card that appeared before the
+  // API finished streaming the wicket commentary text (user report).
   const displayedCommentary = React.useMemo(() => {
     if (!commentary || commentary.length === 0) return commentary || [];
 
+    // Step 0 — drop rows with no usable text so we never render empty cards
+    const nonEmpty = commentary.filter(c => (c.english || '').replace(/\\n|\\r/g, '').trim().length > 0);
+
     // Step 1 — innings filter (latest only)
-    const ids = commentary
+    const ids = nonEmpty
       .map(c => (typeof c.inningsId === 'number' ? c.inningsId : undefined))
       .filter((v): v is number => v !== undefined);
     const latestInnings = ids.length > 0 ? Math.max(...ids) : undefined;
     const innings = latestInnings === undefined
-      ? commentary
-      : commentary.filter(c => c.inningsId === undefined || c.inningsId === latestInnings);
+      ? nonEmpty
+      : nonEmpty.filter(c => c.inningsId === undefined || c.inningsId === latestInnings);
 
     // Step 2 — dedupe by (inningsId || 0, over). Keep the entry with the
     // LONGEST english text (= the most complete version of the ball).
@@ -586,7 +548,12 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           const eventType = detectEventType(item);
 
           // ===== Cricbuzz-style EVENT CARD rendering =====
-          if (eventType === 'wicket') {
+          // v1.0.11 — safety: if wicket row arrives with empty / very short
+          // text (Cricbuzz is still streaming commentary), skip the event
+          // card on this render pass. An empty pink card showing up for
+          // 5-10 seconds before the text lands was the bug users reported.
+          const wicketTextReady = !!(item.english && item.english.trim().length > 20);
+          if (eventType === 'wicket' && wicketTextReady) {
             const d = parseWicketDetails(item.english || '');
             const imgId = lookupImg(d.player, playerImgMap);
             return (

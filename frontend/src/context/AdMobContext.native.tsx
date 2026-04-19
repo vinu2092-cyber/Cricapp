@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback } from 'react';
-import { Alert, Platform, View } from 'react-native';
+import { Alert, AppState, Platform, View } from 'react-native';
 import mobileAds, {
   AdsConsent,
   AdsConsentStatus,
@@ -168,11 +168,13 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const errMsg = error?.message || 'No details';
         console.warn(`[AdMob] Rewarded preload ERROR: code=${errCode}, msg=${errMsg}, full=${JSON.stringify(error)}`);
         setIsRewardedAdReady(false);
-        // Clean up failed instance and create fresh one. Tighter backoff so
-        // users rarely wait long for a rewarded ad — 3-10s (was 5-30s).
+        // Clean up failed instance and create fresh one. Aggressive retry
+        // (1.5-4s) so a rewarded ad is almost always pre-loaded whenever
+        // user taps Unlock. User explicitly asked for "ads preload rehni
+        // chahiye har time par".
         cleanupRewardedListeners();
         rewardedAdRef.current = null;
-        const retryDelay = 3000 + Math.random() * 7000; // 3-10s
+        const retryDelay = 1500 + Math.random() * 2500; // 1.5-4s
         setTimeout(() => {
           if (sdkInitialized) {
             console.log(`[AdMob] Retrying rewarded ad with FRESH instance after ${Math.round(retryDelay)}ms...`);
@@ -200,6 +202,29 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       cleanupRewardedListeners();
     };
   }, []);
+
+  // Re-arm rewarded preload whenever the app returns to the foreground so
+  // users coming back from a phone lock / app-switch always find an ad
+  // ready to show. Also fires periodic re-check every 60s in case both the
+  // initial load and ERROR-retry chain have somehow failed silently.
+  useEffect(() => {
+    const fgSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && sdkInitialized && !isRewardedAdReady && !isPro) {
+        console.log('[AdMob] App became active & rewarded not ready → preloading…');
+        setupAndLoadRewardedAd();
+      }
+    });
+    const keepalive = setInterval(() => {
+      if (sdkInitialized && !isRewardedAdReady && !isPro && !rewardedAdRef.current) {
+        console.log('[AdMob] Keep-alive tick: rewarded ad absent → preloading…');
+        setupAndLoadRewardedAd();
+      }
+    }, 60000);
+    return () => {
+      fgSub.remove();
+      clearInterval(keepalive);
+    };
+  }, [isRewardedAdReady, isPro, setupAndLoadRewardedAd]);
 
   // ========== APP OPEN AD — PRELOAD CYCLE ==========
   //
@@ -382,22 +407,30 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // ========== SHOW REWARDED AD ==========
+  // v1.0.11 — ads MUST always appear on click. Flow:
+  //   1. If a pre-loaded instance is ready → show immediately (fast path).
+  //   2. Else — create a fresh on-demand ad and keep the promise pending
+  //      until LOADED fires, then show it. No user-facing "Ad Not Available"
+  //      alert; instead we silently retry with a brand-new instance on every
+  //      ERROR until we succeed or the caller aborts the Modal.
+  //      A soft 45-second global cap returns false so the Modal never hangs
+  //      forever; in practice Google's SDK loads in 2-5s.
   const showRewardedAd = async (): Promise<boolean> => {
     console.log('[AdMob] showRewardedAd called, isReady:', isRewardedAdReady);
 
+    // FAST PATH — a preloaded ad is ready, show immediately.
     if (isRewardedAdReady && rewardedAdRef.current) {
-      // Ad is pre-loaded, show it directly
       return new Promise((resolve) => {
         rewardResolverRef.current = resolve;
         rewardEarnedRef.current = false;
 
         const safetyTimeout = setTimeout(() => {
-          console.log('[AdMob] showRewardedAd safety timeout (25s)');
+          console.log('[AdMob] showRewardedAd safety timeout (30s)');
           if (rewardResolverRef.current) {
             rewardResolverRef.current(rewardEarnedRef.current);
             rewardResolverRef.current = null;
           }
-        }, 25000);
+        }, 30000);
 
         try {
           console.log('[AdMob] Showing pre-loaded rewarded ad...');
@@ -406,67 +439,90 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           console.warn('[AdMob] rewardedAd.show() failed:', err);
           clearTimeout(safetyTimeout);
           rewardResolverRef.current = null;
+          // Fall through to on-demand path below
           resolve(false);
+          // Kick off a fresh preload so subsequent presses work
+          setTimeout(() => setupAndLoadRewardedAd(), 200);
         }
       });
     }
 
-    // Ad not ready - try on-demand load with real ad unit
-    console.log('[AdMob] Rewarded ad not ready, attempting on-demand load...');
+    // ON-DEMAND PATH — preload wasn't ready. Retry loop until an ad loads.
+    // We intentionally DO NOT show an alert on failure — user-visible
+    // "Ad Not Available" is the bug the user reported. Instead we keep
+    // asking AdMob for an ad until one lands, or a 45s global cap expires.
+    console.log('[AdMob] Rewarded ad not ready → on-demand retry loop starting...');
     return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        console.log('[AdMob] On-demand rewarded ad TIMEOUT (15s)');
-        Alert.alert(
-          'Ad Not Available',
-          'Rewarded ad is not available right now. Please try again in a moment.',
-        );
-        resolve(false);
-      }, 15000);
+      const globalStart = Date.now();
+      const GLOBAL_CAP_MS = 45000;
+      let settled = false;
+      let currentAd: ReturnType<typeof RewardedAd.createForAdRequest> | null = null;
 
-      try {
-        const onDemandAd = RewardedAd.createForAdRequest(AD_IDS.rewarded, {});
-        let handled = false;
+      const finish = (result: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
 
-        onDemandAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
-          if (handled) return;
-          handled = true;
-          console.log('[AdMob] On-demand rewarded ad LOADED!');
-          clearTimeout(timeout);
+      const tryLoad = () => {
+        if (settled) return;
+        if (Date.now() - globalStart > GLOBAL_CAP_MS) {
+          console.log('[AdMob] On-demand retry loop hit 45s global cap — giving up');
+          finish(false);
+          // Make sure a fresh preload is in flight for next time
+          setTimeout(() => setupAndLoadRewardedAd(), 500);
+          return;
+        }
 
+        try {
+          const ad = RewardedAd.createForAdRequest(AD_IDS.rewarded, {});
+          currentAd = ad;
+          let thisAdHandled = false;
           let rewarded = false;
-          onDemandAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
-            console.log('[AdMob] On-demand: REWARD EARNED!');
+
+          ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+            if (thisAdHandled) return;
+            thisAdHandled = true;
+            console.log('[AdMob] On-demand rewarded ad LOADED — showing');
+            try { ad.show(); } catch (e) {
+              console.warn('[AdMob] On-demand show failed:', e);
+              // Treat as error → retry with a fresh instance
+              setTimeout(tryLoad, 500);
+            }
+          });
+
+          ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+            console.log('[AdMob] On-demand: REWARD EARNED');
             rewarded = true;
           });
-          onDemandAd.addAdEventListener(AdEventType.CLOSED, () => {
-            console.log('[AdMob] On-demand: ad CLOSED, rewarded:', rewarded);
-            resolve(rewarded);
-            setTimeout(() => setupAndLoadRewardedAd(), 1000);
+
+          ad.addAdEventListener(AdEventType.CLOSED, () => {
+            console.log('[AdMob] On-demand: CLOSED, rewarded =', rewarded);
+            finish(rewarded);
+            // Preload next rewarded so subsequent presses are instant
+            setTimeout(() => setupAndLoadRewardedAd(), 500);
           });
 
-          try { onDemandAd.show(); } catch (showErr) {
-            console.warn('[AdMob] On-demand show failed:', showErr);
-            resolve(false);
-          }
-        });
+          ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
+            if (thisAdHandled) return;
+            thisAdHandled = true;
+            console.warn('[AdMob] On-demand ERROR:', error?.code, error?.message, '— retrying');
+            // Silent retry with a fresh instance after small backoff.
+            // Backoff grows slightly each attempt to respect AdMob quota.
+            const elapsed = Date.now() - globalStart;
+            const backoff = elapsed < 10000 ? 1500 : elapsed < 25000 ? 3000 : 5000;
+            setTimeout(tryLoad, backoff);
+          });
 
-        onDemandAd.addAdEventListener(AdEventType.ERROR, (error: any) => {
-          if (handled) return;
-          handled = true;
-          console.warn('[AdMob] On-demand ERROR:', error?.message, error?.code);
-          clearTimeout(timeout);
-          Alert.alert('Ad Not Available', 'No ad available right now. Please try again later.');
-          resolve(false);
-        });
+          console.log('[AdMob] On-demand: loading attempt…');
+          ad.load();
+        } catch (err) {
+          console.warn('[AdMob] On-demand EXCEPTION:', err);
+          setTimeout(tryLoad, 2000);
+        }
+      };
 
-        console.log('[AdMob] On-demand: loading rewarded ad...');
-        onDemandAd.load();
-      } catch (err) {
-        console.warn('[AdMob] On-demand EXCEPTION:', err);
-        clearTimeout(timeout);
-        Alert.alert('Ad Error', 'Something went wrong. Please try again.');
-        resolve(false);
-      }
+      tryLoad();
     });
   };
 

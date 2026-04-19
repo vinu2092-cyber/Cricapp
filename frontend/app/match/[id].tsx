@@ -690,13 +690,33 @@ export default function MatchDetail() {
               <Ionicons name="arrow-back" size={24} color="#1B5E20" />
             </TouchableOpacity>
             {/* Prefer status text (live context: "Day 3 Lunch", "Won by X runs")
-                over series name — more useful & prevents overlap with team scores. */}
+                over series name — more useful & prevents overlap with team scores.
+                We additionally replace full team names with their short-name (e.g.
+                "Lucknow Super Giants" → "LSG") so the strip stays compact on
+                phones — user reported full names eating too much space. */}
             <Text
               style={match.statusText ? styles.headerStatus : styles.seriesName}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              {match.statusText || match.seriesName}
+              {(() => {
+                const raw = match.statusText || match.seriesName || '';
+                if (!raw) return '';
+                let out = raw;
+                // Replace each team's full name with shortName (case-insensitive,
+                // word-boundary aware). Longest-first to avoid partial overlap.
+                const pairs = (match.teams || [])
+                  .map(t => ({ full: (t?.name || '').trim(), short: (t?.shortName || '').trim() }))
+                  .filter(p => p.full && p.short && p.full.toLowerCase() !== p.short.toLowerCase())
+                  .sort((a, b) => b.full.length - a.full.length);
+                for (const p of pairs) {
+                  try {
+                    const esc = p.full.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    out = out.replace(new RegExp(`\\b${esc}\\b`, 'gi'), p.short);
+                  } catch {}
+                }
+                return out;
+              })()}
             </Text>
             
             <View style={styles.headerActions}>
@@ -899,45 +919,10 @@ export default function MatchDetail() {
             </View>
           )}
 
-          {/* Recent over history — shows the CURRENT over's ball-by-ball
-              chips (including wides/no-balls). Moved to the very bottom of
-              the scoreboard per the reference image, right after bowler row. */}
-          {(match.status === 'live' || match.status === 'recent') && match.oSummary && (() => {
-            const full = match.oSummary || '';
-            let currentOverSummary = full;
-            if (full.includes('|')) {
-              const parts = full.split('|').map(p => p.trim()).filter(Boolean);
-              currentOverSummary = parts[parts.length - 1] || full;
-            } else if (full.includes(',')) {
-              const entries = full.split(',').map(s => s.trim()).filter(Boolean);
-              const groups = new Map<number, string[]>();
-              for (const e of entries) {
-                const ball = parseFloat(e.split(/\s+/)[0]);
-                if (!isNaN(ball)) {
-                  const over = Math.floor(ball);
-                  if (!groups.has(over)) groups.set(over, []);
-                  groups.get(over)!.push(e);
-                }
-              }
-              if (groups.size > 0) {
-                const lastOver = Math.max(...Array.from(groups.keys()));
-                currentOverSummary = groups.get(lastOver)!.join(', ');
-              }
-            }
-            return (
-              <View style={styles.overSummaryContainer}>
-                <Text style={styles.overSummaryTitle}>THIS OVER</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.overSummaryScroll}
-                  contentContainerStyle={styles.overSummaryScrollContent}
-                >
-                  {formatOverSummary(currentOverSummary, match.currentOver)}
-                </ScrollView>
-              </View>
-            );
-          })()}
+          {/* THIS OVER chip strip removed per user request (v1.0.11): the
+              recentOvsStr data was unreliable — often showed stale / mis-
+              sequenced balls ("1 0 6 1 0 0 | 0 0" when over was only at ball 1).
+              Users can see ball-by-ball in the commentary feed below. */}
 
           {/* Pro Overlay Toggles — moved to a pin button in the header actions row
               above (line 731) for screen-space optimisation. Removed from here so the
@@ -1047,12 +1032,12 @@ export default function MatchDetail() {
               ))}
             </View>
 
-            {/* Progress Bar */}
+            {/* Progress Bar — 3 ads required for Pro unlock (matches handler logic) */}
             <View style={styles.progressWrap}>
               <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${(adsWatchedCount / 2) * 100}%` }]} />
+                <View style={[styles.progressFill, { width: `${(adsWatchedCount / 3) * 100}%` }]} />
               </View>
-              <Text style={styles.progressLabel}>{adsWatchedCount}/2 Ads Watched</Text>
+              <Text style={styles.progressLabel}>{adsWatchedCount}/3 Ads Watched</Text>
             </View>
 
             <TouchableOpacity
@@ -1066,7 +1051,7 @@ export default function MatchDetail() {
                 <Ionicons name="play-circle" size={22} color="#FFF" />
               )}
               <Text style={styles.watchBtnTxt}>
-                {adWatchLoading ? 'Loading ad…' : `Watch Ad ${adsWatchedCount + 1} of 2`}
+                {adWatchLoading ? 'Loading ad…' : `Watch Ad ${adsWatchedCount + 1} of 3`}
               </Text>
             </TouchableOpacity>
 

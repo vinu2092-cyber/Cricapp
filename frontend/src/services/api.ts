@@ -531,6 +531,41 @@ function mapEvent(e?: string): Commentary['event'] {
   return 'normal';
 }
 
+/**
+ * Decide the display event for a ball using (a) Cricbuzz's eventtype/event
+ * field first, then (b) a fallback inferred from the structured `runs` &
+ * `extras` fields when the API leaves eventtype blank.
+ *
+ * Why: v1.0.10 relied purely on `eventtype` — but Cricbuzz occasionally
+ * omits it for sixes/fours, making those balls render as "normal" text
+ * (user reported a SIX appearing as plain commentary). Using the numeric
+ * `runs` field as a safety net guarantees the purple SIX / green FOUR
+ * badge always shows on the right ball.
+ */
+function resolveEvent(rawC: any): Commentary['event'] {
+  const explicit = mapEvent(rawC?.eventtype || rawC?.event);
+  if (explicit !== 'normal') return explicit;
+
+  // Wide / no-ball detection from flags — event badge should reflect these
+  // too when eventtype is missing.
+  if (rawC?.isWide || rawC?.wide) return 'wide';
+
+  // Inspect the structured runs field (batRuns = runs off the bat, excluding
+  // extras). Pure 6/4 off the bat = six/four badge. 0 off bat with no extras
+  // = dot ball.
+  const batR = rawC?.batRuns ?? rawC?.batruns;
+  const totalR = rawC?.runs ?? rawC?.totalRuns ?? rawC?.score;
+  const run = batR !== undefined && batR !== null ? Number(batR)
+            : (totalR !== undefined && totalR !== null ? Number(totalR) : undefined);
+  if (run === 6) return 'six';
+  if (run === 4) return 'four';
+  if (run === 0) {
+    const extras = rawC?.extras ?? rawC?.extrasType ?? rawC?.extraType;
+    if (!extras && !rawC?.isNoBall && !rawC?.noball && !rawC?.noBall) return 'dot';
+  }
+  return 'normal';
+}
+
 // Extract numeric runs from raw commentary data
 function extractRuns(c: any): number | undefined {
   // Cricbuzz fields for runs scored on a ball
@@ -577,7 +612,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
             id: `${matchId}-${overVal}-${text.substring(0,50).replace(/[^a-zA-Z0-9]/g, '')}`,
             over: overVal,
             english: text,
-            event: mapEvent(c.eventtype || c.event),
+            event: resolveEvent(c),
             runs: extractRuns(c),
             extras: extractExtras(c),
             inningsId: iid !== undefined && iid !== null ? Number(iid) : undefined,
@@ -595,7 +630,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
               id: `${matchId}-${overVal}-${text.substring(0,50).replace(/[^a-zA-Z0-9]/g, '')}`,
               over: overVal,
               english: text,
-              event: mapEvent(c[j].eventtype || c[j].event),
+              event: resolveEvent(c[j]),
               runs: extractRuns(c[j]),
               extras: extractExtras(c[j]),
               inningsId: iid !== undefined && iid !== null ? Number(iid) : undefined,
@@ -618,7 +653,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
           id: `${matchId}-${overVal}-${text.substring(0,50).replace(/[^a-zA-Z0-9]/g, '')}`,
           over: overVal,
           english: text,
-          event: mapEvent(c.event || c.eventtype),
+          event: resolveEvent(c),
           runs: extractRuns(c),
           extras: extractExtras(c),
           inningsId: iid !== undefined && iid !== null ? Number(iid) : undefined,
