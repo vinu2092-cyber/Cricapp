@@ -1,0 +1,200 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ImageBackground,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { usePro } from '../context/ProContext';
+import { useInbox } from '../context/InboxContext';
+import LogoFireTail from './LogoFireTail';
+
+interface HeaderProps {
+  onUnlockPro?: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onUnlockPro }) => {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { isPro, getProTimeRemaining } = usePro();
+  const { unreadCount } = useInbox();
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+
+  useEffect(() => {
+    if (isPro) {
+      const updateTimer = () => {
+        const remaining = getProTimeRemaining();
+        if (remaining > 0) {
+          const minutes = Math.floor(remaining / 60000);
+          const seconds = Math.floor((remaining % 60000) / 1000);
+          setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+        } else {
+          setTimeRemaining('');
+        }
+      };
+      
+      updateTimer();
+      const interval = setInterval(updateTimer, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [isPro, getProTimeRemaining]);
+
+  return (
+    <ImageBackground
+      source={require('../../assets/images/header-grass.png')}
+      style={[styles.headerBackground, { paddingTop: insets.top, height: 125 + insets.top }]}
+      resizeMode="cover"
+    >
+      <View style={styles.headerContent}>
+        <View style={styles.logoContainer}>
+          <LogoFireTail size={100} durationMs={30000}>
+            <Image
+              source={require('../../assets/images/logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </LogoFireTail>
+        </View>
+        <View style={styles.rightButtons}>
+          {/* Inbox Button */}
+          <TouchableOpacity
+            style={styles.inboxButton}
+            onPress={() => router.push('/inbox')}
+            activeOpacity={0.8}
+            data-testid="inbox-icon"
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#FFF" />
+            {unreadCount > 0 && (
+              <View style={styles.badge} data-testid="inbox-badge">
+                <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          {/* Settings Button */}
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={() => router.push('/settings')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="settings-outline" size={22} color="#FFF" />
+          </TouchableOpacity>
+          {/* Pro Button */}
+          <TouchableOpacity
+            style={[styles.proButton, isPro && styles.proButtonActive]}
+            onPress={onUnlockPro}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={isPro ? 'checkmark-circle' : 'lock-closed'}
+              size={16}
+              color={isPro ? '#FFF' : '#1a1a1a'}
+            />
+            <View style={styles.proButtonContent}>
+              <Text style={[styles.proButtonText, isPro && styles.proButtonTextActive]}>
+                {isPro ? 'PRO' : 'Unlock'}
+              </Text>
+              {isPro && timeRemaining && (
+                <Text style={styles.proTimerText}>{timeRemaining}</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ImageBackground>
+  );
+};
+
+const styles = StyleSheet.create({
+  headerBackground: {
+    width: '100%',
+    height: 125,
+    justifyContent: 'flex-end',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+  },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logo: {
+    width: 85,
+    height: 85,
+  },
+  rightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  // Inbox icon with badge
+  inboxButton: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    padding: 8,
+    borderRadius: 20,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFF',
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  settingsButton: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    padding: 8,
+    borderRadius: 20,
+  },
+  proButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
+  },
+  proButtonActive: {
+    backgroundColor: '#4CAF50',
+  },
+  proButtonContent: {
+    alignItems: 'center',
+  },
+  proButtonText: {
+    color: '#1a1a1a',
+    fontWeight: 'bold',
+    fontSize: 11,
+  },
+  proButtonTextActive: {
+    color: '#FFF',
+  },
+  proTimerText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '600',
+    opacity: 0.9,
+  },
+});
+
+export default Header;
