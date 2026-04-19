@@ -12,6 +12,8 @@ export interface Batsman {
   name: string;
   runs: number;
   balls: number;
+  fours?: number;
+  sixes?: number;
   isStriker: boolean;
 }
 

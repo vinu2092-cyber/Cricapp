@@ -828,54 +828,87 @@ export default function MatchDetail() {
             </View>
           </View>
 
-          {/* Current Batsmen — single row with title on left */}
+          {/*
+            Cricbuzz-style structured stat tables. Batters and bowler live in
+            their own small tables with column headers (R/B/4s/6s/SR and
+            O/M/R/W/ECO). Replaces the compact text rows "CREASE *name 4(4)"
+            and "BOWLER name 3.2-0-18-2" per user's reference image.
+          */}
           {(match.status === 'live' || match.status === 'recent') && match.batsmen && match.batsmen.length > 0 && (
-            <View style={styles.batsmenContainer}>
-              <Text style={styles.batsmenTitle}>{match.status === 'live' ? 'CREASE' : 'LAST'}</Text>
-              <View style={styles.batsmenRow}>
-                {match.batsmen.map((bat, idx) => (
-                  <View key={idx} style={styles.batsmanItem}>
-                    <Text style={[styles.batsmanName, bat.isStriker && styles.strikerName]} numberOfLines={1}>
-                      {bat.isStriker ? '*' : ''}{bat.name}
-                    </Text>
-                    <Text style={styles.batsmanScore}>
-                      {bat.runs}({bat.balls})
-                    </Text>
-                  </View>
-                ))}
+            <View style={styles.statTableContainer}>
+              {/* Batter header */}
+              <View style={styles.statTableHeaderRow}>
+                <Text style={[styles.statHeaderCell, styles.statNameCol]}>Batter</Text>
+                <Text style={[styles.statHeaderCell, styles.statNumCol]}>R</Text>
+                <Text style={[styles.statHeaderCell, styles.statNumCol]}>B</Text>
+                <Text style={[styles.statHeaderCell, styles.statNumCol]}>4s</Text>
+                <Text style={[styles.statHeaderCell, styles.statNumCol]}>6s</Text>
+                <Text style={[styles.statHeaderCell, styles.statSrCol]}>SR</Text>
               </View>
+              {/* Batter rows */}
+              {match.batsmen.map((bat, idx) => {
+                const sr = bat.balls > 0 ? ((bat.runs / bat.balls) * 100).toFixed(2) : '0.00';
+                return (
+                  <View key={idx} style={styles.statTableRow}>
+                    <Text style={[styles.statPlayerName, styles.statNameCol]} numberOfLines={1}>
+                      {bat.name}{bat.isStriker ? ' *' : ''}
+                    </Text>
+                    <Text style={[styles.statValueCell, styles.statNumCol]}>{bat.runs}</Text>
+                    <Text style={[styles.statValueCell, styles.statNumCol]}>{bat.balls}</Text>
+                    <Text style={[styles.statValueCell, styles.statNumCol]}>{bat.fours ?? 0}</Text>
+                    <Text style={[styles.statValueCell, styles.statNumCol]}>{bat.sixes ?? 0}</Text>
+                    <Text style={[styles.statValueCell, styles.statSrCol]}>{sr}</Text>
+                  </View>
+                );
+              })}
             </View>
           )}
 
-          {/* Current Bowler — single row: "BOWLER  Jasprit Bumrah  3.2-0-18-2" */}
           {(match.status === 'live' || match.status === 'recent') && match.bowler && match.bowler.name && (
-            <View style={styles.bowlerContainer}>
-              <Text style={styles.bowlerTitle}>BOWLER</Text>
-              <Text style={styles.bowlerName} numberOfLines={1}>
-                {match.bowler.name}
-              </Text>
-              <Text style={styles.bowlerFigures}>
-                {`${match.bowler.overs}-${match.bowler.maidens}-${match.bowler.runs}-${match.bowler.wickets}`}
-              </Text>
+            <View style={styles.statTableContainer}>
+              {/* Bowler header */}
+              <View style={styles.statTableHeaderRow}>
+                <Text style={[styles.statHeaderCell, styles.statNameCol]}>Bowler</Text>
+                <Text style={[styles.statHeaderCell, styles.statNumCol]}>O</Text>
+                <Text style={[styles.statHeaderCell, styles.statNumCol]}>M</Text>
+                <Text style={[styles.statHeaderCell, styles.statNumCol]}>R</Text>
+                <Text style={[styles.statHeaderCell, styles.statNumCol]}>W</Text>
+                <Text style={[styles.statHeaderCell, styles.statSrCol]}>ECO</Text>
+              </View>
+              {/* Bowler row. ECO = runs / oversFloat (Cricbuzz stores overs as
+                  "1.2" meaning 1 over 2 balls; we convert to 1.333... balls). */}
+              {(() => {
+                const b = match.bowler!;
+                const oStr = String(b.overs || 0);
+                const [whole, ballsPart] = oStr.split('.');
+                const totalBalls = (Number(whole) || 0) * 6 + (Number(ballsPart) || 0);
+                const eco = totalBalls > 0 ? ((b.runs * 6) / totalBalls).toFixed(2) : '0.00';
+                return (
+                  <View style={styles.statTableRow}>
+                    <Text style={[styles.statPlayerName, styles.statNameCol]} numberOfLines={1}>
+                      {b.name} *
+                    </Text>
+                    <Text style={[styles.statValueCell, styles.statNumCol]}>{b.overs}</Text>
+                    <Text style={[styles.statValueCell, styles.statNumCol]}>{b.maidens}</Text>
+                    <Text style={[styles.statValueCell, styles.statNumCol]}>{b.runs}</Text>
+                    <Text style={[styles.statValueCell, styles.statNumCol]}>{b.wickets}</Text>
+                    <Text style={[styles.statValueCell, styles.statSrCol]}>{eco}</Text>
+                  </View>
+                );
+              })()}
             </View>
           )}
 
-          {/* Recent Overs — shows ONLY the current / ongoing over.
-              Cricbuzz's `recentOvsStr` can include multiple overs separated
-              by `|` or `,`. User wants a single-over window: "is over mein
-              jo bhi balls daali hain (including wides / no-balls) bas wohi
-              dikhe". On bowler change the next over's data naturally takes
-              over (old balls are dropped by this trim). */}
+          {/* Recent over history — shows the CURRENT over's ball-by-ball
+              chips (including wides/no-balls). Moved to the very bottom of
+              the scoreboard per the reference image, right after bowler row. */}
           {(match.status === 'live' || match.status === 'recent') && match.oSummary && (() => {
             const full = match.oSummary || '';
-            // Prefer the LAST segment after the final `|` (space-separated format)
-            // OR the LAST over's comma-separated group (cricbuzz recentOvsStr).
             let currentOverSummary = full;
             if (full.includes('|')) {
               const parts = full.split('|').map(p => p.trim()).filter(Boolean);
               currentOverSummary = parts[parts.length - 1] || full;
             } else if (full.includes(',')) {
-              // Group entries by floor(over) and keep the last group
               const entries = full.split(',').map(s => s.trim()).filter(Boolean);
               const groups = new Map<number, string[]>();
               for (const e of entries) {
@@ -1059,13 +1092,14 @@ export default function MatchDetail() {
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-// Scoreboard minimum height — user requested ~20% larger scoreboard. Bumped
-// 14% → 18% of screen height so the new bowler row + taller fonts fit without
-// forcing overflow. Max cap removed earlier so batsmen / RECENT rows always
-// stay visible regardless of device height.
+// Scoreboard sizing. User requested a significantly taller scoreboard to
+// fit the Cricbuzz-style batter / bowler tables. We bumped minHeight to
+// 26% of screen (from 18%) so the new table rows fit comfortably without
+// overlapping on short / zoomed phones. Max cap removed earlier so batter
+// rows + THIS OVER strip are always fully visible when the user scrolls.
 const IS_SHORT_SCREEN = SCREEN_H < 700;
-const SCOREBOARD_MAX_HEIGHT = Math.round(SCREEN_H * (IS_SHORT_SCREEN ? 0.40 : 0.34));
-const SCOREBOARD_MIN_HEIGHT = Math.round(SCREEN_H * 0.18);
+const SCOREBOARD_MAX_HEIGHT = Math.round(SCREEN_H * (IS_SHORT_SCREEN ? 0.50 : 0.45));
+const SCOREBOARD_MIN_HEIGHT = Math.round(SCREEN_H * 0.26);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
@@ -1107,6 +1141,60 @@ const styles = StyleSheet.create({
   overs: { color: '#616161', fontSize: 13, lineHeight: 16, fontWeight: '600' },
   statusTxt: { color: '#2E7D32', fontSize: 15, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
   statusTxtCentered: { color: '#2E7D32', fontSize: 15, textAlign: 'center', marginTop: 2, fontStyle: 'italic', maxWidth: 200, fontWeight: '700' },
+  // ========== Cricbuzz-style stat tables (Batter / Bowler) ==========
+  statTableContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+    marginTop: 4,
+  },
+  statTableHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+  },
+  statTableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  statHeaderCell: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#757575',
+  },
+  statPlayerName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1565C0',
+  },
+  statValueCell: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0D0D0D',
+    textAlign: 'center',
+  },
+  statNameCol: {
+    flex: 3,
+    textAlign: 'left',
+  },
+  statNumCol: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  statSrCol: {
+    flex: 1.4,
+    textAlign: 'right',
+    paddingRight: 4,
+  },
+
+  // Legacy compact rows — no longer used, kept for backward compatibility
+  // (some code paths / snapshots reference these; removing caused style-lookup
+  // warnings). Safe to delete in a later cleanup pass.
   batsmenContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1125,32 +1213,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     minWidth: 55,
   },
-  batsmenRow: {
-    flexDirection: 'row',
-    flex: 1,
-    justifyContent: 'space-around',
-  },
-  batsmanItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  batsmanName: {
-    color: '#212121',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  strikerName: {
-    color: '#C62828',
-    fontWeight: '900',
-  },
-  batsmanScore: {
-    color: '#0D0D0D',
-    fontSize: 15,
-    fontWeight: '900',
-  },
+  batsmenRow: { flexDirection: 'row', flex: 1, justifyContent: 'space-around' },
+  batsmanItem: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0 },
+  batsmanName: { color: '#212121', fontSize: 14, fontWeight: '700' },
+  strikerName: { color: '#C62828', fontWeight: '900' },
+  batsmanScore: { color: '#0D0D0D', fontSize: 15, fontWeight: '900' },
   bowlerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1161,26 +1228,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     gap: 9,
   },
-  bowlerTitle: {
-    color: '#E65100',
-    fontSize: 13,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    minWidth: 55,
-  },
-  bowlerName: {
-    color: '#0D0D0D',
-    fontSize: 14,
-    fontWeight: '800',
-    flexShrink: 1,
-  },
-  bowlerFigures: {
-    color: '#424242',
-    fontSize: 14,
-    fontWeight: '700',
-    marginLeft: 6,
-  },
+  bowlerTitle: { color: '#E65100', fontSize: 13, fontWeight: '900', minWidth: 55 },
+  bowlerName: { color: '#0D0D0D', fontSize: 14, fontWeight: '800', flexShrink: 1 },
+  bowlerFigures: { color: '#424242', fontSize: 14, fontWeight: '700', marginLeft: 6 },
   overSummaryContainer: {
     flexDirection: 'row',
     alignItems: 'center',

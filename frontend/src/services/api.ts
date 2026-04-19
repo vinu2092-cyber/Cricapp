@@ -762,16 +762,20 @@ export async function fetchMatchById(id: string): Promise<Match | null> {
           if (batsmanStriker.batname || batsmanStriker.name) {
             batsmen.push({
               name: batsmanStriker.batname || batsmanStriker.name || 'Batsman 1',
-              runs: batsmanStriker.batruns ?? batsmanStriker.runs ?? 0,
-              balls: batsmanStriker.batballs ?? batsmanStriker.balls ?? 0,
+              runs: Number(batsmanStriker.batruns ?? batsmanStriker.runs ?? 0),
+              balls: Number(batsmanStriker.batballs ?? batsmanStriker.balls ?? 0),
+              fours: Number(batsmanStriker.batfours ?? batsmanStriker.fours ?? 0),
+              sixes: Number(batsmanStriker.batsixes ?? batsmanStriker.sixes ?? 0),
               isStriker: true,
             });
           }
           if (batsmanNonStriker.batname || batsmanNonStriker.name) {
             batsmen.push({
               name: batsmanNonStriker.batname || batsmanNonStriker.name || 'Batsman 2',
-              runs: batsmanNonStriker.batruns ?? batsmanNonStriker.runs ?? 0,
-              balls: batsmanNonStriker.batballs ?? batsmanNonStriker.balls ?? 0,
+              runs: Number(batsmanNonStriker.batruns ?? batsmanNonStriker.runs ?? 0),
+              balls: Number(batsmanNonStriker.batballs ?? batsmanNonStriker.balls ?? 0),
+              fours: Number(batsmanNonStriker.batfours ?? batsmanNonStriker.fours ?? 0),
+              sixes: Number(batsmanNonStriker.batsixes ?? batsmanNonStriker.sixes ?? 0),
               isStriker: false,
             });
           }
