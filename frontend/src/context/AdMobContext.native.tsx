@@ -57,6 +57,18 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const rewardedAdRef = useRef<ReturnType<typeof RewardedAd.createForAdRequest> | null>(null);
   const rewardedListenersRef = useRef<(() => void)[]>([]);
 
+  // App Open ad preload refs. A single preloaded instance lives here ready to
+  // be shown at the next cold-start or resume. On CLOSED/ERROR we refill.
+  const appOpenAdRef = useRef<ReturnType<typeof AppOpenAd.createForAdRequest> | null>(null);
+  const appOpenLoadingRef = useRef(false);
+  const appOpenReadyRef = useRef(false);
+  const appOpenUnsubsRef = useRef<(() => void)[]>([]);
+
+  const cleanupAppOpenListeners = () => {
+    appOpenUnsubsRef.current.forEach(u => { try { u(); } catch {} });
+    appOpenUnsubsRef.current = [];
+  };
+
   const cleanupInterstitialListeners = () => {
     interstitialUnsubsRef.current.forEach(u => { try { u(); } catch {} });
     interstitialUnsubsRef.current = [];
@@ -88,14 +100,17 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const unsub2 = ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
         console.warn('[AdMob] Interstitial preload error:', error?.message || error);
         interstitialLoadingRef.current = false;
-        setTimeout(loadInterstitialAd, 10000);
+        // Faster retry so an interstitial is ready before the user hits the
+        // 50-60 click threshold. 10s was too slow — AdMob quota rarely fails
+        // twice in 5s, so this is safe.
+        setTimeout(loadInterstitialAd, 5000);
       });
 
       const unsub3 = ad.addAdEventListener(AdEventType.CLOSED, () => {
         console.log('[AdMob] Interstitial CLOSED, pre-loading next');
         interstitialRef.current = null;
         interstitialLoadingRef.current = false;
-        setTimeout(loadInterstitialAd, 1000);
+        setTimeout(loadInterstitialAd, 500); // near-instant refill
       });
 
       interstitialUnsubsRef.current = [unsub1, unsub2, unsub3];
@@ -143,8 +158,9 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           rewardResolverRef.current = null;
         }
 
-        // Create fresh instance with fresh listeners for next ad
-        setTimeout(() => setupAndLoadRewardedAd(), 1000);
+        // Create fresh instance with fresh listeners for next ad (fast refill
+        // so a user clicking "Watch Ad 2 of 3" doesn't wait 5+ seconds).
+        setTimeout(() => setupAndLoadRewardedAd(), 500);
       }));
 
       unsubs.push(ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
@@ -152,10 +168,11 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         const errMsg = error?.message || 'No details';
         console.warn(`[AdMob] Rewarded preload ERROR: code=${errCode}, msg=${errMsg}, full=${JSON.stringify(error)}`);
         setIsRewardedAdReady(false);
-        // Clean up failed instance and create fresh one with exponential backoff
+        // Clean up failed instance and create fresh one. Tighter backoff so
+        // users rarely wait long for a rewarded ad — 3-10s (was 5-30s).
         cleanupRewardedListeners();
         rewardedAdRef.current = null;
-        const retryDelay = Math.min(5000 * (1 + Math.random()), 30000);
+        const retryDelay = 3000 + Math.random() * 7000; // 3-10s
         setTimeout(() => {
           if (sdkInitialized) {
             console.log(`[AdMob] Retrying rewarded ad with FRESH instance after ${Math.round(retryDelay)}ms...`);
@@ -183,6 +200,49 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       cleanupRewardedListeners();
     };
   }, []);
+
+  // ========== APP OPEN AD — PRELOAD CYCLE ==========
+  //
+  // Must be defined BEFORE the SDK-init useEffect below because that effect
+  // references it in its dependency array — JS `const` has Temporal Dead
+  // Zone so any access before the `useCallback` line throws ReferenceError.
+  const preloadAppOpenAd = useCallback(() => {
+    if (isPro) return;
+    if (appOpenLoadingRef.current || appOpenReadyRef.current) return;
+    appOpenLoadingRef.current = true;
+    cleanupAppOpenListeners();
+    try {
+      const ad = AppOpenAd.createForAdRequest(AD_IDS.appOpen, {});
+      appOpenAdRef.current = ad;
+
+      const unsubs: (() => void)[] = [];
+      unsubs.push(ad.addAdEventListener(AdEventType.LOADED, () => {
+        console.log('[AdMob] App Open Ad PRE-LOADED (ready)');
+        appOpenReadyRef.current = true;
+        appOpenLoadingRef.current = false;
+      }));
+      unsubs.push(ad.addAdEventListener(AdEventType.CLOSED, () => {
+        console.log('[AdMob] App Open Ad CLOSED - refilling');
+        appOpenReadyRef.current = false;
+        appOpenAdRef.current = null;
+        cleanupAppOpenListeners();
+        setTimeout(preloadAppOpenAd, 500);
+      }));
+      unsubs.push(ad.addAdEventListener(AdEventType.ERROR, (err: any) => {
+        console.warn('[AdMob] App Open preload error:', err?.message || err);
+        appOpenReadyRef.current = false;
+        appOpenLoadingRef.current = false;
+        appOpenAdRef.current = null;
+        cleanupAppOpenListeners();
+        setTimeout(preloadAppOpenAd, 5000 + Math.random() * 5000);
+      }));
+      appOpenUnsubsRef.current = unsubs;
+      ad.load();
+    } catch (err) {
+      appOpenLoadingRef.current = false;
+      console.warn('[AdMob] preloadAppOpenAd exception:', err);
+    }
+  }, [isPro]);
 
   // ========== SDK INIT WITH UMP CONSENT ==========
   useEffect(() => {
@@ -236,12 +296,14 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         console.log('[AdMob] All Ad Units:', JSON.stringify(AD_IDS));
         setupAndLoadRewardedAd();
         loadInterstitialAd();
+        preloadAppOpenAd();
       } catch (initErr) {
         console.warn('[AdMob] SDK init failed:', initErr);
         sdkInitialized = true;
         setIsAdMobInitialized(true);
         setTimeout(() => setupAndLoadRewardedAd(), 2000);
         setTimeout(loadInterstitialAd, 3000);
+        setTimeout(preloadAppOpenAd, 4000);
       }
     };
 
@@ -249,8 +311,9 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     return () => {
       cleanupInterstitialListeners();
+      cleanupAppOpenListeners();
     };
-  }, [loadInterstitialAd, setupAndLoadRewardedAd]);
+  }, [loadInterstitialAd, setupAndLoadRewardedAd, preloadAppOpenAd]);
 
   // ========== PRIVACY OPTIONS FORM (for Settings page) ==========
   const showPrivacyOptionsForm = async (): Promise<void> => {
@@ -271,33 +334,50 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // ========== APP OPEN AD ==========
+  //
+  // The preloadAppOpenAd definition lives earlier in the file (above the SDK
+  // init useEffect) to avoid TDZ issues with the useEffect deps array. The
+  // show-side is here, next to the other "show" helpers, for readability.
   const showAppOpenAd = async (): Promise<void> => {
     if (isPro) {
       console.log('[AdMob] Pro user - skipping App Open Ad');
       return Promise.resolve();
     }
 
+    // Fast path — preloaded ad is ready, show immediately.
+    if (appOpenReadyRef.current && appOpenAdRef.current) {
+      return new Promise((resolve) => {
+        const safety = setTimeout(() => resolve(), 15000);
+        const finish = () => { clearTimeout(safety); resolve(); };
+        appOpenUnsubsRef.current.push(
+          appOpenAdRef.current!.addAdEventListener(AdEventType.CLOSED, finish),
+          appOpenAdRef.current!.addAdEventListener(AdEventType.ERROR, finish),
+        );
+        try {
+          appOpenAdRef.current!.show();
+        } catch {
+          finish();
+        }
+      });
+    }
+
+    // Slow path — preload is still in flight. Wait up to 8s for it to finish
+    // loading, then show. If still not ready, silently skip.
     return new Promise((resolve) => {
-      try {
-        const ad = AppOpenAd.createForAdRequest(AD_IDS.appOpen, {});
-
-        const timeout = setTimeout(() => {
-          console.log('[AdMob] App Open Ad timeout after 15s');
+      const start = Date.now();
+      const poll = setInterval(() => {
+        if (appOpenReadyRef.current && appOpenAdRef.current) {
+          clearInterval(poll);
+          try { appOpenAdRef.current.show(); } catch {}
+          setTimeout(resolve, 500);
+        } else if (Date.now() - start > 8000) {
+          clearInterval(poll);
+          console.log('[AdMob] App Open Ad not ready within 8s, skipping');
+          // Kick off a fresh preload so next time it's ready.
+          preloadAppOpenAd();
           resolve();
-        }, 15000);
-
-        ad.addAdEventListener(AdEventType.LOADED, () => {
-          try { ad.show(); } catch (showErr) {
-            clearTimeout(timeout);
-            resolve();
-          }
-        });
-        ad.addAdEventListener(AdEventType.CLOSED, () => { clearTimeout(timeout); resolve(); });
-        ad.addAdEventListener(AdEventType.ERROR, () => { clearTimeout(timeout); resolve(); });
-        ad.load();
-      } catch (err) {
-        resolve();
-      }
+        }
+      }, 300);
     });
   };
 

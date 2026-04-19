@@ -860,20 +860,51 @@ export default function MatchDetail() {
             </View>
           )}
 
-          {/* Recent Overs — single row with horizontal scroll */}
-          {(match.status === 'live' || match.status === 'recent') && match.oSummary && (
-            <View style={styles.overSummaryContainer}>
-              <Text style={styles.overSummaryTitle}>RECENT</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.overSummaryScroll}
-                contentContainerStyle={styles.overSummaryScrollContent}
-              >
-                {formatOverSummary(match.oSummary, match.currentOver)}
-              </ScrollView>
-            </View>
-          )}
+          {/* Recent Overs — shows ONLY the current / ongoing over.
+              Cricbuzz's `recentOvsStr` can include multiple overs separated
+              by `|` or `,`. User wants a single-over window: "is over mein
+              jo bhi balls daali hain (including wides / no-balls) bas wohi
+              dikhe". On bowler change the next over's data naturally takes
+              over (old balls are dropped by this trim). */}
+          {(match.status === 'live' || match.status === 'recent') && match.oSummary && (() => {
+            const full = match.oSummary || '';
+            // Prefer the LAST segment after the final `|` (space-separated format)
+            // OR the LAST over's comma-separated group (cricbuzz recentOvsStr).
+            let currentOverSummary = full;
+            if (full.includes('|')) {
+              const parts = full.split('|').map(p => p.trim()).filter(Boolean);
+              currentOverSummary = parts[parts.length - 1] || full;
+            } else if (full.includes(',')) {
+              // Group entries by floor(over) and keep the last group
+              const entries = full.split(',').map(s => s.trim()).filter(Boolean);
+              const groups = new Map<number, string[]>();
+              for (const e of entries) {
+                const ball = parseFloat(e.split(/\s+/)[0]);
+                if (!isNaN(ball)) {
+                  const over = Math.floor(ball);
+                  if (!groups.has(over)) groups.set(over, []);
+                  groups.get(over)!.push(e);
+                }
+              }
+              if (groups.size > 0) {
+                const lastOver = Math.max(...Array.from(groups.keys()));
+                currentOverSummary = groups.get(lastOver)!.join(', ');
+              }
+            }
+            return (
+              <View style={styles.overSummaryContainer}>
+                <Text style={styles.overSummaryTitle}>THIS OVER</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.overSummaryScroll}
+                  contentContainerStyle={styles.overSummaryScrollContent}
+                >
+                  {formatOverSummary(currentOverSummary, match.currentOver)}
+                </ScrollView>
+              </View>
+            );
+          })()}
 
           {/* Pro Overlay Toggles — moved to a pin button in the header actions row
               above (line 731) for screen-space optimisation. Removed from here so the
@@ -1041,63 +1072,58 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
   loadingText: { color: '#999', marginTop: 12, fontSize: 14 },
   scoreHeader: {
-    // WHITE solid background per user request (was dark rgba(34,34,34,0.85)).
-    // Bottom accent bar kept for visual separation from commentary.
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingTop: 6,
-    paddingBottom: 4,
+    paddingHorizontal: 13,
+    paddingTop: 7,
+    paddingBottom: 5,
     borderBottomWidth: 2,
     borderBottomColor: '#2E7D32',
     minHeight: SCOREBOARD_MIN_HEIGHT,
-    // Subtle shadow so the card feels lifted against the page scroll bg.
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 4,
     elevation: 3,
   },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
   backBtn: { padding: 4, marginRight: 6 },
-  // Dark text on white background. +20% from previous (13 → 16).
-  seriesName: { color: '#1B5E20', fontSize: 16, flex: 1, fontWeight: '800' },
-  headerStatus: { color: '#2E7D32', fontSize: 16, flex: 1, fontWeight: '800', fontStyle: 'italic' },
+  // +10% on top of previous 20% bump (16→18). Dark on white.
+  seriesName: { color: '#1B5E20', fontSize: 18, flex: 1, fontWeight: '800' },
+  headerStatus: { color: '#2E7D32', fontSize: 18, flex: 1, fontWeight: '800', fontStyle: 'italic' },
   headerActions: { flexDirection: 'row', gap: 6 },
   actionBtn: {
-    padding: 7,
-    borderRadius: 16,
+    padding: 8,
+    borderRadius: 18,
     backgroundColor: 'rgba(46,125,50,0.10)',
   },
   actionBtnActive: { backgroundColor: 'rgba(46,125,50,0.25)' },
-  teamRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  teamRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
   centerCol: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, flexShrink: 0 },
-  teamBlock: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', gap: 6, flexShrink: 1, minWidth: 0 },
-  teamLogo: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0F0F0' },
+  teamBlock: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', gap: 7, flexShrink: 1, minWidth: 0 },
+  teamLogo: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#F0F0F0' },
   teamMeta: { alignItems: 'flex-start', flexShrink: 1, minWidth: 0 },
-  // +20% sizing. Dark text on white bg.
-  teamName: { color: '#424242', fontSize: 14, fontWeight: '800', lineHeight: 17 },
-  teamScore: { color: '#0D0D0D', fontSize: 20, fontWeight: '900', lineHeight: 24 },
-  overs: { color: '#616161', fontSize: 12, lineHeight: 15, fontWeight: '600' },
-  statusTxt: { color: '#2E7D32', fontSize: 14, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
-  statusTxtCentered: { color: '#2E7D32', fontSize: 14, textAlign: 'center', marginTop: 2, fontStyle: 'italic', maxWidth: 180, fontWeight: '700' },
-  // Live match batsmen section - softer grey tint on white card
+  teamName: { color: '#424242', fontSize: 15, fontWeight: '800', lineHeight: 19 },
+  teamScore: { color: '#0D0D0D', fontSize: 22, fontWeight: '900', lineHeight: 27 },
+  overs: { color: '#616161', fontSize: 13, lineHeight: 16, fontWeight: '600' },
+  statusTxt: { color: '#2E7D32', fontSize: 15, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
+  statusTxtCentered: { color: '#2E7D32', fontSize: 15, textAlign: 'center', marginTop: 2, fontStyle: 'italic', maxWidth: 200, fontWeight: '700' },
   batsmenContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F5F7FA',
     borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginBottom: 3,
-    gap: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    marginBottom: 4,
+    gap: 9,
   },
   batsmenTitle: {
     color: '#2E7D32',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    minWidth: 50,
+    minWidth: 55,
   },
   batsmenRow: {
     flexDirection: 'row',
@@ -1107,13 +1133,13 @@ const styles = StyleSheet.create({
   batsmanItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     flexShrink: 1,
     minWidth: 0,
   },
   batsmanName: {
     color: '#212121',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
   },
   strikerName: {
@@ -1122,66 +1148,64 @@ const styles = StyleSheet.create({
   },
   batsmanScore: {
     color: '#0D0D0D',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '900',
   },
-  // Bowler section (NEW — user asked to display current bowler)
   bowlerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFF3E0',
     borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginBottom: 3,
-    gap: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    marginBottom: 4,
+    gap: 9,
   },
   bowlerTitle: {
     color: '#E65100',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    minWidth: 50,
+    minWidth: 55,
   },
   bowlerName: {
     color: '#0D0D0D',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
     flexShrink: 1,
   },
   bowlerFigures: {
     color: '#424242',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     marginLeft: 6,
   },
-  // Over summary section
   overSummaryContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ECEFF1',
     borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginBottom: 3,
-    gap: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    marginBottom: 4,
+    gap: 9,
   },
   overSummaryTitle: {
     color: '#2E7D32',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    minWidth: 60,
+    minWidth: 66,
   },
   overSummaryScroll: {
     flex: 1,
-    minHeight: 26,
+    minHeight: 30,
     backgroundColor: '#FFFFFF',
     borderRadius: 5,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 7,
     borderWidth: 1,
     borderColor: '#CFD8DC',
   },

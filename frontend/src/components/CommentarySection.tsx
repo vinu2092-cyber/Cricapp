@@ -313,14 +313,16 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
   // Detect special visual events from commentary text.
   // Returns a category or null; drives Cricbuzz-style event cards.
+  //
+  // STRICT wicket detection — only the API's explicit `event === 'wicket'`
+  // flag is trusted. Previously we also pattern-matched "out/wkt/bowled"
+  // in the text, but that produced false positives when commentators used
+  // these words metaphorically ("squeezes it OUT so perfectly", "bowled him
+  // at the nets") → user saw bogus OUT cards and red highlighting on FOUR
+  // balls. The Cricbuzz API reliably sets eventtype=WICKET for real
+  // dismissals, so the heuristic is redundant and harmful.
   const detectEventType = (item: Commentary): 'wicket' | 'new-batsman' | 'bowler-change' | null => {
     if (item.event === 'wicket') return 'wicket';
-    const t = (item.english || '').toLowerCase();
-    // Explicit wicket phrases in case event flag missing
-    if (/\b(out|wkt|bowled|lbw|caught|stumped|run out|hit wicket)\b/.test(t) && /\(\d+\)/.test(t) && item.over && /\d/.test(item.over)) {
-      // Heuristic: looks like a dismissal line with score pattern
-      if (t.includes('out') || t.includes('wkt')) return 'wicket';
-    }
     if (/(takes guard|walks to the crease|new batsman|comes to the crease|is the new batter|walks in)/i.test(item.english || '')) return 'new-batsman';
     if (/(bowling change|takes the ball|into the attack|new spell|will bowl|replaces [a-z]+ [a-z]+ into the attack)/i.test(item.english || '')) return 'bowler-change';
     return null;
@@ -428,23 +430,58 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     );
   };
 
-  // === Multi-innings filter ===
-  // Cricbuzz API returns commentary from multiple innings for completed matches,
-  // which caused the "same over appearing twice with different bowlers" bug
-  // (e.g. over 19.4 from both RR's innings and KKR's chase). We pick the
-  // latest innings (highest `inningsId`) and drop older innings. For live
-  // matches, all commentary naturally belongs to the current innings anyway.
+  // === Multi-innings filter + per-ball deduplication ===
+  // Cricbuzz API returns multiple commentary versions for the same ball as
+  // the commentator enriches text over seconds ("great shot!" → "great shot!
+  // Wide yorker outside off..." → "great shot! Wide yorker... to split
+  // backward point"). Without dedupe the app shows each version as a
+  // separate row → user sees 10.6 appearing 3 times.
+  //
+  // We also keep only the latest innings so completed matches don't show
+  // over numbers from both innings mixed together (RR 19.4 + KKR 19.4).
   const displayedCommentary = React.useMemo(() => {
     if (!commentary || commentary.length === 0) return commentary || [];
-    // Gather all innings IDs present in the feed
+
+    // Step 1 — innings filter (latest only)
     const ids = commentary
       .map(c => (typeof c.inningsId === 'number' ? c.inningsId : undefined))
       .filter((v): v is number => v !== undefined);
-    if (ids.length === 0) return commentary; // API didn't return innings ids — nothing to filter
-    const latest = Math.max(...ids);
-    // Keep items that either belong to the latest innings OR have no innings id
-    // (defensive: some rows may miss the field — don't accidentally hide them)
-    return commentary.filter(c => c.inningsId === undefined || c.inningsId === latest);
+    const latestInnings = ids.length > 0 ? Math.max(...ids) : undefined;
+    const innings = latestInnings === undefined
+      ? commentary
+      : commentary.filter(c => c.inningsId === undefined || c.inningsId === latestInnings);
+
+    // Step 2 — dedupe by (inningsId || 0, over). Keep the entry with the
+    // LONGEST english text (= the most complete version of the ball).
+    const byKey = new Map<string, Commentary>();
+    for (const c of innings) {
+      // Skip rows without a real over number — these are session / stats
+      // blocks and should pass through untouched.
+      if (!c.over || c.over === '0' || c.over === '' || !/\d/.test(c.over)) {
+        byKey.set(`raw-${c.id}`, c);
+        continue;
+      }
+      const key = `${c.inningsId ?? 0}-${c.over}`;
+      const existing = byKey.get(key);
+      if (!existing || (c.english?.length || 0) > (existing.english?.length || 0)) {
+        byKey.set(key, c);
+      }
+    }
+
+    // Preserve original order (API returns newest-first). We iterate `innings`
+    // and pick the rep for each unique key only once.
+    const seen = new Set<string>();
+    const out: Commentary[] = [];
+    for (const c of innings) {
+      const key = (!c.over || c.over === '0' || c.over === '' || !/\d/.test(c.over))
+        ? `raw-${c.id}`
+        : `${c.inningsId ?? 0}-${c.over}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const rep = byKey.get(key);
+      if (rep) out.push(rep);
+    }
+    return out;
   }, [commentary]);
 
   // Track previous over to decide when to inject a banner ad. User wants the
