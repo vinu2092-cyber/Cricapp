@@ -17,7 +17,20 @@ const withManifestFix = (config) => {
       return config;
     }
 
-    const metaDataArray = mainApplication['meta-data'] || [];
+    // Ensure tools namespace is declared FIRST
+    if (!config.modResults.manifest.$) {
+      config.modResults.manifest.$ = {};
+    }
+    if (!config.modResults.manifest.$['xmlns:tools']) {
+      config.modResults.manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
+      console.log('[withManifestFix] Added tools namespace to manifest');
+    }
+
+    // Initialize meta-data array if not present
+    if (!mainApplication['meta-data']) {
+      mainApplication['meta-data'] = [];
+    }
+    const metaDataArray = mainApplication['meta-data'];
 
     // Meta-data entries that need tools:replace="android:value"
     const valueReplaceKeys = [
@@ -30,8 +43,12 @@ const withManifestFix = (config) => {
       'com.google.firebase.messaging.default_notification_icon',
     ];
 
+    // Process existing meta-data entries
     metaDataArray.forEach((metaData) => {
-      const name = metaData.$?.['android:name'];
+      if (!metaData.$) {
+        metaData.$ = {};
+      }
+      const name = metaData.$['android:name'];
       if (!name) return;
 
       if (valueReplaceKeys.includes(name)) {
@@ -45,13 +62,15 @@ const withManifestFix = (config) => {
       }
     });
 
-    // Ensure tools namespace is declared
-    if (!config.modResults.manifest.$['xmlns:tools']) {
-      config.modResults.manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
-      console.log('[withManifestFix] Added tools namespace to manifest');
+    // Add tools:replace to application tag itself to handle all conflicts
+    if (!mainApplication.$) {
+      mainApplication.$ = {};
+    }
+    if (!mainApplication.$['tools:replace']) {
+      mainApplication.$['tools:replace'] = 'android:allowBackup';
+      console.log('[withManifestFix] Added tools:replace to application tag');
     }
 
-    mainApplication['meta-data'] = metaDataArray;
     return config;
   });
 };
