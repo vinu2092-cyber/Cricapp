@@ -568,6 +568,10 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
       if (!Array.isArray(c)) {
         const text = cleanText(c.commtxt || c.commText || '');
         const overVal = String(c.overnum ?? c.overNumber ?? '0.0');
+        // Cricbuzz returns innings id per ball. We'll later filter the
+        // commentary list to a single innings so recent/completed matches
+        // don't show duplicate over numbers from multiple innings mixed.
+        const iid = c.inningsid ?? c.inningsId ?? c.iid;
         if (text) {
           out.push({
             id: `${matchId}-${overVal}-${text.substring(0,50).replace(/[^a-zA-Z0-9]/g, '')}`,
@@ -576,6 +580,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
             event: mapEvent(c.eventtype || c.event),
             runs: extractRuns(c),
             extras: extractExtras(c),
+            inningsId: iid !== undefined && iid !== null ? Number(iid) : undefined,
           });
         }
       }
@@ -584,6 +589,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
         for (let j = 0; j < c.length; j++) {
           const text = cleanText(c[j]?.commtxt || c[j]?.commText || '');
           const overVal = String(c[j].overnum ?? c[j].overNumber ?? '0.0');
+          const iid = c[j].inningsid ?? c[j].inningsId ?? c[j].iid;
           if (text) {
             out.push({
               id: `${matchId}-${overVal}-${text.substring(0,50).replace(/[^a-zA-Z0-9]/g, '')}`,
@@ -592,6 +598,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
               event: mapEvent(c[j].eventtype || c[j].event),
               runs: extractRuns(c[j]),
               extras: extractExtras(c[j]),
+              inningsId: iid !== undefined && iid !== null ? Number(iid) : undefined,
             });
           }
         }
@@ -605,6 +612,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
       const c = data.commentaryList[i];
       const text = cleanText(c?.commText || c?.commtxt || '');
       const overVal = String(c.overNumber ?? c.overnum ?? '0.0');
+      const iid = c.inningsid ?? c.inningsId ?? c.iid;
       if (text) {
         out.push({
           id: `${matchId}-${overVal}-${text.substring(0,50).replace(/[^a-zA-Z0-9]/g, '')}`,
@@ -613,6 +621,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
           event: mapEvent(c.event || c.eventtype),
           runs: extractRuns(c),
           extras: extractExtras(c),
+          inningsId: iid !== undefined && iid !== null ? Number(iid) : undefined,
         });
       }
     }

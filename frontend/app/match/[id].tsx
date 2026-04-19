@@ -673,8 +673,15 @@ export default function MatchDetail() {
         {/* Emotional animations overlay - 4, 6, Out, Wide */}
         <MatchMoodMeter event={moodEvent} />
 
-      <ScrollView ref={mainScrollRef} stickyHeaderIndices={[0]}>
-        {/* Sticky Score Header */}
+      {/*
+        Scoreboard used to be a sticky header (stickyHeaderIndices=[0]). User
+        asked for Cricbuzz-style behaviour where the scoreboard scrolls with
+        the page so commentary can take the full screen. Removed sticky so the
+        scoreboard naturally scrolls away. Users can still quick-scroll back
+        to the top with the FAB / back press.
+      */}
+      <ScrollView ref={mainScrollRef}>
+        {/* Scoreboard (scrolls with page) */}
         <View style={styles.scoreHeader}>
           <View style={styles.headerRow}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -1025,12 +1032,11 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
     borderBottomWidth: 1,
     borderBottomColor: '#4CAF50',
-    // Scoreboard targets ≤ 30% of screen height; commentary (below) takes
-    // the remaining ~70%. We cap at 30% and keep a minimum 16% so recent /
-    // upcoming matches (with no live batsmen row) still look proportioned.
-    maxHeight: SCOREBOARD_MAX_HEIGHT,
+    // Scoreboard now scrolls with the page (no longer sticky). Max height
+    // removed so batsmen row + RECENT over history are always fully visible
+    // regardless of device height. Keep a sensible minimum so the scoreboard
+    // doesn't collapse on upcoming-match layouts with no batsmen row.
     minHeight: SCOREBOARD_MIN_HEIGHT,
-    overflow: 'hidden',
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
   backBtn: { padding: 2, marginRight: 4 },

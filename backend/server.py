@@ -339,6 +339,7 @@ async def get_match_commentary(match_id: str):
                 'event': c.get('eventtype', 'NONE').lower(),
                 'ballNumber': c.get('ballnbr', 0),
                 'timestamp': c.get('timestamp', 0),
+                'inningsid': c.get('inningsid') or c.get('inningsId') or c.get('iid'),
             })
 
         # Build match header info
@@ -402,6 +403,7 @@ async def get_match_events(match_id: str, lastScore: str = "", lastWickets: int 
                     'overNumber': c.get('overnum', 0),
                     'event': (c.get('eventtype') or 'NONE').lower(),
                     'ballNumber': c.get('ballnbr', 0),
+                    'inningsid': c.get('inningsid') or c.get('inningsId') or c.get('iid'),
                 })
 
             miniscore = raw_data.get('miniscore', {})

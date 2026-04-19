@@ -102,10 +102,15 @@ const STAT_HEADER_REGEX = /^((?:[A-Z][a-zA-Z']*\s+){1,6}(?:in|for|vs|at|of|again
 const SPEAKER_REGEX = /^([A-Z][a-z]+(?: [A-Z][a-z]+)+):\s*/;
 
 /**
- * Parse commentary text into rich segments for rendering
- * Returns array of { text, bold, color? } segments
+ * Parse commentary text into rich segments for rendering.
+ *
+ * `isWicketRow` controls whether OUT/WICKET/CAUGHT-style keywords get the
+ * RED color treatment. When false (default), these keywords are still bolded
+ * & uppercased for emphasis but NOT colored red — this prevents the old bug
+ * where commentators' metaphorical "run OUT" / "thrown OUT" in narrative
+ * prose turned red even when no wicket actually fell.
  */
-function parseRichText(text: string): Array<{ text: string; bold: boolean; color?: string }> {
+function parseRichText(text: string, isWicketRow: boolean = false): Array<{ text: string; bold: boolean; color?: string }> {
   if (!text) return [];
 
   const segments: Array<{ text: string; bold: boolean; color?: string }> = [];
@@ -154,7 +159,10 @@ function parseRichText(text: string): Array<{ text: string; bold: boolean; color
       let color: string | undefined;
       if (kw === 'FOUR') color = '#4CAF50';
       else if (kw === 'SIX') color = '#9C27B0';
-      else if (['OUT', 'WICKET', 'CAUGHT', 'BOWLED', 'LBW', 'STUMPED', 'RUN OUT', 'HIT WICKET'].includes(kw)) color = '#FF4444';
+      // Wicket-family words ONLY colored red on confirmed wicket rows — stops
+      // metaphorical "thrown OUT / bowled around the park" in regular
+      // commentary from appearing as a red alarm keyword.
+      else if (isWicketRow && ['OUT', 'WICKET', 'CAUGHT', 'BOWLED', 'LBW', 'STUMPED', 'RUN OUT', 'HIT WICKET'].includes(kw)) color = '#FF4444';
       else if (['FIFTY', 'CENTURY', 'HUNDRED'].includes(kw)) color = '#FF9800';
       else if (kw === 'DROPPED') color = '#FF6B00';
 
@@ -188,10 +196,13 @@ function parseRichText(text: string): Array<{ text: string; bold: boolean; color
 }
 
 /**
- * Render rich text with bold formatting
+ * Render rich text with bold formatting.
+ * Pass `isWicketRow` when the parent row is a confirmed wicket event so that
+ * the OUT / CAUGHT / BOWLED keywords are rendered in red. In plain commentary
+ * rows they stay bold but un-colored.
  */
-function RichCommentaryText({ text, style }: { text: string; style?: any }) {
-  const segments = parseRichText(text);
+function RichCommentaryText({ text, style, isWicketRow = false }: { text: string; style?: any; isWicketRow?: boolean }) {
+  const segments = parseRichText(text, isWicketRow);
 
   return (
     <Text style={style}>
@@ -417,7 +428,50 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     );
   };
 
-  const displayedCommentary = commentary;
+  // === Multi-innings filter ===
+  // Cricbuzz API returns commentary from multiple innings for completed matches,
+  // which caused the "same over appearing twice with different bowlers" bug
+  // (e.g. over 19.4 from both RR's innings and KKR's chase). We pick the
+  // latest innings (highest `inningsId`) and drop older innings. For live
+  // matches, all commentary naturally belongs to the current innings anyway.
+  const displayedCommentary = React.useMemo(() => {
+    if (!commentary || commentary.length === 0) return commentary || [];
+    // Gather all innings IDs present in the feed
+    const ids = commentary
+      .map(c => (typeof c.inningsId === 'number' ? c.inningsId : undefined))
+      .filter((v): v is number => v !== undefined);
+    if (ids.length === 0) return commentary; // API didn't return innings ids — nothing to filter
+    const latest = Math.max(...ids);
+    // Keep items that either belong to the latest innings OR have no innings id
+    // (defensive: some rows may miss the field — don't accidentally hide them)
+    return commentary.filter(c => c.inningsId === undefined || c.inningsId === latest);
+  }, [commentary]);
+
+  // Track previous over to decide when to inject a banner ad. User wants the
+  // ad to appear at the *start of every over* in the commentary stream rather
+  // than the old "every 6th row" heuristic.
+  // We compute it once per render using a running integer.
+  let lastOverInt: number | null = null;
+  const shouldShowBannerForItem = (item: Commentary, index: number): boolean => {
+    const overStr = item?.over || '';
+    const overFloat = parseFloat(overStr);
+    if (isNaN(overFloat)) return false;
+    const overInt = Math.floor(overFloat);
+    // Always an ad before the VERY first ball (index === 0)
+    if (index === 0 && overInt >= 0) {
+      lastOverInt = overInt;
+      return true;
+    }
+    if (lastOverInt === null) {
+      lastOverInt = overInt;
+      return false;
+    }
+    if (overInt !== lastOverInt) {
+      lastOverInt = overInt;
+      return true;
+    }
+    return false;
+  };
 
   return (
     <View style={styles.container}>
@@ -485,8 +539,11 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
         {/* Ball-by-ball commentary */}
         {matchStatus !== 'upcoming' && displayedCommentary.map((item, index) => {
-          const showBannerBefore = index === 0;
-          const showBannerEvery6 = index > 0 && index % 6 === 0;
+          // Banner ad shows once per new over (and before the very first ball).
+          // The helper updates `lastOverInt` internally, so we call it exactly
+          // once per row. Kept outside the early event-card returns so every
+          // code path below renders the same banner-placement behaviour.
+          const showOverBanner = shouldShowBannerForItem(item, index);
           const isActualDelivery = item.over && item.over !== '0' && item.over !== '' && /\d/.test(item.over);
           const isStats = isStatsBlock(item);
           const eventType = detectEventType(item);
@@ -497,10 +554,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             const imgId = lookupImg(d.player, playerImgMap);
             return (
               <View key={index}>
-                {showBannerEvery6 && BannerAdComponent && (
-                  <View style={styles.bannerAdContainer}><BannerAdComponent /></View>
-                )}
-                {showBannerBefore && BannerAdComponent && (
+                {showOverBanner && BannerAdComponent && (
                   <View style={styles.bannerAdContainer}><BannerAdComponent /></View>
                 )}
                 <View style={[styles.eventCard, styles.eventCardOut]}>
@@ -530,6 +584,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                   <RichCommentaryText
                     text={parseText(item.english || '')}
                     style={styles.eventCardCommentary}
+                    isWicketRow
                   />
                 </View>
               </View>
@@ -541,7 +596,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             const imgId = lookupImg(name, playerImgMap);
             return (
               <View key={index}>
-                {showBannerEvery6 && BannerAdComponent && (
+                {showOverBanner && BannerAdComponent && (
                   <View style={styles.bannerAdContainer}><BannerAdComponent /></View>
                 )}
                 <View style={[styles.eventCard, styles.eventCardNewBatsman]}>
@@ -570,7 +625,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             const imgId = lookupImg(name, playerImgMap);
             return (
               <View key={index}>
-                {showBannerEvery6 && BannerAdComponent && (
+                {showOverBanner && BannerAdComponent && (
                   <View style={styles.bannerAdContainer}><BannerAdComponent /></View>
                 )}
                 <View style={[styles.eventCard, styles.eventCardBowler]}>
@@ -596,13 +651,7 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
           return (
             <View key={index}>
-              {showBannerEvery6 && BannerAdComponent && (
-                <View style={styles.bannerAdContainer}>
-                  <BannerAdComponent />
-                </View>
-              )}
-
-              {showBannerBefore && BannerAdComponent && (
+              {showOverBanner && BannerAdComponent && (
                 <View style={styles.bannerAdContainer}>
                   <BannerAdComponent />
                 </View>

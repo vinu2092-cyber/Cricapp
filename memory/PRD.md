@@ -115,3 +115,30 @@ See `/app/ADMOB_CONSOLE_FIX_REQUIRED.md` for full details.
    - Team scores fit on one line without being cut by side edges.
    - RECENT over-history strip visible and horizontally scrollable.
    - Scoreboard visibly shorter → commentary below has more vertical space.
+
+## 2026-04-19 19:45 — Commentary Data + Ad Placement + Scoreboard Scroll Fixes
+
+### User-reported bugs
+1. Recent / completed matches showed the **same over number twice** with different bowlers (e.g. 19.4 Brijesh Sharma + 19.4 Vaibhav Arora). Root cause: Cricbuzz API returns commentary from multiple innings for finished matches, and the app concatenated them without filtering by innings.
+2. Commentary words like **OUT / WICKET / CAUGHT / BOWLED** were colored RED on EVERY row — including metaphorical prose in narrative ("banged in short and at the stumps", "thrown out", etc.) — even when no wicket actually fell on that ball.
+3. Banner ad placement was "every 6 rows" — user wants **start of every over** (cricbuzz-style over break).
+4. Scoreboard was **sticky at top** while commentary scrolled — user wants the scoreboard to scroll with the page like Cricbuzz web.
+
+### Fixes shipped
+- **`frontend/src/types/match.ts`** — Added `inningsId?: number` to `Commentary` interface.
+- **`frontend/src/services/api.ts`** — `parseCommentaryCricbuzz` now captures `inningsid` / `inningsId` / `iid` per ball (covers both API shapes).
+- **`backend/server.py`** — Both commentary endpoints now forward `inningsid` in the normalized payload (defensive: for any future consumer of the backend).
+- **`frontend/src/components/CommentarySection.tsx`**
+  - `parseRichText(text, isWicketRow)` — RED color on wicket keywords only when `isWicketRow=true`.
+  - `RichCommentaryText` accepts `isWicketRow` prop; only the wicket event-card passes it.
+  - `displayedCommentary` computed with `React.useMemo` — filters to only the LATEST innings (`Math.max(...inningsIds)`) when the feed contains multiple. Rows without `inningsId` are kept defensively.
+  - Replaced `showBannerEvery6 / showBannerBefore` flags with **`shouldShowBannerForItem(item, index)`** — returns true at index 0 AND whenever `Math.floor(overFloat)` crosses a new integer (= start of a new over).
+- **`frontend/app/match/[id].tsx`**
+  - Removed `stickyHeaderIndices={[0]}` from the main ScrollView — scoreboard now scrolls with the page.
+  - `scoreHeader` style: removed `maxHeight` + `overflow:'hidden'` so batsmen row & RECENT over strip are always fully visible (since scoreboard no longer eats commentary space when scrolled).
+
+### Deferred (user asked for full Cricbuzz visual redesign)
+- Cricbuzz-style scoreboard card (blue background, large white score, partnership bar, batter + bowler stat tables, CRR).
+  This is a larger UI task — will ship in a follow-up iteration once the user confirms the current data-correctness fixes are working on device.
+
+### Version unchanged: 1.0.10 / versionCode 10 per user preference.

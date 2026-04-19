@@ -23,6 +23,7 @@ export interface Commentary {
   event?: 'wicket' | 'four' | 'six' | 'dot' | 'wide' | 'normal';
   runs?: number;       // Actual runs scored on this ball (from API structured data)
   extras?: string;     // 'wide' | 'noball' | 'legbye' | 'bye' | undefined
+  inningsId?: number;  // Cricbuzz innings id — used to filter out mixed-innings duplicates for completed matches
 }
 
 export type Language = 'english' | 'hindi';
