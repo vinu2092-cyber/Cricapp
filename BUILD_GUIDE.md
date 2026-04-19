@@ -134,7 +134,7 @@ If you want to initiate builds from here, I can prepare the commands, but you'll
 - ✅ Over-based banner ads
 
 ### Technical:
-- ✅ Backend URL: `https://cricapp-staging.preview.emergentagent.com`
+- ✅ Backend URL: `https://live-cricket-35.preview.emergentagent.com`
 - ✅ API endpoints: `/api/cricket/*`
 - ✅ AdMob App ID: `ca-app-pub-9675798593675825~2399929714`
 - ✅ Package: `com.cricapp.live`
