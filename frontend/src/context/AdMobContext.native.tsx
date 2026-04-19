@@ -223,26 +223,30 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // ========== SDK INIT WITH UMP CONSENT ==========
   useEffect(() => {
     const initWithConsent = async () => {
-      // Step 1: Try UMP consent (non-blocking - won't prevent ad loading)
+      // Step 1: Try UMP consent (non-blocking - won't prevent ad loading).
+      // Wrapped in a hard 8-second timeout so a stuck consent SDK can never
+      // block the actual ad SDK init from running.
       try {
         console.log('[AdMob] Requesting UMP consent info update...');
-        // Try newer API first, fallback to older API with publisher IDs
-        let consentInfo: any;
-        try {
-          consentInfo = await AdsConsent.requestInfoUpdate();
-        } catch {
-          // Fallback for older v14.x API that requires publisher IDs
-          console.log('[AdMob] Trying consent with publisher IDs...');
-          consentInfo = await (AdsConsent as any).requestInfoUpdate(['pub-9675798593675825']);
-        }
+        const consentInfo: any = await Promise.race([
+          AdsConsent.requestInfoUpdate(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('UMP consent timeout')), 8000)
+          ),
+        ]);
         console.log('[AdMob] Consent info:', JSON.stringify(consentInfo));
 
-        // Show consent form if required (EEA users)
+        // Show consent form if required (EEA users) — also timeboxed.
         const status = consentInfo?.status;
         if (status === AdsConsentStatus?.REQUIRED || status === 'REQUIRED' || status === 2) {
           console.log('[AdMob] Consent required - showing form...');
           try {
-            await AdsConsent.loadAndShowConsentFormIfRequired();
+            await Promise.race([
+              AdsConsent.loadAndShowConsentFormIfRequired(),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Consent form timeout')), 12000)
+              ),
+            ]);
             console.log('[AdMob] Consent form completed');
           } catch (formErr) {
             console.warn('[AdMob] Consent form error (non-fatal):', formErr);
@@ -254,25 +258,40 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         console.warn('[AdMob] UMP consent error (non-fatal, proceeding):', consentErr);
       }
 
-      // Step 2: Always initialize SDK regardless of consent result
+      // Step 2: Always initialize SDK regardless of consent result.
+      // CRITICAL: wrap initialize() in a 10-second timeout. With Unity Ads
+      // mediation a misbehaving adapter can leave the init promise pending
+      // forever — that single hang previously prevented App Open / Interstitial
+      // / Rewarded ads from EVER loading on production users (root cause of
+      // the v1.0.9 zero-impressions outage). The timeout guarantees we always
+      // proceed to ad load, which then uses the GMA SDK directly.
       try {
-        // Pull ONLY the test-device list from Firestore so the user can
-        // register their personal test device without a rebuild. Production
-        // ad-unit IDs are never swapped — every non-listed device continues to
-        // see real ads and earn revenue.
         const testDeviceIds = await fetchTestDeviceIdsFromFirebase();
-        // Always register the standard EMULATOR identifier (no-op on real
-        // devices) plus any user-supplied device hashes from Firestore.
         const mergedTestIds = Array.from(new Set([...testDeviceIds, 'EMULATOR']));
         console.log('[AdMob] testDeviceIdentifiers =', JSON.stringify(mergedTestIds));
 
         await mobileAds().setRequestConfiguration({
           testDeviceIdentifiers: mergedTestIds,
         });
-        const adapterStatuses = await mobileAds().initialize();
-        console.log('[AdMob] SDK initialized successfully');
-        if (adapterStatuses) {
-          console.log('[AdMob] Adapter statuses:', JSON.stringify(adapterStatuses));
+
+        let initTimedOut = false;
+        const adapterStatuses = await Promise.race([
+          mobileAds().initialize(),
+          new Promise((resolve) =>
+            setTimeout(() => {
+              initTimedOut = true;
+              console.warn('[AdMob] mobileAds().initialize() did not resolve in 10s — proceeding anyway');
+              resolve(null);
+            }, 10000)
+          ),
+        ]);
+        if (initTimedOut) {
+          console.warn('[AdMob] SDK init TIMED OUT — likely a mediation adapter (Unity Ads?) is hanging. Loading ads anyway.');
+        } else {
+          console.log('[AdMob] SDK initialized successfully');
+          if (adapterStatuses) {
+            console.log('[AdMob] Adapter statuses:', JSON.stringify(adapterStatuses));
+          }
         }
         sdkInitialized = true;
         setIsAdMobInitialized(true);

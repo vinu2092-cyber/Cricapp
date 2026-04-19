@@ -153,35 +153,31 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.9
-          name: CricApp v1.0.9
+          tag_name: v1.0.10
+          name: CricApp v1.0.10
           body: |
-            ## CricApp v1.0.9 — Ad Revenue Restore (Unity Ads mediation + rewarded-ad bug fix)
-            AdMob Ads Activity dashboard showed revenue dropped to near-zero on 16–17 Apr 2026 after v1.0.7 shipped. Targeted restore of the SINGLE thing that was silently removed in v1.0.7 + fixed the rewarded-ad fire-and-forget bug.
+            ## CricApp v1.0.10 — Ads Unfreeze Critical Fix
+            v1.0.9 shipped but App Open Ad, Interstitial Ad, and Rewarded Ad were NOT triggering on any user's device — complete zero-impression outage. RCA confirmed the `mobileAds().initialize()` promise was never resolving (likely a stuck mediation adapter) which left `isAdMobInitialized = false` forever and prevented all ad load/show calls from running.
 
-            ### Unity Ads mediation restored (primary fix)
-            - `frontend/plugins/withUnityAdsMediation.js` restored + plugin re-registered in `app.json`. AdMob Console has Unity Ads configured as a bidding source; without the SDK in the APK every Unity-routed impression was lost. ProGuard rules for `com.unity3d.ads.**` and `com.google.ads.mediation.unity.**` restored in `app.json` → `extraProguardRules`.
+            ### Fixes
+            - **Init timeout (10 s)** around `mobileAds().initialize()` in `src/context/AdMobContext.native.tsx`. If the call doesn't resolve in time we set `sdkInitialized = true` anyway and proceed to load ads — the GMA SDK works fine without mediation, and a stuck adapter can no longer freeze every full-screen ad.
+            - **UMP consent timeout (8 s)** around `AdsConsent.requestInfoUpdate()` and **consent form timeout (12 s)** around `loadAndShowConsentFormIfRequired()`. Consent flow cannot block the ad SDK init any more.
+            - **Invalid fallback removed** — the old `AdsConsent.requestInfoUpdate(['pub-9675798593675825'])` call passed a string array where the v14.x API expects a `RequestInfoUpdateOptions` object; it was silently rejecting. Replaced with a clean timeboxed call.
+            - **`com.google.android.gms.permission.AD_ID` permission** added to `app.json` → android.permissions. Required for Android 13+ (targetSdk 36) to access the advertising ID; without it personalised ads are blocked on newer devices.
+            - **Unity Services ProGuard keep rules** added: `-keep class com.unity3d.services.** { *; }` + `-dontwarn com.unity3d.services.**`. Defensive — if minification ever gets enabled, Unity Ads SDK won't be stripped mid-init.
 
-            ### Rewarded-ad fire-and-forget bug fix
-            - `handleWatchAd` in `app/match/[id].tsx` no longer fire-and-forgets the ad — it **awaits** `showRewardedAd()` and only increments the watched counter on a real `EARNED_REWARD` event. Same fix on the home-screen watch-ad button in `app/index.tsx`.
-            - 10-failure threshold before a no-fill fallback credit is given (not a full Pro auto-unlock).
+            ### Version
+            - `app.json` version 1.0.9 → **1.0.10**, versionCode 9 → **10**.
 
-            ### Rewarded Ad Unit ID corrected
-            - Real unit ID (verified from AdMob console screenshot of "UnlockProAd"): `ca-app-pub-9675798593675825/6702704058`. A previous auto-commit had mistakenly changed it to `6702740458` — that unit does not exist on the AdMob account, which is why rewarded ads stopped loading. Restored to the correct value in both `app.json` and `AdMobContext.native.tsx`.
-
-            ### UI Polish (same release)
-            - **Scoreboard max height** increased from 20 % → **30 %** of screen (`app/match/[id].tsx`). Added a 16 % minimum so the scoreboard looks proportioned on tall phones. Commentary naturally flows into the remaining ~70 % via the parent ScrollView. Fixes the "scoreboard overflow / content clipped" reports on several devices.
-            - **Header logo ~18 % larger** (`src/components/Header.tsx`): `LogoFireTail size` 85 → 100, `styles.logo` 72 × 72 → 85 × 85, header height 110 → 125. Right-side buttons (Inbox / Settings / Unlock) still fit comfortably on phones as narrow as 360 dp — no overlap.
-            - **LogoFireTail** rewritten: the orbiting fireball + dot-tail has been replaced with a **continuous rainbow pixel line** (55 tiny 2–5 px pixels staggered on one shared 30-second loop) whose length ≈ logo width and which kisses the logo border. The leading tip still emits 24 tiny sparks that burst out + fade, and 7 rainbow ember drops fall with gravity from the bottom edge — the "fire-pixel angare" the user asked for. Wicket-mode red burst still works.
+            ### Preserved from v1.0.9
+            - Unity Ads mediation (`plugins/withUnityAdsMediation.js`)
+            - Rewarded Ad Unit ID `/6702704058` (verified from AdMob "UnlockProAd")
+            - Rewarded fire-and-forget bug fix (10-fail threshold)
+            - Scoreboard 30 % cap, Header logo ~18 % larger, LogoFireTail rainbow pixel line
 
             ### Files changed
-            - `frontend/plugins/withUnityAdsMediation.js` (restored)
-            - `frontend/app.json` (plugin re-registered, ProGuard rules restored, rewarded ID corrected, version 1.0.9, versionCode 9)
-            - `frontend/app/match/[id].tsx` (rewarded fix + scoreboard 30 % cap)
-            - `frontend/app/index.tsx` (watch-ad button honors ad result, 10-fail threshold)
-            - `frontend/src/context/AdMobContext.native.tsx` (rewarded unit ID corrected)
-            - `frontend/src/components/Header.tsx` (logo ~18 % larger, header height 125)
-            - `frontend/src/components/LogoFireTail.tsx` (rewritten → rainbow pixel line)
+            - `frontend/src/context/AdMobContext.native.tsx`
+            - `frontend/app.json`
             - `.github/workflows/build-android.yml`
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
