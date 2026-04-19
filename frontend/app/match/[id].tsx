@@ -118,7 +118,7 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
     // Handle pipe separator
     if (b === '|') {
       elements.push(
-        <Text key={`sep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
+        <Text key={`sep-${idx}`} style={{ color: '#2E7D32', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
           |
         </Text>
       );
@@ -128,29 +128,31 @@ const formatOverSummary = (summary: string, currentOver?: number): React.ReactNo
     // Auto-add separator every 6 balls (only for non-comma format)
     if (!summary.includes(',') && ballCount > 0 && ballCount % 6 === 0) {
       elements.push(
-        <Text key={`autosep-${idx}`} style={{ color: '#4CAF50', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
+        <Text key={`autosep-${idx}`} style={{ color: '#2E7D32', marginHorizontal: 6, fontWeight: 'bold', fontSize: 16 }}>
           |
         </Text>
       );
     }
     
-    // Style based on ball type
+    // Style based on ball type. Tuned for the NEW white scoreboard:
+    //   - dots / runs = dark text, boundaries still get brand colour but
+    //     slightly darkened so they stay readable on the light strip.
     let style: any = { marginHorizontal: 4, fontSize: 15, fontWeight: '700' };
-    
+
     if (b === 'WKT' || b === 'WICKET' || b === 'OUT') {
-      style = { ...style, color: '#FF0000', fontWeight: 'bold', fontSize: 16 };
+      style = { ...style, color: '#D32F2F', fontWeight: '900', fontSize: 16 };
     } else if (b === '6') {
-      style = { ...style, color: '#9C27B0', fontWeight: 'bold', fontSize: 16 };
+      style = { ...style, color: '#7B1FA2', fontWeight: '900', fontSize: 16 };
     } else if (b === '4') {
-      style = { ...style, color: '#00E676', fontWeight: 'bold', fontSize: 16 };
+      style = { ...style, color: '#2E7D32', fontWeight: '900', fontSize: 16 };
     } else if (b === 'WD' || b === 'Wd' || b === 'WIDE' || b === 'W') {
-      style = { ...style, color: '#FF9800', fontSize: 13 };
+      style = { ...style, color: '#EF6C00', fontSize: 13 };
     } else if (b === 'NB' || b === 'Nb' || b === 'NOBALL') {
-      style = { ...style, color: '#FF9800', fontSize: 13 };
+      style = { ...style, color: '#EF6C00', fontSize: 13 };
     } else if (b === '0' || b === '.' || b === '•') {
-      style = { ...style, color: '#888' };
+      style = { ...style, color: '#9E9E9E' };
     } else {
-      style = { ...style, color: '#FFF' };
+      style = { ...style, color: '#212121' };
     }
     
     // Display text
@@ -685,7 +687,7 @@ export default function MatchDetail() {
         <View style={styles.scoreHeader}>
           <View style={styles.headerRow}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={22} color="#FFF" />
+              <Ionicons name="arrow-back" size={24} color="#1B5E20" />
             </TouchableOpacity>
             {/* Prefer status text (live context: "Day 3 Lunch", "Won by X runs")
                 over series name — more useful & prevents overlap with team scores. */}
@@ -755,8 +757,8 @@ export default function MatchDetail() {
               >
                 <Ionicons
                   name={nativeOverlayActive ? 'layers' : 'layers-outline'}
-                  size={18}
-                  color={nativeOverlayActive ? '#4CAF50' : '#AAA'}
+                  size={20}
+                  color={nativeOverlayActive ? '#2E7D32' : '#616161'}
                 />
               </TouchableOpacity>
 
@@ -770,17 +772,17 @@ export default function MatchDetail() {
               >
                 <Ionicons
                   name={isTracking(id || '') ? 'notifications' : 'notifications-outline'}
-                  size={18}
-                  color={isTracking(id || '') ? '#4CAF50' : '#AAA'}
+                  size={20}
+                  color={isTracking(id || '') ? '#2E7D32' : '#616161'}
                 />
               </TouchableOpacity>
 
               {/* External Link */}
               <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: 'rgba(255,165,0,0.15)' }]}
+                style={[styles.actionBtn, { backgroundColor: 'rgba(230,81,0,0.15)' }]}
                 onPress={() => openExternalScorecard(id || '')}
               >
-                <Ionicons name="open-outline" size={16} color="#FFA500" />
+                <Ionicons name="open-outline" size={18} color="#E65100" />
               </TouchableOpacity>
             </View>
           </View>
@@ -842,6 +844,19 @@ export default function MatchDetail() {
                   </View>
                 ))}
               </View>
+            </View>
+          )}
+
+          {/* Current Bowler — single row: "BOWLER  Jasprit Bumrah  3.2-0-18-2" */}
+          {(match.status === 'live' || match.status === 'recent') && match.bowler && match.bowler.name && (
+            <View style={styles.bowlerContainer}>
+              <Text style={styles.bowlerTitle}>BOWLER</Text>
+              <Text style={styles.bowlerName} numberOfLines={1}>
+                {match.bowler.name}
+              </Text>
+              <Text style={styles.bowlerFigures}>
+                {`${match.bowler.overs}-${match.bowler.maidens}-${match.bowler.runs}-${match.bowler.wickets}`}
+              </Text>
             </View>
           )}
 
@@ -1013,77 +1028,76 @@ export default function MatchDetail() {
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-// Scoreboard targets ≤ 28% of screen height — user wants commentary space maxed.
-// Hard cap prevents dense scoreboards from eating commentary. On tiny screens
-// (users with Large Text / screen zoom enabled), allow a little extra breathing
-// room (up to 34%) so the RECENT over-summary strip never gets clipped.
-const IS_SHORT_SCREEN = SCREEN_H < 700; // zoomed / compact phones
-const SCOREBOARD_MAX_HEIGHT = Math.round(SCREEN_H * (IS_SHORT_SCREEN ? 0.34 : 0.28));
-const SCOREBOARD_MIN_HEIGHT = Math.round(SCREEN_H * 0.14);
+// Scoreboard minimum height — user requested ~20% larger scoreboard. Bumped
+// 14% → 18% of screen height so the new bowler row + taller fonts fit without
+// forcing overflow. Max cap removed earlier so batsmen / RECENT rows always
+// stay visible regardless of device height.
+const IS_SHORT_SCREEN = SCREEN_H < 700;
+const SCOREBOARD_MAX_HEIGHT = Math.round(SCREEN_H * (IS_SHORT_SCREEN ? 0.40 : 0.34));
+const SCOREBOARD_MIN_HEIGHT = Math.round(SCREEN_H * 0.18);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
   loadingText: { color: '#999', marginTop: 12, fontSize: 14 },
   scoreHeader: {
-    backgroundColor: 'rgba(34,34,34,0.85)',
-    paddingHorizontal: 10,
-    paddingTop: 4,
-    paddingBottom: 2,
-    borderBottomWidth: 1,
-    borderBottomColor: '#4CAF50',
-    // Scoreboard now scrolls with the page (no longer sticky). Max height
-    // removed so batsmen row + RECENT over history are always fully visible
-    // regardless of device height. Keep a sensible minimum so the scoreboard
-    // doesn't collapse on upcoming-match layouts with no batsmen row.
+    // WHITE solid background per user request (was dark rgba(34,34,34,0.85)).
+    // Bottom accent bar kept for visual separation from commentary.
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: '#2E7D32',
     minHeight: SCOREBOARD_MIN_HEIGHT,
+    // Subtle shadow so the card feels lifted against the page scroll bg.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
-  backBtn: { padding: 2, marginRight: 4 },
-  seriesName: { color: '#ffd700', fontSize: 13, flex: 1, fontWeight: '700' },
-  // Promoted status line that now lives at the top of the scoreboard instead of
-  // floating in the middle column. Green + bold so it reads like live context
-  // ("Day 3: Lunch Break", "NZ won by 26 runs") without fighting the team scores.
-  headerStatus: { color: '#4CAF50', fontSize: 13, flex: 1, fontWeight: '700', fontStyle: 'italic' },
-  headerActions: { flexDirection: 'row', gap: 4 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  backBtn: { padding: 4, marginRight: 6 },
+  // Dark text on white background. +20% from previous (13 → 16).
+  seriesName: { color: '#1B5E20', fontSize: 16, flex: 1, fontWeight: '800' },
+  headerStatus: { color: '#2E7D32', fontSize: 16, flex: 1, fontWeight: '800', fontStyle: 'italic' },
+  headerActions: { flexDirection: 'row', gap: 6 },
   actionBtn: {
-    padding: 5,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 7,
+    borderRadius: 16,
+    backgroundColor: 'rgba(46,125,50,0.10)',
   },
-  actionBtnActive: { backgroundColor: 'rgba(76,175,80,0.2)' },
-  teamRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
-  // Narrow centre column — it now only holds the LIVE / COMPLETED badge.
-  // Status text lives in the top header row so it can use full width.
-  centerCol: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, flexShrink: 0 },
-  // Team block hugs the centre so long scores (e.g. "288/10 (85.1 ov)") never
-  // spill past the screen edge. flexShrink lets it give up space gracefully.
-  teamBlock: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', gap: 5, flexShrink: 1, minWidth: 0 },
-  teamLogo: { width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.08)' },
+  actionBtnActive: { backgroundColor: 'rgba(46,125,50,0.25)' },
+  teamRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  centerCol: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, flexShrink: 0 },
+  teamBlock: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', gap: 6, flexShrink: 1, minWidth: 0 },
+  teamLogo: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0F0F0' },
   teamMeta: { alignItems: 'flex-start', flexShrink: 1, minWidth: 0 },
-  teamName: { color: '#E8E8E8', fontSize: 12, fontWeight: '700', lineHeight: 14 },
-  teamScore: { color: '#FFF', fontSize: 17, fontWeight: '800', lineHeight: 20 },
-  overs: { color: '#BBB', fontSize: 10, lineHeight: 13, fontWeight: '600' },
-  statusTxt: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
-  statusTxtCentered: { color: '#4CAF50', fontSize: 12, textAlign: 'center', marginTop: 2, fontStyle: 'italic', maxWidth: 150, fontWeight: '600' },
-  // Live match batsmen section - ultra compact (single-row display)
+  // +20% sizing. Dark text on white bg.
+  teamName: { color: '#424242', fontSize: 14, fontWeight: '800', lineHeight: 17 },
+  teamScore: { color: '#0D0D0D', fontSize: 20, fontWeight: '900', lineHeight: 24 },
+  overs: { color: '#616161', fontSize: 12, lineHeight: 15, fontWeight: '600' },
+  statusTxt: { color: '#2E7D32', fontSize: 14, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' },
+  statusTxtCentered: { color: '#2E7D32', fontSize: 14, textAlign: 'center', marginTop: 2, fontStyle: 'italic', maxWidth: 180, fontWeight: '700' },
+  // Live match batsmen section - softer grey tint on white card
   batsmenContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginBottom: 2,
-    gap: 6,
+    backgroundColor: '#F5F7FA',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 3,
+    gap: 8,
   },
   batsmenTitle: {
-    color: '#4CAF50',
-    fontSize: 10,
-    fontWeight: '800',
+    color: '#2E7D32',
+    fontSize: 12,
+    fontWeight: '900',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    minWidth: 42,
+    letterSpacing: 0.6,
+    minWidth: 50,
   },
   batsmenRow: {
     flexDirection: 'row',
@@ -1093,56 +1107,89 @@ const styles = StyleSheet.create({
   batsmanItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     flexShrink: 1,
     minWidth: 0,
   },
   batsmanName: {
-    color: '#E8E8E8',
-    fontSize: 11,
-    fontWeight: '600',
+    color: '#212121',
+    fontSize: 13,
+    fontWeight: '700',
   },
   strikerName: {
-    color: '#FFD700',
-    fontWeight: '800',
+    color: '#C62828',
+    fontWeight: '900',
   },
   batsmanScore: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '800',
+    color: '#0D0D0D',
+    fontSize: 14,
+    fontWeight: '900',
   },
-  // Over summary section - ultra compact
+  // Bowler section (NEW — user asked to display current bowler)
+  bowlerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 3,
+    gap: 8,
+  },
+  bowlerTitle: {
+    color: '#E65100',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    minWidth: 50,
+  },
+  bowlerName: {
+    color: '#0D0D0D',
+    fontSize: 13,
+    fontWeight: '800',
+    flexShrink: 1,
+  },
+  bowlerFigures: {
+    color: '#424242',
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 6,
+  },
+  // Over summary section
   overSummaryContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginBottom: 2,
-    gap: 6,
+    backgroundColor: '#ECEFF1',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 3,
+    gap: 8,
   },
   overSummaryTitle: {
-    color: '#4CAF50',
-    fontSize: 10,
-    fontWeight: '800',
+    color: '#2E7D32',
+    fontSize: 12,
+    fontWeight: '900',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    minWidth: 48,
+    letterSpacing: 0.6,
+    minWidth: 60,
   },
   overSummaryScroll: {
     flex: 1,
-    minHeight: 20,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderRadius: 4,
-    paddingVertical: 1,
-    paddingHorizontal: 4,
+    minHeight: 26,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 5,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderColor: '#CFD8DC',
   },
   overSummaryScrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingRight: 10,
-    gap: 1,
+    gap: 2,
   },
   proRow: { alignItems: 'center', marginTop: 2, marginBottom: 2 },
   // Content tab bar (Commentary / Scorecard)

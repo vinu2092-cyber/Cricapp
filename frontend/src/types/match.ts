@@ -15,6 +15,14 @@ export interface Batsman {
   isStriker: boolean;
 }
 
+export interface Bowler {
+  name: string;
+  overs: number;
+  maidens: number;
+  runs: number;
+  wickets: number;
+}
+
 export interface Commentary {
   id: string;
   over: string;
@@ -47,6 +55,7 @@ export interface Match {
   category?: MatchCategory;
   // Live match data
   batsmen?: Batsman[];
+  bowler?: Bowler;
   oSummary?: string; // Over summary like "1 4 W 0 2 6 | 0 1 ..."
   currentOver?: number;
   // Pagination: timestamp + innings id for loading older commentary (Cricbuzz uses both)
