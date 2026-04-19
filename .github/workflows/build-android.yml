@@ -49,6 +49,38 @@ jobs:
         working-directory: frontend
         run: npx expo prebuild --platform android --no-install
 
+      - name: Patch AndroidManifest for Firebase conflicts
+        working-directory: frontend
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          
+          # Add tools namespace if not present
+          if ! grep -q 'xmlns:tools=' "$MANIFEST"; then
+            sed -i '1s/<manifest/<manifest xmlns:tools="http:\/\/schemas.android.com\/tools"/' "$MANIFEST"
+            echo "✅ Added tools namespace"
+          fi
+          
+          # Fix default_notification_channel_id conflict
+          if grep -q 'com.google.firebase.messaging.default_notification_channel_id' "$MANIFEST"; then
+            sed -i '/com.google.firebase.messaging.default_notification_channel_id/s/<meta-data/<meta-data tools:replace="android:value"/' "$MANIFEST"
+            echo "✅ Patched default_notification_channel_id"
+          fi
+          
+          # Fix default_notification_color conflict
+          if grep -q 'com.google.firebase.messaging.default_notification_color' "$MANIFEST"; then
+            sed -i '/com.google.firebase.messaging.default_notification_color/s/<meta-data/<meta-data tools:replace="android:resource"/' "$MANIFEST"
+            echo "✅ Patched default_notification_color"
+          fi
+          
+          # Fix default_notification_icon conflict (if exists)
+          if grep -q 'com.google.firebase.messaging.default_notification_icon' "$MANIFEST"; then
+            sed -i '/com.google.firebase.messaging.default_notification_icon/s/<meta-data/<meta-data tools:replace="android:resource"/' "$MANIFEST"
+            echo "✅ Patched default_notification_icon"
+          fi
+          
+          echo "--- Patched meta-data entries ---"
+          grep -A 1 'com.google.firebase.messaging.default_notification' "$MANIFEST" || echo "No Firebase messaging meta-data found"
+
       - name: Restore Release Keystore
         env:
           KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
