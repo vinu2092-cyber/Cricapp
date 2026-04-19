@@ -69,3 +69,18 @@ Banner & Interstitial work fine.
 5. Install APK and verify via `adb logcat | grep AdMob`
 
 See `/app/ADMOB_CONSOLE_FIX_REQUIRED.md` for full details.
+
+## 2026-04-19 18:20 — Build #101 Successfully Pushed & Built
+
+- Commit `6f8a5e7` (my final commit) pushed to GitHub successfully after user re-clicked Save to GitHub
+- GitHub Actions build #101 completed in 7m 44s
+- APK (39.1 MB) and AAB (40.1 MB) artifacts generated successfully
+- User has confirmed: App Open, Banner, Interstitial ads now working after eCPM floor fix to "Google optimised"
+- Rewarded ad still failing in OLD v1.0.10 APK on user's device — but new APK from build #101 has the v1.0.8 pattern code fix
+- **Next**: User to download APK from build #101 artifacts, install on phone, test Rewarded ad
+
+## Expected outcome
+- Rewarded ad should load within 3-5 seconds of app launch (pre-load pattern)
+- On failure, 5-30s randomized backoff with FRESH instance (not aggressive 1s retry that triggered AdMob rate-limit)
+- No more 3x parallel load storm at 0s/3s/8s
+- No more same-failed-instance reload (creates fresh RewardedAd.createForAdRequest each time)
