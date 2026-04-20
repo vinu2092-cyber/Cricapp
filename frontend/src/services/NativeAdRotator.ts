@@ -1,59 +1,92 @@
 /**
- * NativeAdRotator
- * ---------------
- * App-wide cyclic dispenser for the 3 Native Advanced ad units the user
- * configured in AdMob console on 2026-04-20. The rule, verbatim:
+ * NativeAdRotator (v1.0.11 — banner + native alternating rotation)
+ * ----------------------------------------------------------------
+ * User spec (2026-04-20 update):
  *
- *   "Teeno IDs ka use 'Alternate' pattern mein karna hai taaki koi bhi ID
- *    repeat na ho jab tak teeno ek baar show na ho jayein. Pehli placement
- *    par ID-1, dusri par ID-2, teesri par ID-3, aur uske baad hi wapas
- *    ID-1 repeat hogi."
+ *   Slot 0: Banner #1   (Banner format — MEDIUM RECTANGLE, 300×250)
+ *   Slot 1: Videoads #1 (Native Advanced)
+ *   Slot 2: Banner #2   (Banner format)
+ *   Slot 3: Videoads #2 (Native Advanced)
+ *   Slot 4: Banner #1   (cycle repeats)
+ *   ...
  *
- * We expose ONE shared counter so every <NativeAdCard /> mounted anywhere
- * in the app pulls the next ID in sequence — regardless of whether the
- * placement is the top-of-scoreboard ad, the between-overs ad, or the
- * scorecard/squads tab ad. This guarantees the strict round-robin Google
- * Policy-friendly distribution the user requested.
+ * The TOP placement on the match screen (below the scoreboard) is the
+ * Banner #1 medium rectangle. All subsequent on-page ad slots (between
+ * overs in commentary, end-of-scorecard, end-of-squads, etc.) cycle
+ * through the 4-ID pattern above.
  *
- * IDs source: the three "Native Advanced" units the user created in the
- * AdMob console (screenshots shared with agent on 2026-04-20).
+ * Native Advanced #3 (`6409916742`) was deleted from the AdMob console
+ * by the user and is no longer referenced here.
+ *
+ * AdMob policy: each render site already enforces a 1-over / 1-section
+ * spacing gap before the next ad, so the 4-slot cycle guarantees the
+ * same format never repeats back-to-back on screen.
  */
 
-export const NATIVE_AD_UNIT_IDS = [
-  'ca-app-pub-9675798593675825/9123709995', // Native Advanced #1
-  'ca-app-pub-9675798593675825/1049778852', // Native Advanced #2
-  'ca-app-pub-9675798593675825/6409916742', // Native Advanced #3
+export type AdSlotKind = 'banner' | 'native';
+
+export interface AdSlotDescriptor {
+  kind: AdSlotKind;
+  unitId: string;
+  /** 1-based human label for logs ("Banner #1", "Native #2"). */
+  label: string;
+}
+
+// Ordered 4-step rotation — do NOT reorder without updating the user spec.
+export const AD_ROTATION: AdSlotDescriptor[] = [
+  { kind: 'banner', unitId: 'ca-app-pub-9675798593675825/8616886104', label: 'Banner #1' },
+  { kind: 'native', unitId: 'ca-app-pub-9675798593675825/9123709995', label: 'Native #1 (Videoads1)' },
+  { kind: 'banner', unitId: 'ca-app-pub-9675798593675825/2958604357', label: 'Banner #2' },
+  { kind: 'native', unitId: 'ca-app-pub-9675798593675825/1049778852', label: 'Native #2 (Videoads2)' },
 ];
+
+/** Legacy export — retained for any caller that only wants native IDs. */
+export const NATIVE_AD_UNIT_IDS = AD_ROTATION
+  .filter(s => s.kind === 'native')
+  .map(s => s.unitId);
 
 let rotatorIndex = 0;
 
 /**
- * Return the next ad unit ID and advance the cursor by 1 (modulo 3).
- * Thread-safety isn't a concern in React Native's single JS thread.
+ * Return the next ad slot descriptor and advance the shared cursor.
+ * Use when you need a NEW ad on every mount (rare).
  */
-export function getNextNativeAdUnit(): string {
-  const id = NATIVE_AD_UNIT_IDS[rotatorIndex % NATIVE_AD_UNIT_IDS.length];
-  rotatorIndex = (rotatorIndex + 1) % NATIVE_AD_UNIT_IDS.length;
-  return id;
+export function getNextAdSlot(): AdSlotDescriptor {
+  const slot = AD_ROTATION[rotatorIndex % AD_ROTATION.length];
+  rotatorIndex = (rotatorIndex + 1) % AD_ROTATION.length;
+  return slot;
 }
 
 /**
- * Deterministic picker for render-time usage inside `.map()` loops. Given
- * a stable index (e.g. the n-th over-break in the commentary feed), this
- * returns a stable ID without mutating the global rotator — so React
- * re-renders don't flip the ID on every update. Uses the same round-robin
- * rule: `index % 3`.
- *
- * Callers that want *persistent rotation across mounts* (e.g. the top
- * scoreboard ad which should rotate between match views) should use
- * `getNextNativeAdUnit()` instead.
+ * Deterministic slot resolver — given a stable index (e.g. n-th over-break
+ * in the commentary feed, or 0 for the top match placement), return the
+ * exact slot descriptor. Stable across re-renders. Use this everywhere the
+ * ad is mounted inside a `.map()` / render tree so React reconciliation
+ * doesn't swap the ad unit on every render.
  */
-export function pickNativeAdUnit(index: number): string {
+export function resolveAdSlot(index: number): AdSlotDescriptor {
   const safeIdx = Math.max(0, Math.floor(index));
-  return NATIVE_AD_UNIT_IDS[safeIdx % NATIVE_AD_UNIT_IDS.length];
+  return AD_ROTATION[safeIdx % AD_ROTATION.length];
 }
 
-/** For diagnostics / settings / debug overlays. */
+/**
+ * Backwards-compat helper — kept because CommentarySection and other
+ * callers import `pickNativeAdUnit`. Returns the unit ID regardless of
+ * whether that slot is banner or native. Prefer `resolveAdSlot()` for
+ * new code.
+ */
+export function pickNativeAdUnit(index: number): string {
+  return resolveAdSlot(index).unitId;
+}
+
+/**
+ * Legacy alias for `getNextAdSlot().unitId` — pre-v1.0.11 call sites.
+ */
+export function getNextNativeAdUnit(): string {
+  return getNextAdSlot().unitId;
+}
+
+/** For diagnostics / debug overlays. */
 export function currentRotatorIndex(): number {
   return rotatorIndex;
 }

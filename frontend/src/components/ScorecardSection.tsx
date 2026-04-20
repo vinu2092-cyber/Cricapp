@@ -302,8 +302,9 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
         )}
       </View>
 
-      {/* Single Native Ad — between batting and bowling sections */}
-      <NativeAdCard marginVertical={10} />
+      {/* Single Ad between batting and bowling sections.
+          slotIndex=2 → Banner #2 per v1.0.11 alternating rotation spec. */}
+      <NativeAdCard slotIndex={2} marginVertical={10} />
 
       {/* Bowling Section */}
       <View style={s.section}>

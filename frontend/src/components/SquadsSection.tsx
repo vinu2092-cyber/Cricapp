@@ -657,8 +657,9 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         );
       })}
 
-      {/* Single Native Ad - natural break between Playing XI and Substitutes */}
-      <NativeAdCard marginVertical={10} />
+      {/* Single Ad between Playing XI and Substitutes.
+          slotIndex=3 → Native #2 (Videoads2) per v1.0.11 rotation spec. */}
+      <NativeAdCard slotIndex={3} marginVertical={10} />
 
       {/* Substitutes Section — ALWAYS VISIBLE */}
       <View style={styles.sectionHeader}>

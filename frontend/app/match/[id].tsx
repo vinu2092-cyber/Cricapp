@@ -972,12 +972,12 @@ export default function MatchDetail() {
               bowlingTeam={match.teams[1].shortName}
             />
 
-            {/* TOP native ad — directly below scoreboard + cricket field,
-                above the commentary feed. This is the "first" placement in
-                the rotator sequence so it takes the ID-1 slot (slotIndex=0).
-                Policy spacing: the next native ad in the feed is at the
-                *first over transition*, which is always several ball rows
-                deep, keeping a safe visual gap. */}
+            {/* TOP ad — directly below scoreboard + cricket field, above the
+                commentary feed. slotIndex=0 maps to **Banner #1** (medium
+                rectangle 300×250) per v1.0.11 alternating rotation spec.
+                Policy spacing: the next ad in the feed is at the first
+                over-transition inside commentary (skipped for the very
+                first ball row), keeping a safe gap. */}
             <NativeAdCard slotIndex={0} marginVertical={8} />
 
             {/* Commentary - with error boundary */}

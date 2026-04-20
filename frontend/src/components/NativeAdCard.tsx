@@ -35,6 +35,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import {
+  BannerAd,
+  BannerAdSize,
   NativeAd,
   NativeAdView,
   NativeAsset,
@@ -46,7 +48,7 @@ import {
 // Advanced ads now render for EVERY user (Pro + Non-Pro alike). Interstitial,
 // Rewarded and App-Open ads in AdMobContext still honour Pro status — only
 // the native ad card is universal.
-import { pickNativeAdUnit } from '../services/NativeAdRotator';
+import { resolveAdSlot, AdSlotDescriptor } from '../services/NativeAdRotator';
 
 interface NativeAdCardProps {
   /**
@@ -207,26 +209,83 @@ const NativeAdCard: React.FC<NativeAdCardProps> = ({
   // v1.0.11 — Pro gating intentionally removed. Native ads render for all
   // users. (Rewarded/Interstitial/App-Open still Pro-gated elsewhere.)
 
-  // Resolve the actual unit ID — stable per mount unless caller forces a change
-  const resolvedUnitId = useMemo(() => {
-    if (adUnitId) return adUnitId;
-    return pickNativeAdUnit(
-      typeof slotIndex === 'number' ? slotIndex : Math.floor(Math.random() * 3),
-    );
+  // Resolve the slot descriptor (kind + unitId) once per mount. If an
+  // explicit adUnitId is passed we honour it as a native ad (back-compat).
+  const slot: AdSlotDescriptor = useMemo(() => {
+    if (adUnitId) return { kind: 'native', unitId: adUnitId, label: 'explicit' };
+    const idx = typeof slotIndex === 'number' ? slotIndex : Math.floor(Math.random() * 4);
+    return resolveAdSlot(idx);
   }, [adUnitId, slotIndex]);
 
-  const { ad, loading, errored } = useLoadedNativeAd(resolvedUnitId);
+  // ===== BANNER branch — render Google's <BannerAd /> at MEDIUM_RECTANGLE
+  // size (300×250) per the user's 2026-04-20 brief. Policy-safe: banner
+  // shows the standard AdMob sponsorship chrome inline so no extra "Ad"
+  // label is needed. A load error simply hides the slot (onAdFailedToLoad).
+  if (slot.kind === 'banner') {
+    return (
+      <BannerSlot
+        unitId={slot.unitId}
+        marginVertical={marginVertical}
+        onLoaded={onLoaded}
+        onFailed={onFailed}
+      />
+    );
+  }
 
-  // Notify parents once per terminal state
+  // ===== NATIVE branch (existing flow) =====
+  return (
+    <NativeSlot
+      unitId={slot.unitId}
+      marginVertical={marginVertical}
+      onLoaded={onLoaded}
+      onFailed={onFailed}
+    />
+  );
+};
+
+/** Banner wrapper — medium rectangle (300×250), hides on error. */
+const BannerSlot: React.FC<{
+  unitId: string;
+  marginVertical: number;
+  onLoaded?: () => void;
+  onFailed?: (err: unknown) => void;
+}> = ({ unitId, marginVertical, onLoaded, onFailed }) => {
+  const [errored, setErrored] = useState(false);
+  if (errored) return null;
+  return (
+    <View style={[styles.bannerWrap, { marginVertical }]}>
+      <BannerAd
+        unitId={unitId}
+        size={BannerAdSize.MEDIUM_RECTANGLE}
+        requestOptions={{ requestNonPersonalizedAdsOnly: false }}
+        onAdLoaded={() => onLoaded?.()}
+        onAdFailedToLoad={(err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[BannerSlot] load failed for', unitId, (err as any)?.message || err);
+          setErrored(true);
+          onFailed?.(err);
+        }}
+      />
+    </View>
+  );
+};
+
+/** Native wrapper — original NativeAdCard body. */
+const NativeSlot: React.FC<{
+  unitId: string;
+  marginVertical: number;
+  onLoaded?: () => void;
+  onFailed?: (err: unknown) => void;
+}> = ({ unitId, marginVertical, onLoaded, onFailed }) => {
+  const { ad, loading, errored } = useLoadedNativeAd(unitId);
+
   useEffect(() => {
     if (!loading && ad) onLoaded?.();
     if (!loading && errored) onFailed?.(new Error('native_ad_failed'));
   }, [loading, errored, ad, onLoaded, onFailed]);
 
-  // Errored → render nothing so the feed collapses cleanly
   if (errored) return null;
 
-  // Loading → slim placeholder (6px tall) to avoid content shift on load.
   if (loading || !ad) {
     return (
       <View style={[styles.loadingPlaceholder, { marginVertical }]}>
@@ -337,6 +396,15 @@ const styles = StyleSheet.create({
     // spinner strip. We deliberately do NOT render a full dark box
     // because the user reported "ads ke naam par khali boxes" as a
     // bug in prior versions.
+  },
+  bannerWrap: {
+    // Centered 300×250 medium rectangle. No extra background — AdMob's
+    // banner renders its own chrome. marginHorizontal matches the native
+    // card so both ad formats align with surrounding content.
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 8,
+    minHeight: 250,
   },
 });
 

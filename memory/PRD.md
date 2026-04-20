@@ -163,3 +163,40 @@ Commentary box mein "FOUR / SIX / 1-2-3 runs / direction" jaisi crisp outcome in
 
 ### Version: 1.0.11 (unchanged — user confirmed not yet uploaded)
 
+
+
+
+---
+
+## 2026-04-20 — v1.0.11 Banner+Native alternating rotation
+
+### User request
+Banner ads wapas laane hain (pehle v1.0.11 mein remove kar diye the). Naya Banner #2 ID bhi user ne AdMob mein banaya. Alternating rotation chahiye:
+
+| Slot | Format | Ad Unit ID | Location |
+|------|--------|------------|----------|
+| 0 | Banner (MEDIUM_RECTANGLE 300×250) | `ca-app-pub-9675798593675825/8616886104` | Match screen top (below scoreboard) |
+| 1 | Native Advanced (Videoads1) | `ca-app-pub-9675798593675825/9123709995` | 1st commentary over-break, upcoming analysis, empty state |
+| 2 | Banner (MEDIUM_RECTANGLE 300×250) | `ca-app-pub-9675798593675825/2958604357` (new) | Scorecard mid, 2nd over-break |
+| 3 | Native Advanced (Videoads2) | `ca-app-pub-9675798593675825/1049778852` | Squads mid, 3rd over-break |
+| 4+ | cycle repeats (0→1→2→3→0…) |
+
+Native Advanced #3 (`6409916742`) deleted from AdMob — removed from code.
+
+### Fix shipped
+- **`src/services/NativeAdRotator.ts`** — rewritten. New `AD_ROTATION` array with 4-slot banner+native alternation. Exposes `resolveAdSlot(index) → {kind, unitId, label}`. Legacy `pickNativeAdUnit`/`getNextNativeAdUnit` kept as back-compat shims.
+- **`src/components/NativeAdCard.tsx`** — dispatches on `slot.kind`:
+  - `banner` → renders `<BannerAd size={MEDIUM_RECTANGLE} />`, hides on error.
+  - `native` → existing `<NativeAdView>` flow.
+  - Refactored into `BannerSlot` + `NativeSlot` sub-components. Public API unchanged.
+- **`src/components/ScorecardSection.tsx`** — ad now `slotIndex={2}` (Banner #2).
+- **`src/components/SquadsSection.tsx`** — ad now `slotIndex={3}` (Native #2).
+- **`app/match/[id].tsx`** — top ad stays `slotIndex={0}` (Banner #1), comment updated.
+- CommentarySection over-break counter untouched; cycles through Native #1 → Banner #2 → Native #2 → Banner #1.
+
+### AdMob policy
+- First commentary over-break ad skipped on the very first ball row → ≥1 over of content between top banner and next ad.
+- Format alternates every slot → no back-to-back same-format ads.
+- Failed loads collapse the slot silently.
+
+### Version: 1.0.11 unchanged
