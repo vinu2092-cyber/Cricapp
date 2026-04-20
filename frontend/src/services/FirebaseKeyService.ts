@@ -96,8 +96,26 @@ async function fetchFirebaseConfig(): Promise<void> {
     for (const hc of hostConfigs) {
       for (const k of parseKeys(hc.keysRaw)) allUniqueKeysSet.add(k);
     }
-    const sharedPool = Array.from(allUniqueKeysSet);
-    debugLog(`Shared key pool (union of all slots): ${sharedPool.length} keys`);
+    // v1.0.11 — Shared-pool cross-host spraying DISABLED by default.
+    //
+    // Historical behaviour: if slot `api_key_p2` was empty the app would
+    // reuse Host 1's keys for Host 2 calls. This works only if the user's
+    // RapidAPI account is subscribed to BOTH providers with the same key
+    // — which is NOT the typical case. For users with separate
+    // subscriptions (one key per host), Host 1 keys hit Host 2 and get
+    // back 403 "You are not subscribed to this API", burning nothing but
+    // log noise and confusing the provider-rotation logic.
+    //
+    // New rule: each slot's keys are used ONLY on that slot's host.
+    // Users wanting the old sharing behaviour can opt in via a Firestore
+    // boolean field `share_keys_across_hosts: true`. Default: false.
+    const shareKeys = fields?.share_keys_across_hosts?.booleanValue === true;
+    const sharedPool = shareKeys ? Array.from(allUniqueKeysSet) : [];
+    debugLog(
+      shareKeys
+        ? `Shared key pool ENABLED (opt-in): ${sharedPool.length} keys`
+        : `Shared key pool disabled (default) — each host uses its own slot keys only`,
+    );
 
     // Build providers list, current_provider FIRST
     const allProviders: ProviderKeys[] = [];
@@ -192,13 +210,18 @@ async function fetchFirebaseConfigSDK(): Promise<void> {
       { host: (data?.api_host_p2 || '').replace(/\s+/g, ''), keysRaw: (data?.api_key_p2 || '').trim(), suffix: '_p2' },
     ];
 
-    // Shared key pool: union of all slot keys — enables every configured host to
-    // try every available RapidAPI key.
-    const allUniqueKeysSet = new Set<string>();
-    for (const hc of hostConfigs) {
-      for (const k of parseKeys(hc.keysRaw)) allUniqueKeysSet.add(k);
+    // Shared-pool rule mirrored from the REST branch above — opt-in only
+    // (Firestore boolean field `share_keys_across_hosts: true`). See that
+    // branch for the rationale (403 spraying on mismatched subscriptions).
+    const shareKeys = data?.share_keys_across_hosts === true;
+    let sharedPool: string[] = [];
+    if (shareKeys) {
+      const allUniqueKeysSet = new Set<string>();
+      for (const hc of hostConfigs) {
+        for (const k of parseKeys(hc.keysRaw)) allUniqueKeysSet.add(k);
+      }
+      sharedPool = Array.from(allUniqueKeysSet);
     }
-    const sharedPool = Array.from(allUniqueKeysSet);
 
     const allProviders: ProviderKeys[] = [];
     for (const hc of hostConfigs) {

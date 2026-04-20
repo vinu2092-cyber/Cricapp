@@ -312,3 +312,45 @@ agent_communication:
 # ============================================================
 
 # ============================================================
+
+# ==================== v1.0.11 Part 3 — Host 2 Routing Fix (2026-04-20) ====================
+#
+# USER SYMPTOM
+#   Host 1 (cricbuzz-cricket) RapidAPI quota exhausted. User expected
+#   Host 2 (cricbuzz-cricket2) — already subscribed — to serve data but
+#   app kept failing. Screenshot showed Host 2 with fresh 100% quota.
+#
+# ROOT CAUSE (not a code bug — a mis-pairing between code and Firestore)
+#   FirebaseKeyService originally used a "shared key pool" fallback: if
+#   `api_key_p2` was empty in Firestore, Host 1's keys were re-used for
+#   Host 2 calls. This worked ONLY for users whose single RapidAPI key
+#   is subscribed to BOTH providers. User has SEPARATE subscriptions, so
+#   Host 1 keys were hitting Host 2 and being rejected with HTTP 403
+#   ("not subscribed to this API"), which the rotator logged as generic
+#   "failed key" and skipped — making Host 2 look broken.
+#
+# FIX
+#   1. (Firestore — user action) Paste the Host 2 subscription key
+#      (e.g. 90d2ab8f81msh30392854f319f13p1e55b6jsnb447d693d396) into
+#      `api_key_p2` and set `api_host_p2 = cricbuzz-cricket2.p.rapidapi.com`.
+#      Optionally set `current_provider = cricbuzz-cricket2` to make Host 2
+#      primary while Host 1's quota resets at month-end.
+#
+#   2. (Code — this commit) Disabled the shared-pool cross-host spraying
+#      by default. Each slot's keys are now used ONLY on that slot's host.
+#      Users who truly have one key for multiple providers can opt in via a
+#      new Firestore boolean field:
+#          share_keys_across_hosts: true
+#      Default behaviour is now subscription-safe and log-quiet.
+#
+# FILES
+#   frontend/src/services/FirebaseKeyService.ts (REST + SDK branches)
+#
+# ENDPOINT COVERAGE CONFIRMED for Host 2
+#   live/recent/upcoming/detail/commentary/scorecard → all supported
+#   team-squad → 404 on Host 2; app already auto-falls-back to Host 1 for
+#                this endpoint via the sequential provider-rotation loop.
+#
+# NO code change needed to support Host 2 — the wiring was already there.
+# =======================================================================
+
