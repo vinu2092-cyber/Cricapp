@@ -26,8 +26,10 @@
  *   3. On error / failure → we destroy the instance and render nothing.
  *      Above us, callers will see zero height and lay out normally.
  *
- * IMPORTANT — Pro users don't see ads:
- *   We detect Pro status via usePro() and short-circuit render to null.
+ * v1.0.11 — Native ads render for **ALL users (Pro + Non-Pro)** per user
+ * request on 2026-04-20. Other ad formats (Rewarded / Interstitial /
+ * App-Open) still honour Pro status — only the native ad card is
+ * universal, as these are the brand-safe inline-content placements.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -40,7 +42,10 @@ import {
   NativeMediaAspectRatio,
   NativeMediaView,
 } from 'react-native-google-mobile-ads';
-import { usePro } from '../context/ProContext';
+// NOTE: v1.0.11 — Pro-user gating removed by explicit user request. Native
+// Advanced ads now render for EVERY user (Pro + Non-Pro alike). Interstitial,
+// Rewarded and App-Open ads in AdMobContext still honour Pro status — only
+// the native ad card is universal.
 import { pickNativeAdUnit } from '../services/NativeAdRotator';
 
 interface NativeAdCardProps {
@@ -199,7 +204,8 @@ const NativeAdCard: React.FC<NativeAdCardProps> = ({
   onLoaded,
   onFailed,
 }) => {
-  const { isPro } = usePro();
+  // v1.0.11 — Pro gating intentionally removed. Native ads render for all
+  // users. (Rewarded/Interstitial/App-Open still Pro-gated elsewhere.)
 
   // Resolve the actual unit ID — stable per mount unless caller forces a change
   const resolvedUnitId = useMemo(() => {
@@ -216,9 +222,6 @@ const NativeAdCard: React.FC<NativeAdCardProps> = ({
     if (!loading && ad) onLoaded?.();
     if (!loading && errored) onFailed?.(new Error('native_ad_failed'));
   }, [loading, errored, ad, onLoaded, onFailed]);
-
-  // Pro → never show ads
-  if (isPro) return null;
 
   // Errored → render nothing so the feed collapses cleanly
   if (errored) return null;
