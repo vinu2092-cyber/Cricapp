@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Image } fr
 import { Ionicons } from '@expo/vector-icons';
 import { fetchScorecard, fetchMatchInfo, fetchTeamSquad } from '../services/api';
 import { useAdMob } from '../context/AdMobContext.native';
+import NativeAdCard from './NativeAdCard';
 import PlayerDetailModal from './PlayerDetailModal';
 
 interface SquadPlayer {
@@ -77,7 +78,9 @@ export default function SquadsSection({ matchId, isLive }: Props) {
   // Player Detail Modal state — tap any player to see bigger photo + career stats
   const [selectedPlayer, setSelectedPlayer] = useState<SquadPlayer | null>(null);
 
-  const { BannerAdComponent } = useAdMob();
+  // BannerAdComponent reference removed (v1.0.11). SquadsSection now
+  // shows a single <NativeAdCard /> between Playing XI and Substitutes.
+  useAdMob();
 
   useEffect(() => {
     loadSquads();
@@ -612,10 +615,10 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         </View>
       </View>
 
-      {/* Banner Ad - Start */}
-      <View style={styles.bannerAdContainer}>
-        <BannerAdComponent />
-      </View>
+      {/* v1.0.11 — SquadsSection had 4 banner ads (Start / mid / after-subs /
+          end). Reduced to a SINGLE Native Advanced ad at the natural break
+          between Playing XI and Substitute Players. Keeps us well within
+          AdMob's "ads not too close together" policy for this short tab. */}
 
       {/* Playing XI Section */}
       <View style={styles.sectionHeader}>
@@ -654,10 +657,8 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         );
       })}
 
-      {/* Banner Ad - Between sections */}
-      <View style={styles.bannerAdContainer}>
-        <BannerAdComponent />
-      </View>
+      {/* Single Native Ad - natural break between Playing XI and Substitutes */}
+      <NativeAdCard marginVertical={10} />
 
       {/* Substitutes Section — ALWAYS VISIBLE */}
       <View style={styles.sectionHeader}>
@@ -698,10 +699,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         </View>
       )}
 
-      {/* Banner Ad - After substitutes */}
-      <View style={styles.bannerAdContainer}>
-        <BannerAdComponent />
-      </View>
+      {/* After-substitutes banner removed (v1.0.11) for policy spacing. */}
 
       {/* Bench Section — ALWAYS VISIBLE */}
       <View style={styles.sectionHeader}>
@@ -742,10 +740,7 @@ export default function SquadsSection({ matchId, isLive }: Props) {
         </View>
       )}
 
-      {/* Banner Ad - End of bench */}
-      <View style={styles.bannerAdContainer}>
-        <BannerAdComponent />
-      </View>
+      {/* End-of-bench banner removed (v1.0.11) for policy spacing. */}
 
       {/* Info footer */}
       <View style={styles.footer}>

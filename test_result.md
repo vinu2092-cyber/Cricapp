@@ -230,4 +230,85 @@ agent_communication:
 #
 # Version bump: ready for 1.0.11 (app.json versionCode/version to be
 # bumped by CI pipeline on "Save to GitHub" per user's standing workflow).
+
+# ==================== v1.0.11 Part 2 — Native Ads + UX Tasks (2026-04-20) ====================
+#
+# TASK 1 — Native Advanced Ads migration (removed all banners)
+#   • New component: src/components/NativeAdCard.tsx
+#       - Dark #121212 premium card, rounded 14px, border 1px #2A2A2A
+#       - Media aspect 16:9 via <NativeMediaView /> (video auto-plays
+#         muted — Google SDK default + explicit startVideoMuted:true)
+#       - "Ad" sponsorship badge (top-left) and advertiser name row
+#         per AdMob policy
+#       - Only the CTA button and AdChoices icon are pressable →
+#         prevents accidental clicks / data hiding concerns
+#       - Loading placeholder is 6px high so no empty dark boxes
+#       - Destroys NativeAd instance on unmount to free native memory
+#   • New service: src/services/NativeAdRotator.ts
+#       - Strict round-robin across 3 unit IDs (user-provided via
+#         screenshots):
+#           /9123709995, /1049778852, /6409916742
+#       - getNextNativeAdUnit() for mount-time rotation
+#       - pickNativeAdUnit(index) for deterministic slot assignment
+#         inside .map() loops (prevents ID flicker on re-render)
+#   • Placements (AdMob policy: ≥1 full "block" of content between
+#     any two ads on screen):
+#       - Commentary tab: ONE top native below scoreboard+pitch
+#         (slotIndex=0) + over-break ad at every over transition
+#         starting from the 2nd over (slotIndex=1,2,3…). The very
+#         first over transition is suppressed so it isn't adjacent
+#         to the top ad.
+#       - Empty-state / upcoming-match placeholder: ONE native only
+#         (was 2 banners → flagged policy risk, now safe).
+#       - Scorecard tab: ONE native at natural break between
+#         Batting and Bowling sections (other 2 banner slots
+#         removed to avoid adjacency).
+#       - Squads tab: ONE native between Playing XI and Substitutes
+#         (other 3 banner slots removed).
+#   • All `<BannerAdComponent />` call sites in app/src now render
+#     `<NativeAdCard />` directly. BannerAdComponent in AdMob context
+#     is kept as a backward-compat wrapper that returns <NativeAdCard />
+#     so any stale reference is harmless.
+#   • Banner AdUnit ID remains in AD_IDS for bookkeeping but no view
+#     renders a BannerAd any more.
+#
+# TASK 2 — Scoreboard dark-blue rounded border
+#   • styles.scoreHeader now has: borderWidth 2, borderColor #0D47A1
+#     (Material dark blue 900), borderRadius 10, overflow:hidden,
+#     marginHorizontal 6, marginTop 4.
+#   • Kept shadow/elevation intact so card still has depth.
+#   • Existing 13/7 horizontal paddings are sufficient — no content
+#     clipping after adding the 2-px frame.
+#
+# TASK 3 — White wallpaper as Standard default
+#   • useWallpaper initial state and AsyncStorage fallback switched
+#     from 'default' to 'white'.
+#   • WALLPAPER_PRESETS.white.label changed from 'White' → 'Standard'.
+#   • WallpaperPicker presetKeys reordered: ['white', 'default',
+#     'black', 'lightgreen'] — white tile now appears first.
+#
+# TASK 4 — Settings: "Customise Wallpaper" moved above "Clear Cache"
+#   • Reordered sections in app/settings.tsx so Appearance (Section 4)
+#     is rendered before Storage & Performance (Section 5).
+#
+# Files added:
+#   frontend/src/components/NativeAdCard.tsx
+#   frontend/src/services/NativeAdRotator.ts
+#
+# Files modified:
+#   frontend/app/match/[id].tsx
+#   frontend/app/settings.tsx
+#   frontend/src/components/CommentarySection.tsx
+#   frontend/src/components/ScorecardSection.tsx
+#   frontend/src/components/SquadsSection.tsx
+#   frontend/src/components/WallpaperPicker.tsx
+#   frontend/src/context/AdMobContext.native.tsx
+#   frontend/src/hooks/useWallpaper.ts
+#
+# TypeScript: no new errors introduced (pre-existing SplashScreen + settings
+# Switch typing errors remain unchanged).
+# Build: no test agent run per user standing instruction. GitHub "Save to
+# GitHub" action will build the APK/AAB.
+# ============================================================
+
 # ============================================================

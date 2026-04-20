@@ -16,9 +16,11 @@ export const WALLPAPER_PRESETS: Record<
   WallpaperChoice,
   { label: string; color?: string; source?: ImageSourcePropType }
 > = {
+  // "white" moved to label "Standard" so it reads as the shipped default.
+  // The actual fallback-to-white is handled in useWallpaper() above.
+  white:      { label: 'Standard',    color: '#FFFFFF' },
   default:    { label: 'Classic',     source: require('../../assets/images/wallpaper.png') },
   black:      { label: 'Black',       color: '#0E0E0E' },
-  white:      { label: 'White',       color: '#FFFFFF' },
   lightgreen: { label: 'Light Green', color: '#DDEEDD' },
   custom:     { label: 'Custom Photo' },
 };
@@ -34,7 +36,11 @@ interface WallpaperState {
  * to resolve either an `ImageSource` (for default/custom) or a `color` (for solids).
  */
 export function useWallpaper() {
-  const [state, setState] = useState<WallpaperState>({ choice: 'default' });
+  // v1.0.11 — Default changed from 'default' (painted wallpaper.png) to
+  // 'white'. User requested white to be the standard / out-of-the-box
+  // wallpaper. Users who previously saved 'default' explicitly keep it;
+  // only *unset* preferences are migrated to white.
+  const [state, setState] = useState<WallpaperState>({ choice: 'white' });
 
   // Load persisted selection on mount
   useEffect(() => {
@@ -44,10 +50,10 @@ export function useWallpaper() {
           AsyncStorage.getItem(WALLPAPER_KEY),
           AsyncStorage.getItem(CUSTOM_URI_KEY),
         ]);
-        const choice = (choiceRaw as WallpaperChoice) || 'default';
+        const choice = (choiceRaw as WallpaperChoice) || 'white';
         setState({ choice, customUri: customUri || undefined });
       } catch {
-        /* ignore — fall back to default */
+        /* ignore — fall back to white */
       }
     })();
   }, []);

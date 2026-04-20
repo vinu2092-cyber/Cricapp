@@ -45,7 +45,9 @@ export default function WallpaperPicker() {
     }
   };
 
-  const presetKeys: WallpaperChoice[] = ['default', 'white', 'black', 'lightgreen'];
+  // v1.0.11 — ordering changed. 'white' (labelled "Standard") is now the
+  // first tile so users immediately see the new default selection.
+  const presetKeys: WallpaperChoice[] = ['white', 'default', 'black', 'lightgreen'];
 
   return (
     <View style={s.container}>

@@ -571,29 +571,24 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  // v1.0.11 — BannerAdComponent converted to a thin wrapper around our
+  // new <NativeAdCard />. Every placement site in the codebase previously
+  // rendered <BannerAdComponent /> and we now reroute those to a rotating
+  // Native Advanced ad (3 IDs, round-robin) per the user's 2026-04-20
+  // brief. The wrapper keeps the old API so call sites don't break and
+  // remain findable in future audits — but policy/spacing is now enforced
+  // upstream by the component itself (Pro-aware, dark premium card,
+  // collapses if no fill).
+  //
+  // Historical <BannerAd /> from google-mobile-ads is NO LONGER RENDERED
+  // anywhere in the app. The banner AD_ID stays in AD_IDS purely for
+  // bookkeeping; it isn't wired into any view.
   const BannerAdComponent: React.FC = () => {
-    try {
-      const { width: screenWidth } = require('react-native').Dimensions.get('window');
-      return (
-        <View style={{
-          width: screenWidth,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginVertical: 8,
-          overflow: 'hidden',
-        }}>
-          <BannerAd
-            unitId={AD_IDS.banner}
-            size={BannerAdSize.MEDIUM_RECTANGLE}
-            requestOptions={{ requestNonPersonalizedAdsOnly: false }}
-            onAdFailedToLoad={(error) => console.log('[AdMob] Banner failed:', error)}
-          />
-        </View>
-      );
-    } catch (error) {
-      console.warn('[AdMob] BannerAd render error:', error);
-      return null;
-    }
+    // Lazy require to avoid a hard import cycle between AdMobContext and
+    // NativeAdCard (NativeAdCard itself consumes usePro from ProContext,
+    // not from us, so this is safe).
+    const LazyNative = require('./../components/NativeAdCard').default;
+    return <LazyNative />;
   };
 
   return (

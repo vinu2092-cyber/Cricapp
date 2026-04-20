@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Image } fr
 import { Ionicons } from '@expo/vector-icons';
 import { fetchScorecard, fetchMatchInfo, fetchTeamSquad } from '../services/api';
 import { useAdMob } from '../context/AdMobContext.native';
+import NativeAdCard from './NativeAdCard';
 
 interface Props {
   matchId: string;
@@ -74,7 +75,9 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
   const [activeInnings, setActiveInnings] = useState(0);
   const [error, setError] = useState(false);
   const [playerImgMap, setPlayerImgMap] = useState<Record<string, string>>({});
-  const { BannerAdComponent } = useAdMob();
+  // BannerAdComponent reference removed — ScorecardSection now renders
+  // <NativeAdCard /> directly (v1.0.11). Hook retained for future use.
+  useAdMob();
 
   useEffect(() => {
     loadScorecard();
@@ -225,11 +228,11 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
         </View>
       )}
 
-      {/* Banner Ad - Start of batting section */}
-      <View style={s.bannerAdContainer}>
-        <BannerAdComponent />
-      </View>
-
+      {/* v1.0.11 — Scorecard previously had 3 banner ads. To meet AdMob
+          policy (no two ads stacked too close) we now render a single
+          Native Advanced ad at the natural mid-point of the scorecard
+          (between batting and bowling sections). This is the only ad in
+          this tab. */}
 
       {/* Batting Section */}
       <View style={s.section}>
@@ -299,10 +302,8 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
         )}
       </View>
 
-      {/* Banner Ad - Between batting and bowling */}
-      <View style={s.bannerAdContainer}>
-        <BannerAdComponent />
-      </View>
+      {/* Single Native Ad — between batting and bowling sections */}
+      <NativeAdCard marginVertical={10} />
 
       {/* Bowling Section */}
       <View style={s.section}>
@@ -334,10 +335,8 @@ export default function ScorecardSection({ matchId, isLive }: Props) {
         ))}
       </View>
 
-      {/* Banner Ad - End of bowling section */}
-      <View style={s.bannerAdContainer}>
-        <BannerAdComponent />
-      </View>
+      {/* End-of-bowling banner removed (v1.0.11) — keeping just the
+          single mid-section native ad above to stay policy-compliant. */}
 
       {/* Fall of Wickets */}
       {Array.isArray(fowData) && fowData.length > 0 && (

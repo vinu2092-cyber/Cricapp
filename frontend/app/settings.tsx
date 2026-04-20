@@ -229,7 +229,16 @@ export default function Settings() {
             </View>
           </View>
 
-          {/* Section 4: Storage & Performance */}
+          {/* Section 4: Appearance (Customise Wallpaper)
+              v1.0.11 — Moved ABOVE Storage & Performance per user brief.
+              Rationale: wallpaper customisation is a discovery / delight
+              setting the user wants front-and-centre; Clear Cache is an
+              emergency troubleshooting control that belongs lower down. */}
+          <View style={styles.section}>
+            <WallpaperPicker />
+          </View>
+
+          {/* Section 5: Storage & Performance */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Storage & Performance</Text>
             
@@ -260,11 +269,6 @@ export default function Settings() {
                 <Text style={styles.clearCacheDesc}>Free up storage (auto-clears old data every 3 days)</Text>
               </View>
             </TouchableOpacity>
-          </View>
-
-          {/* Section 5: Appearance */}
-          <View style={styles.section}>
-            <WallpaperPicker />
           </View>
 
           {/* Section 6: About */}

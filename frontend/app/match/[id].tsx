@@ -15,6 +15,7 @@ import CricketField from '../../src/components/CricketField';
 import CommentarySection from '../../src/components/CommentarySection';
 import ScorecardSection from '../../src/components/ScorecardSection';
 import SquadsSection from '../../src/components/SquadsSection';
+import NativeAdCard from '../../src/components/NativeAdCard';
 import FloatingScoreboard from '../../src/components/FloatingScoreboard';
 import AppBackground from '../../src/components/AppBackground';
 import MatchMoodMeter from '../../src/components/MatchMoodMeter';
@@ -971,6 +972,14 @@ export default function MatchDetail() {
               bowlingTeam={match.teams[1].shortName}
             />
 
+            {/* TOP native ad — directly below scoreboard + cricket field,
+                above the commentary feed. This is the "first" placement in
+                the rotator sequence so it takes the ID-1 slot (slotIndex=0).
+                Policy spacing: the next native ad in the feed is at the
+                *first over transition*, which is always several ball rows
+                deep, keeping a safe visual gap. */}
+            <NativeAdCard slotIndex={0} marginVertical={8} />
+
             {/* Commentary - with error boundary */}
             {match.commentary && match.commentary.length > 0 ? (
               <React.Suspense fallback={<View style={styles.noComm}><ActivityIndicator color="#4CAF50" /></View>}>
@@ -992,20 +1001,16 @@ export default function MatchDetail() {
                   {match.status === 'upcoming' ? 'Match has not started yet' : 'Commentary not available'}
                 </Text>
 
-                {/* Banner Ad 1 */}
-                <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
-                  <BannerAdComponent />
-                </View>
+                {/* NOTE: removed the pair of placeholder banner ads here.
+                    The top-of-content NativeAdCard above already provides a
+                    single premium slot — rendering more ads in this small
+                    empty-state view would violate AdMob's "two ads too
+                    close" policy for low-content screens. */}
 
                 <TouchableOpacity style={styles.externalBtn} onPress={() => openExternalScorecard(id || '')}>
                   <Ionicons name="open-outline" size={16} color="#FFF" />
                   <Text style={styles.externalTxt}>View Full Scorecard</Text>
                 </TouchableOpacity>
-
-                {/* Banner Ad 2 */}
-                <View style={{ marginVertical: 10, alignItems: 'center', width: '100%' }}>
-                  <BannerAdComponent />
-                </View>
               </View>
             )}
           </>
@@ -1095,9 +1100,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingTop: 7,
     paddingBottom: 5,
-    borderBottomWidth: 2,
-    borderBottomColor: '#2E7D32',
     minHeight: SCOREBOARD_MIN_HEIGHT,
+    // v1.0.11 — dark blue full-border (user brief 2026-04-20). We bumped
+    // the horizontal paddings slightly above (13/7) to guarantee the 2px
+    // frame never clips player names or score digits. Rounded corners are
+    // intentional but subtle (10px) so the scoreboard still reads as a
+    // "card" rather than an oversized rounded button.
+    borderWidth: 2,
+    borderColor: '#0D47A1',
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginHorizontal: 6,
+    marginTop: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
