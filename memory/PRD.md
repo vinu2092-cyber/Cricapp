@@ -142,3 +142,24 @@ See `/app/ADMOB_CONSOLE_FIX_REQUIRED.md` for full details.
   This is a larger UI task — will ship in a follow-up iteration once the user confirms the current data-correctness fixes are working on device.
 
 ### Version unchanged: 1.0.10 / versionCode 10 per user preference.
+
+
+---
+
+## 2026-02 — v1.0.11 concise commentary fix
+
+### User-reported issue
+Commentary box mein "FOUR / SIX / 1-2-3 runs / direction" jaisi crisp outcome info kabhi kabhi miss ho rahi thi. Top badge toh dikhta tha ("SIX") par paragraph mein flowery metaphor-heavy description hoti thi jisme key info dab jaati thi. User ne bola: ek hi paragraph rahe, short-medium length, essential info (bowler→batter, runs, direction, fielder) ho, no tukkebaazi, no doubling.
+
+### Root cause
+`CommentarySection.tsx` ki dedupe logic same ball ke sabse LAMBE (v3, ~300-400 chars) Cricbuzz commentary version ko pick kar rahi thi — aur v3 often crisp outcome words drop kar deti hai enrichment mein.
+
+### Fix shipped — `frontend/src/components/CommentarySection.tsx`
+- **`scoreVersion(text)` helper** — per-ball version scoring. Ideal length ~120 chars, bonus for "Bowler to Batter" lead-in, bonus for outcome keyword in first 60 chars, penalty for >250 chars. Dedupe ab **highest-scoring** (≈ medium-length structured) version pick karta hai, not longest.
+- **`buildStructuredPrefix(item)` helper** — API ke structured `event` / `runs` / `extras` fields se crisp outcome prefix banata hai (`"FOUR! "`, `"SIX! "`, `"OUT! "`, `"1 run. "`, `"No run. "`, `"Wide. "`, etc.). Added to display text ONLY when text itself doesn't already state outcome in first 50 chars. Scoreboard-accurate, no text-based guessing.
+- **`trimLongCommentary(text, 220)`** — fallback trim at sentence boundary if picked version still too long.
+- Applied in regular ball commentary render path only. OUT / new-batsman / bowler-change event cards aur stats blocks untouched.
+- Highlight logic verified — `detectEventType` strict on `item.event === 'wicket'`, no text-match false positives. `parseRichText` doesn't color OUT/FOUR/SIX keywords based on text.
+
+### Version: 1.0.11 (unchanged — user confirmed not yet uploaded)
+

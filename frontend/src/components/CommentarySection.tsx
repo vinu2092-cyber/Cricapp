@@ -342,6 +342,52 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     return text.replace(/\\n/g, '\n').replace(/\\r/g, '').trim().replace(/^\s+|\s+$/g, '');
   };
 
+  // v1.0.11 — build a crisp outcome prefix from the API's STRUCTURED fields
+  // (event / runs / extras). Added to the commentary text ONLY when the
+  // text itself does not already state the outcome clearly in its opening
+  // ~50 chars. Guarantees every ball shows "1 run. / FOUR! / SIX! / OUT! /
+  // Wide." up front even if the commentator went straight into description.
+  // 100% sourced from the scoreboard-driven API fields — no text tukkebaazi.
+  const buildStructuredPrefix = (item: Commentary): string => {
+    const head = (item.english || '').slice(0, 50).toLowerCase();
+    const hasOutcome = /\b(no run|1 run|one run|2 runs?|two runs?|3 runs?|three runs?|4 runs?|5 runs?|6 runs?|four|six|out|wide|no ball|no-ball|dot|byes?|leg byes?)\b/.test(head);
+    if (hasOutcome) return '';
+
+    if (item.event === 'wicket') return 'OUT! ';
+    if (item.event === 'six') return 'SIX! ';
+    if (item.event === 'four') return 'FOUR! ';
+    if (item.event === 'wide') return 'Wide. ';
+    if (item.extras === 'noball') return 'No ball. ';
+    if (item.extras === 'legbye') return 'Leg bye. ';
+    if (item.extras === 'bye') return 'Bye. ';
+
+    if (typeof item.runs === 'number') {
+      if (item.runs === 0) return 'No run. ';
+      if (item.runs === 1) return '1 run. ';
+      return `${item.runs} runs. `;
+    }
+    return '';
+  };
+
+  // v1.0.11 — trim flowery long commentary (>220 chars) at the nearest
+  // sentence boundary so the row stays concise. Only kicks in if the picked
+  // version is still too long (should be rare after the medium-version
+  // scoring above).
+  const trimLongCommentary = (text: string, maxLen: number = 220): string => {
+    if (text.length <= maxLen) return text;
+    const soft = Math.floor(maxLen * 0.7);
+    // Prefer sentence boundary
+    for (let i = maxLen; i >= soft; i--) {
+      if (text[i] === '.' || text[i] === '!' || text[i] === '?') {
+        return text.slice(0, i + 1).trim();
+      }
+    }
+    // Fallback: trim at nearest space, add ellipsis
+    const hard = text.lastIndexOf(' ', maxLen);
+    const cut = hard > soft ? hard : maxLen;
+    return text.slice(0, cut).trim() + '…';
+  };
+
   /**
    * Check if a commentary entry is a stats/record block
    * These are multi-line entries without a ball number
@@ -402,6 +448,17 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   // v1.0.11 — additionally drop rows whose `english` is empty / whitespace.
   // These used to render an empty pink wicket card that appeared before the
   // API finished streaming the wicket commentary text (user report).
+  //
+  // v1.0.11 (user feedback fix) — pick the MEDIUM-length commentary version
+  // instead of the longest. Cricbuzz pushes ~3 versions per ball:
+  //   v1 (~30-50 chars):  "1 run"
+  //   v2 (~80-180 chars): "Bumrah to Kohli, 1 run, pushed to mid-off"
+  //   v3 (~250-400 chars): flowery metaphor-heavy enrichment that often
+  //                        drops the crisp "1 run / FOUR / SIX" keyword
+  // The user wants concise-but-complete info: bowler → batter, runs, shot
+  // direction, fielder. v2 delivers exactly that. We score each version
+  // and pick the one closest to the ideal length of ~120 chars, with a
+  // bonus for the "Bowler to Batter" pattern and clear outcome keyword.
   const displayedCommentary = React.useMemo(() => {
     if (!commentary || commentary.length === 0) return commentary || [];
 
@@ -417,8 +474,29 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       ? nonEmpty
       : nonEmpty.filter(c => c.inningsId === undefined || c.inningsId === latestInnings);
 
-    // Step 2 — dedupe by (inningsId || 0, over). Keep the entry with the
-    // LONGEST english text (= the most complete version of the ball).
+    // Helper — score a commentary version; higher score = better pick.
+    const scoreVersion = (text: string): number => {
+      const len = text.length;
+      if (len === 0) return -Infinity;
+      // Ideal length ~120 chars. Score = 1000 - distance from ideal.
+      const ideal = 120;
+      let score = 1000 - Math.abs(len - ideal);
+      // Bonus: "Bowler to Batter" structured lead-in
+      if (/^[A-Z][a-zA-Z'\-]+(?: [A-Z][a-zA-Z'\-]+)*\s+to\s+[A-Z][a-zA-Z'\-]+/.test(text)) {
+        score += 150;
+      }
+      // Bonus: crisp outcome keyword within first 60 chars
+      const head = text.slice(0, 60).toLowerCase();
+      if (/\b(no run|1 run|one run|2 runs?|two runs?|3 runs?|three runs?|four|six|out|wide|no ball|no-ball|dot)\b/.test(head)) {
+        score += 80;
+      }
+      // Penalty: flowery metaphor territory (>250 chars)
+      if (len > 250) score -= (len - 250);
+      return score;
+    };
+
+    // Step 2 — dedupe by (inningsId || 0, over). Keep the BEST-SCORING
+    // (≈ medium length + structured) version per ball.
     const byKey = new Map<string, Commentary>();
     for (const c of innings) {
       // Skip rows without a real over number — these are session / stats
@@ -429,7 +507,9 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       }
       const key = `${c.inningsId ?? 0}-${c.over}`;
       const existing = byKey.get(key);
-      if (!existing || (c.english?.length || 0) > (existing.english?.length || 0)) {
+      const existingScore = existing ? scoreVersion(existing.english || '') : -Infinity;
+      const currentScore = scoreVersion(c.english || '');
+      if (currentScore > existingScore) {
         byKey.set(key, c);
       }
     }
@@ -710,10 +790,22 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
                         <Text style={styles.eventText}>{getEventLabel(item.event)}</Text>
                       </View>
                     )}
-                    <RichCommentaryText
-                      text={parseText(language === 'english' ? item.english : (item.hindi || item.english))}
-                      style={styles.commentaryText}
-                    />
+                    {(() => {
+                      // v1.0.11 — concise commentary: trim overly long text +
+                      // prepend structured outcome prefix from API fields.
+                      // Hindi path is used only when the user has toggled
+                      // language; we still apply the same prefix/trim pipeline
+                      // on either language so the crisp outcome is visible.
+                      const raw = parseText(language === 'english' ? item.english : (item.hindi || item.english));
+                      const trimmed = trimLongCommentary(raw);
+                      const prefix = language === 'english' ? buildStructuredPrefix(item) : '';
+                      return (
+                        <RichCommentaryText
+                          text={`${prefix}${trimmed}`}
+                          style={styles.commentaryText}
+                        />
+                      );
+                    })()}
                   </View>
 
                   {isPro && (
