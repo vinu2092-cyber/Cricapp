@@ -213,43 +213,46 @@ jobs:
         if: always()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.11
-          name: CricApp v1.0.11
+          tag_name: v1.0.12
+          name: CricApp v1.0.12
           body: |
-            ## CricApp v1.0.11 — Commentary + Ads Overhaul
+            ## CricApp v1.0.12 — Cold-start perf + banner-only ads
 
-            ### Commentary
-            - Concise medium-length commentary version picked per ball (no flowery long paragraphs).
-            - Structured outcome prefix (`"FOUR!"`, `"SIX!"`, `"1 run."`, `"OUT!"`, `"Wide."`) prepended from API's `event`/`runs`/`extras` when text doesn't state outcome clearly.
-            - Strict wicket/four/six highlighting — only API's `event` field triggers coloring, no text-match false positives.
-            - Empty wicket cards fixed (text-ready guard).
+            ### Cold-start perf (old phone fix)
+            - Native splash `1800ms → 600ms`, custom splash `2500ms → 800ms`.
+            - Total forced splash wait `4.3s → 1.4s` — saves ~3s on every cold start.
+            - Zero touch to commentary, API, or fetch logic.
 
-            ### Ads (Banner + Native alternating rotation)
-            - **Slot 0** → Banner #1 (300×250 medium rectangle) at match top, below scoreboard
-            - **Slot 1** → Native Advanced #1 (Videoads1) at 1st commentary over-break
-            - **Slot 2** → Banner #2 (new ID `2958604357`) at scorecard mid-section + 2nd over-break
-            - **Slot 3** → Native Advanced #2 (Videoads2) at squads mid-section + 3rd over-break
-            - Slot 4+ cycles 0→1→2→3 forever. Never same format back-to-back.
-            - Native Advanced #3 removed (user deleted from AdMob console).
-            - Rewarded Ad preload + unlock reliable.
-            - Native Ads visible to ALL users (Pro + Non-Pro).
+            ### Ads — banner-only 3-slot alternating rotation
+            Native Advanced (Videoads1, Videoads2) had ~0% match rate → **removed entirely** from code.
+            New rotation:
+            - **Slot 0** → Banner #1 (`8616886104`) — MEDIUM_RECTANGLE 300×250 at match top
+            - **Slot 1** → Banner #2 (`2958604357`) — ANCHORED_ADAPTIVE_BANNER (auto-width) at 1st over-break / upcoming / empty state
+            - **Slot 2** → Banner #3 (`7614346881`, new) — MEDIUM_RECTANGLE 300×250 at scorecard mid
+            - Slot 3+ cycles 0→1→2 forever. Different creatives guaranteed by different unit IDs + AdMob refresh.
+            - Placements unchanged (top, commentary over-breaks, scorecard, squads).
 
-            ### Scoreboard / Settings / API
-            - Scoreboard: "THIS OVER" removed, short team names on top, dark blue rounded border.
-            - Settings: white wallpaper default, "Customize Wallpaper" moved above "Clear Cache".
+            ### Commentary (from v1.0.11, preserved)
+            - Concise medium-length commentary version picked per ball.
+            - Structured outcome prefix (`FOUR!` / `SIX!` / `1 run.` / `OUT!` / `Wide.`) prepended from API structured fields when text doesn't state outcome clearly.
+            - Strict wicket/four/six highlighting — only API's `event` field triggers coloring.
+            - Empty wicket cards guarded.
+
+            ### Scoreboard / Settings / API (from v1.0.11, preserved)
+            - Scoreboard: "THIS OVER" removed, short team names, dark blue rounded border.
+            - Settings: white wallpaper default, "Customize Wallpaper" above "Clear Cache".
             - `FirebaseKeyService.shareKeysAcrossHosts = false` → Host 2 fallback 403 fix.
 
             ### Ad Unit IDs (AdMob Console Verified)
             - App Open: `ca-app-pub-9675798593675825/4826782503`
             - Interstitial: `ca-app-pub-9675798593675825/8438724452`
             - Banner #1: `ca-app-pub-9675798593675825/8616886104`
-            - Banner #2: `ca-app-pub-9675798593675825/2958604357` (new)
-            - Native #1 (Videoads1): `ca-app-pub-9675798593675825/9123709995`
-            - Native #2 (Videoads2): `ca-app-pub-9675798593675825/1049778852`
+            - Banner #2: `ca-app-pub-9675798593675825/2958604357`
+            - Banner #3: `ca-app-pub-9675798593675825/7614346881` (new)
             - Rewarded: `ca-app-pub-9675798593675825/6702704058`
 
             ### Version
-            - `app.json` / `build.gradle` → **1.0.11**, versionCode **11**
+            - `app.json` / `build.gradle` → **1.0.12**, versionCode **12**
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab
