@@ -683,17 +683,21 @@ export default function MatchDetail() {
         scoreboard naturally scrolls away. Users can still quick-scroll back
         to the top with the FAB / back press.
       */}
-      <ScrollView ref={mainScrollRef}>
+      <ScrollView ref={mainScrollRef} contentContainerStyle={styles.mainScrollContent}>
         {/*
-          Banner #1 — HEADER ad (BANNER 320×50). v1.0.12 spec:
-          "Live, Recent, aur Upcoming sections mein Scoreboard k top par
-          BANNER lagayein. In ads ko pages k liye as a header treat karein."
-          Rendered as the first child of the scroll so it scrolls with the
-          rest of the page (scoreboard is non-sticky by design). Full-width,
-          zero horizontal margin — edge-to-edge. Different unit ID + size
-          from Banner #2/#3 so Google never repeats creatives on same screen.
+          Banner #1 — HEADER ad (ANCHORED_ADAPTIVE_BANNER, full-width).
+          v1.0.12 rev-3 spec: "Top Banner (Banner 1) ko screen ke edges
+          tak stretch karein (width: 100%). Container ki har tarah ki
+          horizontal padding/margin hata dein taaki ad mobile screen ke
+          edges tak touch kare."
+          - Container: full-screen width, zero horizontal padding.
+          - Ad creative: ANCHORED_ADAPTIVE_BANNER (native full-width size).
+          - Unit ID: Banner #1 (distinct from Banner #2/#3 so AdMob serves
+            different creatives across the three slots).
         */}
-        <NativeAdCard slotIndex={0} marginVertical={0} />
+        <View style={styles.headerAdWrap}>
+          <NativeAdCard slotIndex={0} marginVertical={0} />
+        </View>
 
         {/* Scoreboard (scrolls with page) */}
         <View style={styles.scoreHeader}>
@@ -984,14 +988,13 @@ export default function MatchDetail() {
             />
 
             {/*
-              Banner #2 CONTEXTUAL — MEDIUM_RECTANGLE 300×250.
-              v1.0.12 spec: "Banner 2 humesha scoreboard aur latest ball
-              ke beech mein rahega". Rendered directly above the first
-              commentary row (which is always the MOST RECENT ball). Green
-              ground (CricketField) above may collapse/expand — Banner #2
-              stays pinned between scoreboard+field and commentary.
-              Staggered: this slot loads ~3.5s after Banner #1 → higher
-              fill rate + no two ads fire at identical instants.
+              Banner #2 CONTEXTUAL — INLINE_ADAPTIVE_BANNER (full-width).
+              v1.0.12 rev-3 spec: "Muje sabhi banner full width wale
+              chahiye." Full-width adaptive banner that can be up to 250px
+              tall. Pinned between CricketField and commentary — always
+              visible between scoreboard and latest-ball row as the ground
+              collapses/expands. Loads ~3s after Banner #1 (staggered) so
+              AdMob can't return the same creative to both slots.
             */}
             <NativeAdCard slotIndex={1} marginVertical={16} />
 
@@ -1110,6 +1113,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
   loadingText: { color: '#999', marginTop: 12, fontSize: 14 },
+  // v1.0.12 rev-3: ScrollView's contentContainerStyle — zero horizontal
+  // padding so the header ad below can go edge-to-edge. Scoreboard below
+  // adds its own paddingHorizontal via styles.scoreHeader.
+  mainScrollContent: {
+    paddingHorizontal: 0,
+  },
+  // Full-screen-width wrapper for Banner #1 — no margin, no padding, no
+  // border. Overrides any ancestor horizontal inset.
+  headerAdWrap: {
+    width: '100%',
+    alignSelf: 'stretch',
+    marginHorizontal: 0,
+    paddingHorizontal: 0,
+    backgroundColor: 'transparent',
+  },
   scoreHeader: {
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 13,

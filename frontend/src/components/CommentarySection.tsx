@@ -544,15 +544,24 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   // native ads on-screen.
   //
   // We also track `overBreakAdCounter` — purely for debugging/telemetry.
-  // v1.0.12 spec change: ALL over-break ads are pinned to **slot 2**
-  // which maps to Banner #3 (LARGE_BANNER 320×100) — the dedicated
-  // over-break creative. User brief: "Banner 3 ko (300x100) ... Jab sizes
-  // alag honge, to Google ads repeat nahi karega." Keeping every
-  // over-break on the same unit ID + size means AdMob rotates creatives
-  // within that unit naturally (no duplicate creatives on same screen
-  // because Banner #1/#2 use different sizes AND different unit IDs).
+  // v1.0.12 rev-3 spec change:
+  //   "Agar screen par ek ad dikh raha hai, to uske agle 500px (ya 10
+  //    balls) tak doosra ad render nahi hona chahiye."
+  //
+  // So we ENFORCE A MINIMUM 10-COMMENTARY-ROW GAP between over-break ads.
+  // Even if multiple over-boundaries appear within 10 rows (possible when
+  // filters are active and overs are skipped e.g. 9.6 → 5.1 → 4.6), only
+  // the FIRST qualifying break renders an ad — the next one waits until
+  // 10 more rows have been rendered. This prevents the "Delivering to
+  // Nashville" stacking bug from screenshot 2.
+  //
+  // All over-break ads are pinned to slot 2 → Banner #3
+  // (INLINE_ADAPTIVE_BANNER full-width). User brief: "Banner3 ko bhi
+  // medium size aur automatically full width lene wala hi bana do."
+  const MIN_ROWS_BETWEEN_ADS = 10;
   let lastOverInt: number | null = null;
   let overBreakAdCounter = 0;
+  let lastAdRenderedAtIndex = -MIN_ROWS_BETWEEN_ADS - 1; // allow very first ad after 10 rows
   const shouldShowBannerForItem = (item: Commentary, index: number): boolean => {
     const overStr = item?.over || '';
     const overFloat = parseFloat(overStr);
@@ -567,18 +576,25 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       lastOverInt = overInt;
       return false;
     }
-    if (overInt !== lastOverInt) {
-      lastOverInt = overInt;
-      return true;
+    const overChanged = overInt !== lastOverInt;
+    if (!overChanged) return false;
+    // Over changed — normally we'd render an ad. But enforce the
+    // 10-row minimum gap from the previous ad.
+    lastOverInt = overInt;
+    const rowsSinceLastAd = index - lastAdRenderedAtIndex;
+    if (rowsSinceLastAd < MIN_ROWS_BETWEEN_ADS) {
+      // Not enough space — skip this ad. The next over change that
+      // satisfies the gap will render one.
+      return false;
     }
-    return false;
+    lastAdRenderedAtIndex = index;
+    return true;
   };
 
   /**
    * Returns slot index for the NEXT over-break ad. v1.0.12: always 2
-   * (Banner #3 LARGE_BANNER 320×100). Counter still advances so we can
-   * tell from logs how many over-break slots were rendered on a given
-   * page load, but every slot uses the same unit ID + size.
+   * (Banner #3 INLINE_ADAPTIVE_BANNER full-width). Counter still
+   * advances for logs but every slot uses the same unit ID + size.
    */
   const nextOverBreakSlot = (): number => {
     overBreakAdCounter += 1;
@@ -590,14 +606,14 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
    * Because every over-break ad on the page uses the SAME unit ID
    * (Banner #3), firing multiple requests back-to-back risks AdMob
    * returning the same creative twice. We give each instance an
-   * increasing stagger (starting at slot-2's base 7000ms + 1500ms per
-   * subsequent ad) so AdMob has time to rotate creatives.
+   * increasing stagger (base 6000ms + 1500ms per subsequent ad) so
+   * AdMob has time to rotate creatives. Combined with the 10-row
+   * spacing, creative duplication on one screen is mathematically
+   * impossible.
    */
   const nextOverBreakDelayMs = (): number => {
-    // counter was already incremented by nextOverBreakSlot(); subtract
-    // 1 so the first over-break uses the base delay.
     const idx = Math.max(0, overBreakAdCounter - 1);
-    return 7000 + idx * 1500;
+    return 6000 + idx * 1500;
   };
 
   return (

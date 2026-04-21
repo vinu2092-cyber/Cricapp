@@ -15,9 +15,46 @@ import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder'; // no lon
 const _AnimatedGlowBorderUnused = AnimatedGlowBorder;
 import ErrorScreen from '../src/components/ErrorScreen';
 import SplashScreen from '../src/components/SplashScreen';
+import { cleanupOldCommentary } from '../src/services/CommentaryDB';
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.0.12 rev-3 — Release-build perf wins (from PERFORMANCE_AUDIT.md):
+//
+// 1. Silence console.log / console.warn in production. Each JS-console
+//    call costs a ~2-5 ms JS→native bridge hop on old phones (Snapdragon
+//    425/625). With 92 console.logs across the codebase firing on every
+//    30s poll, this alone wastes ~30-80 ms per cycle. __DEV__ is
+//    set to `false` in release builds, so this block only strips logs
+//    when the APK is signed — Metro dev still shows full output.
+// 2. `console.error` is DELIBERATELY preserved so Firebase Crashlytics /
+//    Play Console can still surface crashes.
+// ──────────────────────────────────────────────────────────────────────
+if (!__DEV__) {
+  // eslint-disable-next-line no-console, @typescript-eslint/no-empty-function
+  console.log = () => {};
+  // eslint-disable-next-line no-console, @typescript-eslint/no-empty-function
+  console.warn = () => {};
+  // eslint-disable-next-line no-console, @typescript-eslint/no-empty-function
+  console.info = () => {};
+  // eslint-disable-next-line no-console, @typescript-eslint/no-empty-function
+  console.debug = () => {};
+}
 
 // Hide native splash when ready
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
+
+// v1.0.12 rev-3 — Run old-commentary cleanup ONCE at module load (before
+// first render). Removes ball-by-ball JSON older than 7 days from
+// AsyncStorage; left unchecked this grows ~50-100 MB RAM over weeks on
+// frequent users' phones → slow app open on old devices. Fire-and-forget
+// (don't block app boot waiting for SQLite).
+cleanupOldCommentary().catch((err) => {
+  // Preserve error via console.error (not silenced in release).
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.warn('[CommentaryDB] startup cleanup skipped:', err);
+  }
+});
 
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },

@@ -1,34 +1,37 @@
 /**
- * AdRotator (v1.0.12 — 3-role banner spec)
- * ----------------------------------------
- * User spec (2026-04-21 revision 2):
+ * AdRotator (v1.0.12 rev-3 — ALL full-width adaptive)
+ * ----------------------------------------------------
+ * User update 2026-04-21 rev-3:
+ *   "Muje sabhi banner full width wale chahiye."
+ *   "Banner3 ko bhi medium size aur automatically full width lene wala
+ *    hi bana do."
  *
- *   Three distinct banner ROLES, each with a DIFFERENT size + unit-id so
- *   Google doesn't serve the same creative twice on the same screen:
+ * So all three slots are now FULL-WIDTH adaptive banners from
+ * react-native-google-mobile-ads (different unit IDs → different creative
+ * pools → no duplicate creatives on same screen):
  *
- *     Slot 0 → Banner #1 HEADER      — BANNER 320×50
- *              (top-of-match strip, above scoreboard, full width)
- *     Slot 1 → Banner #2 CONTEXTUAL  — MEDIUM_RECTANGLE 300×250
- *              (between scoreboard + CricketField and first commentary row)
- *     Slot 2 → Banner #3 OVER-BREAK  — LARGE_BANNER 320×100
- *              (between last ball of prev over and first ball of current over)
+ *   Slot 0 → Banner #1 HEADER      — ANCHORED_ADAPTIVE_BANNER
+ *            (full-width, ~50-100px — short strip above scoreboard)
+ *   Slot 1 → Banner #2 CONTEXTUAL  — INLINE_ADAPTIVE_BANNER
+ *            (full-width, medium/tall — scoreboard ↔ commentary)
+ *   Slot 2 → Banner #3 OVER-BREAK  — INLINE_ADAPTIVE_BANNER
+ *            (full-width, medium — between overs in commentary)
  *
- * slotIndex % 3 wraps so callers that pass 3, 4, 5… keep cycling but in
- * practice every call site pins its slotIndex to exactly one of {0,1,2}.
+ * Slot 1 and 2 share INLINE_ADAPTIVE_BANNER size but use DIFFERENT unit
+ * IDs. AdMob's per-unit creative auction rotates independently per unit,
+ * so creatives returned to slot 1 ≠ creatives returned to slot 2.
+ * Combined with our 10-row minimum gap in CommentarySection (see
+ * shouldShowBannerForItem), same creative can NEVER stack on one screen.
  *
- * Different creatives per slot are guaranteed by: (a) each slot uses a
- * DIFFERENT AdMob unit ID, (b) DIFFERENT AdMob banner size, and (c)
- * AdMob's automatic refresh rotates creatives within each unit over time.
+ * Stagger delays per user rev-3:  0s / 3s / 6s.
  */
 import { BannerAdSize } from 'react-native-google-mobile-ads';
 
 export type AdSlotKind = 'banner';
-// User spec sizes:
-//   'standard' → BANNER 320×50  (header role)
-//   'medium'   → MEDIUM_RECTANGLE 300×250 (contextual role)
-//   'large'    → LARGE_BANNER 320×100 (over-break role)
-//   'adaptive' → ANCHORED_ADAPTIVE_BANNER (kept for back-compat only)
-export type BannerSize = 'standard' | 'medium' | 'large' | 'adaptive';
+
+// NOTE: these labels are ABSTRACT — the runtime size returned by
+// resolveBannerSize() is what the BannerAd actually renders.
+export type BannerSize = 'anchored-adaptive' | 'inline-adaptive-tall' | 'inline-adaptive-medium';
 
 export interface AdSlotDescriptor {
   kind: AdSlotKind;
@@ -38,7 +41,7 @@ export interface AdSlotDescriptor {
   label: string;
 }
 
-// Ordered 3-role rotation — do NOT reorder without updating the call sites.
+// Ordered 3-role rotation — do NOT reorder without updating call sites.
 // Every call site pins to a specific slotIndex:
 //   match/[id].tsx top-of-page          → slotIndex=0 (header)
 //   match/[id].tsx below field          → slotIndex=1 (contextual)
@@ -48,49 +51,50 @@ export interface AdSlotDescriptor {
 export const AD_ROTATION: AdSlotDescriptor[] = [
   {
     kind: 'banner',
-    size: 'standard',
+    size: 'anchored-adaptive',
     unitId: 'ca-app-pub-9675798593675825/8616886104',
-    label: 'Banner #1 HEADER (320×50)',
+    label: 'Banner #1 HEADER (anchored-adaptive)',
   },
   {
     kind: 'banner',
-    size: 'medium',
+    size: 'inline-adaptive-tall',
     unitId: 'ca-app-pub-9675798593675825/2958604357',
-    label: 'Banner #2 CONTEXTUAL (300×250)',
+    label: 'Banner #2 CONTEXTUAL (inline-adaptive)',
   },
   {
     kind: 'banner',
-    size: 'large',
+    size: 'inline-adaptive-medium',
     unitId: 'ca-app-pub-9675798593675825/7614346881',
-    label: 'Banner #3 OVER-BREAK (320×100)',
+    label: 'Banner #3 OVER-BREAK (inline-adaptive)',
   },
 ];
 
 /** Maps our abstract size → the google-mobile-ads SDK enum. */
 export function resolveBannerSize(size: BannerSize): (typeof BannerAdSize)[keyof typeof BannerAdSize] {
   switch (size) {
-    case 'standard':
-      return BannerAdSize.BANNER; // 320×50
-    case 'medium':
-      return BannerAdSize.MEDIUM_RECTANGLE; // 300×250
-    case 'large':
-      return BannerAdSize.LARGE_BANNER; // 320×100
-    case 'adaptive':
-    default:
+    case 'anchored-adaptive':
+      // Full-width, auto-calculated height based on screen density.
+      // Typical phone: ~50-60dp high. Short "strip" — perfect for header.
       return BannerAdSize.ANCHORED_ADAPTIVE_BANNER;
+    case 'inline-adaptive-tall':
+    case 'inline-adaptive-medium':
+    default:
+      // Full-width, variable-height up to ~250dp. Intended for scrolling
+      // content. Slot 1 and Slot 2 both use this — AdMob serves different
+      // creatives because unit IDs differ.
+      return BannerAdSize.INLINE_ADAPTIVE_BANNER;
   }
 }
 
 /** Minimum container height (px) per size — keeps layout stable during load. */
 export function minHeightForSize(size: BannerSize): number {
   switch (size) {
-    case 'standard':
-      return 50;
-    case 'medium':
-      return 250;
-    case 'large':
-      return 100;
-    case 'adaptive':
+    case 'anchored-adaptive':
+      return 60; // worst-case anchored banner height
+    case 'inline-adaptive-tall':
+      return 100; // medium/tall inline banner
+    case 'inline-adaptive-medium':
+      return 100; // medium inline banner
     default:
       return 60;
   }

@@ -1,33 +1,29 @@
 /**
- * NativeAdCard (v1.0.12 — 3-role banner rotation + staggered load)
- * ----------------------------------------------------------------
- * 2026-04-21 user update: roles finalised as
- *   slotIndex=0 → Banner #1 HEADER       (BANNER 320×50)
- *   slotIndex=1 → Banner #2 CONTEXTUAL   (MEDIUM_RECTANGLE 300×250)
- *   slotIndex=2 → Banner #3 OVER-BREAK   (LARGE_BANNER 320×100)
+ * NativeAdCard (v1.0.12 rev-3 — full-width adaptive + 0/3/6s stagger)
+ * ---------------------------------------------------------------------
+ * 2026-04-21 rev-3 user updates:
  *
- * Policy compliance:
- *   • Three DIFFERENT sizes + three DIFFERENT unit IDs → Google never
- *     serves the same creative twice on one screen.
- *   • Full MATCH_PARENT width; zero horizontal padding/margin so the ad
- *     touches phone edges (user brief: "har tarah ki padding aur margin
- *     hata dein taaki ad mobile screen ke edges tak touch kare").
- *   • Minimum 16px vertical spacing from neighbouring ads (caller
- *     supplies marginVertical; default is 10, override to >= 8 for
- *     back-to-back placements).
- *   • STAGGERED LOADING — instead of all three banners firing at t=0,
- *     we delay the load by `slotIndex * 3.5s` so Google's ad server sees
- *     three distinct requests spaced ~3.5s apart → much higher fill rate
- *     and creative variety (user brief: "ek saath call nahi honi chahiye
- *     ... 3 se 4 seconds ka delay rakhein").
- *   • Refresh rate left at Google AdMob's "Optimized" (no manual refresh
- *     logic here) — refresh naturally aligns with the 30s API poll.
+ *   • Full-width header:  "Top Banner (Banner 1) ko screen ke edges tak
+ *     stretch karein (width: 100%). Container ki har tarah ki horizontal
+ *     padding/margin hata dein." → container is stretch + 0 horizontal
+ *     padding + 0 horizontal margin. We also use ANCHORED_ADAPTIVE_BANNER
+ *     (which is natively full-width) so the ad creative itself fills the
+ *     screen, not just the container.
  *
- * Failed loads collapse to null so no empty boxes are ever visible.
+ *   • Stagger per rev-3: Banner 1 = 0s, Banner 2 = 3s, Banner 3 = 6s.
+ *     (Previously 0/3.5/7.) Ensures the three simultaneous ad requests
+ *     fire 3s apart so Google's ad server cannot return the same creative
+ *     to all three.
+ *
+ *   • "Ek baar mein screen par sirf EK hi ad dikhe" — enforced together
+ *     with CommentarySection which now keeps a minimum 10-row gap between
+ *     over-break banners (see shouldShowBannerForItem).
+ *
+ * Failed loads collapse to null so no empty boxes ever appear.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Dimensions } from 'react-native';
 import { BannerAd } from 'react-native-google-mobile-ads';
 import {
   resolveAdSlot,
@@ -36,9 +32,12 @@ import {
   AdSlotDescriptor,
 } from '../services/NativeAdRotator';
 
-// Stagger delay per slot index in ms. 0 = immediate, 1 = ~3.5s, 2 = ~7s.
-// User spec: "3 se 4 seconds ka delay" — we use 3500ms per step.
-const STAGGER_STEP_MS = 3500;
+// Stagger delays per slot index — user rev-3 spec:
+//   slot 0 → 0s, slot 1 → 3s, slot 2 → 6s, slot 3+ → 6s (capped)
+// Multiple simultaneous requests for same unit ID (e.g. multiple
+// over-break ads) are further staggered per-instance by the caller via
+// the `loadDelayMs` prop.
+const STAGGER_DELAYS_MS = [0, 3000, 6000];
 
 interface NativeAdCardProps {
   /** Explicit ad unit ID — treated as a MEDIUM_RECTANGLE banner. Back-compat. */
@@ -52,8 +51,8 @@ interface NativeAdCardProps {
   /** Fired if the ad fails — parent can hide the slot entirely. */
   onFailed?: (err: unknown) => void;
   /**
-   * Override stagger delay (ms). If omitted we derive it from slotIndex.
-   * Set to 0 to force immediate load regardless of slot.
+   * Override stagger delay (ms). If omitted we derive it from slotIndex
+   * via STAGGER_DELAYS_MS. Set to 0 to force immediate load regardless.
    */
   loadDelayMs?: number;
 }
@@ -68,7 +67,8 @@ const NativeAdCard: React.FC<NativeAdCardProps> = ({
 }) => {
   const slot: AdSlotDescriptor = useMemo(() => {
     if (adUnitId) {
-      return { kind: 'banner', size: 'medium', unitId: adUnitId, label: 'explicit' };
+      // Explicit unit ID — treat as contextual inline adaptive banner.
+      return { kind: 'banner', size: 'inline-adaptive-medium', unitId: adUnitId, label: 'explicit' };
     }
     const idx = typeof slotIndex === 'number' ? slotIndex : 0;
     return resolveAdSlot(idx);
@@ -77,9 +77,9 @@ const NativeAdCard: React.FC<NativeAdCardProps> = ({
   const derivedDelay = useMemo(() => {
     if (typeof loadDelayMs === 'number') return Math.max(0, loadDelayMs);
     const idx = typeof slotIndex === 'number' ? Math.max(0, slotIndex) : 0;
-    // Cap at slot 2 delay (7s) — higher slot indices shouldn't wait longer.
-    const stepIdx = Math.min(idx, 2);
-    return stepIdx * STAGGER_STEP_MS;
+    // Cap at last defined delay — higher indices don't wait longer.
+    const safeIdx = Math.min(idx, STAGGER_DELAYS_MS.length - 1);
+    return STAGGER_DELAYS_MS[safeIdx];
   }, [loadDelayMs, slotIndex]);
 
   return (
@@ -93,7 +93,14 @@ const NativeAdCard: React.FC<NativeAdCardProps> = ({
   );
 };
 
-/** Renders a single banner. Collapses to null on load failure. */
+/**
+ * Renders a single banner. Collapses to null on load failure.
+ *
+ * For INLINE_ADAPTIVE_BANNER the SDK auto-reads the container's width; we
+ * set `width: '100%'` + `alignSelf: 'stretch'` so the banner fills the
+ * screen edge-to-edge. For ANCHORED_ADAPTIVE_BANNER the SDK reads the
+ * device screen width, so width is always 100% by design.
+ */
 const BannerSlot: React.FC<{
   slot: AdSlotDescriptor;
   marginVertical: number;
@@ -106,6 +113,7 @@ const BannerSlot: React.FC<{
   const [ready, setReady] = useState(loadDelayMs <= 0);
   const bannerSize = resolveBannerSize(slot.size);
   const minH = minHeightForSize(slot.size);
+  const screenWidth = Dimensions.get('window').width;
 
   useEffect(() => {
     if (ready) return;
@@ -119,7 +127,7 @@ const BannerSlot: React.FC<{
     <View
       style={[
         styles.bannerWrap,
-        { minHeight: minH, marginVertical },
+        { minHeight: minH, marginVertical, width: screenWidth },
       ]}
     >
       {ready ? (
@@ -129,8 +137,10 @@ const BannerSlot: React.FC<{
           requestOptions={{ requestNonPersonalizedAdsOnly: false }}
           onAdLoaded={() => onLoaded?.()}
           onAdFailedToLoad={(err) => {
-            // eslint-disable-next-line no-console
-            console.warn('[BannerSlot] load failed', slot.label, (err as any)?.message || err);
+            if (__DEV__) {
+              // eslint-disable-next-line no-console
+              console.warn('[BannerSlot] load failed', slot.label, (err as any)?.message || err);
+            }
             setErrored(true);
             onFailed?.(err);
           }}
@@ -138,7 +148,7 @@ const BannerSlot: React.FC<{
       ) : (
         // Transparent placeholder while we wait for the stagger — keeps
         // layout stable so commentary rows below don't jump when the ad
-        // finally mounts. No visible UI so user never sees a blank slot.
+        // finally mounts.
         <View style={{ width: '100%', height: minH, backgroundColor: 'transparent' }} />
       )}
     </View>
@@ -147,14 +157,16 @@ const BannerSlot: React.FC<{
 
 const styles = StyleSheet.create({
   bannerWrap: {
-    // Full-width ad container: zero horizontal padding/margin so the
-    // banner fills the phone screen edge-to-edge per user brief.
-    width: '100%',
+    // TRUE full-width ad container — edge-to-edge. Uses Dimensions.width
+    // explicitly so any ancestor padding/margin is bypassed (we also set
+    // horizontal margin to NEGATIVE of typical page padding in callers
+    // if needed, but here we just stretch to screen width).
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'stretch',
     marginHorizontal: 0,
     paddingHorizontal: 0,
+    paddingVertical: 0,
   },
 });
 

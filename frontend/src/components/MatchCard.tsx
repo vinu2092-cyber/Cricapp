@@ -326,4 +326,10 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MatchCard;
+// v1.0.12 rev-3 perf: memoize the card so the 30s poll loop in
+// NotificationContext doesn't re-render the entire match list every
+// cycle. Most `match` objects are structurally stable between polls —
+// React.memo's default shallow-equality check is sufficient because the
+// parent (app/index.tsx) passes `match` by reference and only replaces
+// it when a real delta arrives.
+export default React.memo(MatchCard);
