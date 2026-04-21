@@ -200,3 +200,44 @@ Native Advanced #3 (`6409916742`) deleted from AdMob — removed from code.
 - Failed loads collapse the slot silently.
 
 ### Version: 1.0.11 unchanged
+
+
+---
+
+## 2026-04-21 — v1.0.11 cold-start perf + banner-only ad rotation
+
+### User reports
+1. **Old phones slow cold start** — app takes very long to open; suspected too much simultaneous data loading.
+2. **Banner + Native ad fill rate abysmal** (screenshot: Videoads1 = 0 impressions / 24 requests, Videoads2 = 0 / 72, Banner1 = 2 / 75 → 4% match). User deleted Videoads1 + Videoads2 from AdMob; created new Banner #3 (`7614346881`). Asked to move to pure-banner alternating rotation.
+
+### Fix 1 — Cold start perf (`app/_layout.tsx`)
+Root cause: `AppWithSplash` forced a hardcoded **1800 ms native splash + 2500 ms custom splash = 4.3 s** cosmetic wait before React even started rendering the home screen. On old phones, JS bundle parse + first `fetchLiveMatches()` API call stack on top of that → **8-10 s perceived freeze** on cold start.
+- Native splash reduced **1800 ms → 600 ms** (one frame enough for the handoff).
+- Custom splash reduced **2500 ms → 800 ms** (branded image still visible, just faster).
+- Total splash time: **4.3 s → 1.4 s** — saves ~2.9 s on every cold start, old phones benefit most.
+- **Zero changes** to API code, commentary pipeline, or index.tsx fetch logic — strictly per user constraint ("commentary logic bilkul mat chhedo").
+
+### Fix 2 — Banner-only alternating rotation
+Native Advanced (Videoads1, Videoads2) completely removed from code per user spec.
+
+| Slot | Ad ID | Size |
+|------|-------|------|
+| 0 | `ca-app-pub-9675798593675825/8616886104` (Banner #1) | MEDIUM_RECTANGLE 300×250 |
+| 1 | `ca-app-pub-9675798593675825/2958604357` (Banner #2) | ANCHORED_ADAPTIVE_BANNER (auto width) |
+| 2 | `ca-app-pub-9675798593675825/7614346881` (Banner #3, new) | MEDIUM_RECTANGLE 300×250 |
+| 3+ | cycle repeats |
+
+Placements unchanged from prior build (top of match, commentary over-breaks, scorecard mid, squads mid, upcoming analysis, empty state). "Different creatives per slot" is automatic — each slot uses a different AdMob unit ID + AdMob's built-in creative refresh.
+
+**Files changed:**
+- `src/services/NativeAdRotator.ts` — rewritten to 3-slot banner-only rotation with per-slot `size: 'medium' | 'adaptive'`. New `resolveBannerSize()` helper maps to SDK `BannerAdSize` enum. Legacy export names (`NATIVE_AD_UNIT_IDS`, `pickNativeAdUnit`, etc.) retained as back-compat shims.
+- `src/components/NativeAdCard.tsx` — completely rewritten. All `NativeAd` / `NativeAdView` / `NativeMediaView` code removed. Now a pure `<BannerAd />` renderer that picks size from slot descriptor. Adaptive slot uses `useWindowDimensions` for width. Failed loads collapse silently. Component name kept (`NativeAdCard`) so call sites don't break.
+
+### AdMob policy safeguards preserved
+- First commentary over-break ad still skipped on the very first ball row.
+- Different unit IDs per slot → no back-to-back identical creatives.
+- Banner uses Google's own Ad badge + AdChoices chrome.
+- Failed loads hide → no empty boxes.
+
+### Version: 1.0.11 unchanged (not yet uploaded)
+

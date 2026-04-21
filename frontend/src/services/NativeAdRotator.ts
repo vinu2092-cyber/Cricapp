@@ -1,97 +1,98 @@
 /**
- * NativeAdRotator (v1.0.11 — banner + native alternating rotation)
- * ----------------------------------------------------------------
- * User spec (2026-04-20 update):
+ * AdRotator (v1.0.11 banner-only build)
+ * -------------------------------------
+ * User spec (2026-04-21 revision):
  *
- *   Slot 0: Banner #1   (Banner format — MEDIUM RECTANGLE, 300×250)
- *   Slot 1: Videoads #1 (Native Advanced)
- *   Slot 2: Banner #2   (Banner format)
- *   Slot 3: Videoads #2 (Native Advanced)
- *   Slot 4: Banner #1   (cycle repeats)
- *   ...
+ *   Native Advanced ads deleted — fill rate was effectively zero (Videoads1
+ *   + Videoads2 returned 0 impressions across 96 requests in the last
+ *   day). Moving to a **pure banner** alternating rotation:
  *
- * The TOP placement on the match screen (below the scoreboard) is the
- * Banner #1 medium rectangle. All subsequent on-page ad slots (between
- * overs in commentary, end-of-scorecard, end-of-squads, etc.) cycle
- * through the 4-ID pattern above.
+ *     Slot 0: Banner #1 (MEDIUM RECTANGLE 300×250)
+ *     Slot 1: Banner #2 (ANCHORED ADAPTIVE — auto-adjusts to screen width)
+ *     Slot 2: Banner #3 (MEDIUM RECTANGLE 300×250)
+ *     Slot 3: Banner #1  (cycle repeats…)
  *
- * Native Advanced #3 (`6409916742`) was deleted from the AdMob console
- * by the user and is no longer referenced here.
+ * Different creatives per slot are guaranteed by: (a) each slot uses a
+ * DIFFERENT AdMob unit ID, and (b) AdMob's automatic refresh rotates
+ * creatives within each unit over time — no extra client logic needed.
  *
- * AdMob policy: each render site already enforces a 1-over / 1-section
- * spacing gap before the next ad, so the 4-slot cycle guarantees the
- * same format never repeats back-to-back on screen.
+ * This module keeps the old export names (`pickNativeAdUnit`,
+ * `NATIVE_AD_UNIT_IDS`) as back-compat shims so legacy call sites do not
+ * break, but the native-ad code path inside `NativeAdCard.tsx` is gone.
  */
+import { BannerAdSize } from 'react-native-google-mobile-ads';
 
-export type AdSlotKind = 'banner' | 'native';
+export type AdSlotKind = 'banner';
+export type BannerSize = 'medium' | 'adaptive';
 
 export interface AdSlotDescriptor {
   kind: AdSlotKind;
+  size: BannerSize;
   unitId: string;
-  /** 1-based human label for logs ("Banner #1", "Native #2"). */
+  /** 1-based human label for logs. */
   label: string;
 }
 
-// Ordered 4-step rotation — do NOT reorder without updating the user spec.
+// Ordered 3-step rotation — do NOT reorder without updating user spec.
 export const AD_ROTATION: AdSlotDescriptor[] = [
-  { kind: 'banner', unitId: 'ca-app-pub-9675798593675825/8616886104', label: 'Banner #1' },
-  { kind: 'native', unitId: 'ca-app-pub-9675798593675825/9123709995', label: 'Native #1 (Videoads1)' },
-  { kind: 'banner', unitId: 'ca-app-pub-9675798593675825/2958604357', label: 'Banner #2' },
-  { kind: 'native', unitId: 'ca-app-pub-9675798593675825/1049778852', label: 'Native #2 (Videoads2)' },
+  {
+    kind: 'banner',
+    size: 'medium',
+    unitId: 'ca-app-pub-9675798593675825/8616886104',
+    label: 'Banner #1 (MEDIUM)',
+  },
+  {
+    kind: 'banner',
+    size: 'adaptive',
+    unitId: 'ca-app-pub-9675798593675825/2958604357',
+    label: 'Banner #2 (ADAPTIVE)',
+  },
+  {
+    kind: 'banner',
+    size: 'medium',
+    unitId: 'ca-app-pub-9675798593675825/7614346881',
+    label: 'Banner #3 (MEDIUM)',
+  },
 ];
 
-/** Legacy export — retained for any caller that only wants native IDs. */
-export const NATIVE_AD_UNIT_IDS = AD_ROTATION
-  .filter(s => s.kind === 'native')
-  .map(s => s.unitId);
+/** Maps our abstract size → the google-mobile-ads SDK enum. */
+export function resolveBannerSize(size: BannerSize): (typeof BannerAdSize)[keyof typeof BannerAdSize] {
+  return size === 'adaptive'
+    ? BannerAdSize.ANCHORED_ADAPTIVE_BANNER
+    : BannerAdSize.MEDIUM_RECTANGLE;
+}
 
 let rotatorIndex = 0;
 
-/**
- * Return the next ad slot descriptor and advance the shared cursor.
- * Use when you need a NEW ad on every mount (rare).
- */
+/** Next slot — advances shared cursor. Use for one-off fresh rotation. */
 export function getNextAdSlot(): AdSlotDescriptor {
   const slot = AD_ROTATION[rotatorIndex % AD_ROTATION.length];
   rotatorIndex = (rotatorIndex + 1) % AD_ROTATION.length;
   return slot;
 }
 
-/**
- * Deterministic slot resolver — given a stable index (e.g. n-th over-break
- * in the commentary feed, or 0 for the top match placement), return the
- * exact slot descriptor. Stable across re-renders. Use this everywhere the
- * ad is mounted inside a `.map()` / render tree so React reconciliation
- * doesn't swap the ad unit on every render.
- */
+/** Deterministic slot resolver — stable across re-renders. */
 export function resolveAdSlot(index: number): AdSlotDescriptor {
   const safeIdx = Math.max(0, Math.floor(index));
   return AD_ROTATION[safeIdx % AD_ROTATION.length];
 }
 
-/**
- * Backwards-compat helper — kept because CommentarySection and other
- * callers import `pickNativeAdUnit`. Returns the unit ID regardless of
- * whether that slot is banner or native. Prefer `resolveAdSlot()` for
- * new code.
- */
+// ---------- Back-compat shims (do not remove — still imported by some callers) ----------
+
+export const NATIVE_AD_UNIT_IDS = AD_ROTATION.map(s => s.unitId);
+
 export function pickNativeAdUnit(index: number): string {
   return resolveAdSlot(index).unitId;
 }
 
-/**
- * Legacy alias for `getNextAdSlot().unitId` — pre-v1.0.11 call sites.
- */
 export function getNextNativeAdUnit(): string {
   return getNextAdSlot().unitId;
 }
 
-/** For diagnostics / debug overlays. */
 export function currentRotatorIndex(): number {
   return rotatorIndex;
 }
 
-/** Reset the rotator — useful in unit tests. Not called in production. */
 export function resetNativeAdRotator(): void {
   rotatorIndex = 0;
 }

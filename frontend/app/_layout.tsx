@@ -120,11 +120,16 @@ function AppWithSplash() {
   const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
 
   useEffect(() => {
-    // Show native splash for 1.5-2 seconds before hiding
+    // v1.0.11 (2026-04-21 perf fix) — native splash reduced from 1800ms to
+    // 600ms. On old phones the prior 1.8s + 2.5s = 4.3s forced splash wait
+    // stacked on top of JS warmup + first API fetch made the app feel
+    // frozen for 8-10s on cold start. 600ms is enough for the native splash
+    // to render one frame and hand off to React; the total splash time is
+    // now 1.4s which is well below the 2s "instant" threshold users expect.
     const nativeSplashTimer = setTimeout(() => {
       ExpoSplashScreen.hideAsync().catch(() => {});
       setNativeSplashHidden(true);
-    }, 1800); // 1.8 seconds for native splash
+    }, 600);
 
     return () => clearTimeout(nativeSplashTimer);
   }, []);
@@ -138,7 +143,10 @@ function AppWithSplash() {
     return (
       <SplashScreen
         onFinish={() => setShowCustomSplash(false)}
-        duration={2500}
+        // v1.0.11 perf fix — custom splash shortened from 2500ms to 800ms
+        // to give old phones a faster time-to-interactive. The branded
+        // splash image still displays, just for less time.
+        duration={800}
       />
     );
   }
