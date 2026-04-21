@@ -10,9 +10,11 @@
 | Fix | File | Expected impact on old phones (SD425/625) |
 |---|---|---|
 | **All console.log / warn / info / debug silenced in release** | `app/_layout.tsx` | +30-80 ms per 30s poll cycle. Scroll smoothness noticeably better. `console.error` preserved for Crashlytics. |
-| **Commentary DB cleanup on app mount** | `app/_layout.tsx` | Prevents 50-100 MB AsyncStorage accumulation after weeks of use → app-open stays fast long-term. Fire-and-forget (doesn't block boot). |
 | **MatchCard memoized** | `src/components/MatchCard.tsx` | FlatList no longer re-renders all match cards on each 30s poll — only changed ones. ~+5-8 FPS during home-feed scroll. |
 | **CricketField collapsed by default + body unmounted when collapsed** | `src/components/CricketField.tsx` (applied in rev-2) | Saves ~40 View nodes + 1 `Animated.ValueXY` subscription on initial match-page render. +3-5 FPS while scrolling. |
+
+### ⚠️ rev-3.1 rollback: `cleanupOldCommentary()` startup call REMOVED
+The startup cleanup I added in rev-3 was calling into `CommentaryDB.ts`, but the commentary sync-on-open flow used by `app/match/[id].tsx` is backed by a DIFFERENT file — `CommentaryStorage.ts` — via `loadCommentary` / `saveCommentary` / `mergeCommentary`. The call was effectively a no-op for the user-visible flow (only `_layout.tsx` itself imported from `CommentaryDB.ts`), but to remove any doubt about breaking the "user opens app mid-match, sees full history" feature, the call has been dropped. Sync-on-open logic is 100% untouched.
 
 ---
 

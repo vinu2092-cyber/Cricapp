@@ -15,7 +15,6 @@ import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder'; // no lon
 const _AnimatedGlowBorderUnused = AnimatedGlowBorder;
 import ErrorScreen from '../src/components/ErrorScreen';
 import SplashScreen from '../src/components/SplashScreen';
-import { cleanupOldCommentary } from '../src/services/CommentaryDB';
 
 // ──────────────────────────────────────────────────────────────────────
 // v1.0.12 rev-3 — Release-build perf wins (from PERFORMANCE_AUDIT.md):
@@ -28,6 +27,13 @@ import { cleanupOldCommentary } from '../src/services/CommentaryDB';
 //    when the APK is signed — Metro dev still shows full output.
 // 2. `console.error` is DELIBERATELY preserved so Firebase Crashlytics /
 //    Play Console can still surface crashes.
+//
+// ⚠️ rev-3.1 — REMOVED the cleanupOldCommentary() startup call. The
+// commentary sync-on-open flow used by app/match/[id].tsx is backed by
+// `CommentaryStorage.ts` (loadCommentary + mergeCommentary), NOT by
+// `CommentaryDB.ts`. Keeping a defensive no-op here would only add
+// cognitive load with zero actual benefit, so it's dropped to eliminate
+// any doubt about impacting sync-on-open.
 // ──────────────────────────────────────────────────────────────────────
 if (!__DEV__) {
   // eslint-disable-next-line no-console, @typescript-eslint/no-empty-function
@@ -42,19 +48,6 @@ if (!__DEV__) {
 
 // Hide native splash when ready
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
-
-// v1.0.12 rev-3 — Run old-commentary cleanup ONCE at module load (before
-// first render). Removes ball-by-ball JSON older than 7 days from
-// AsyncStorage; left unchecked this grows ~50-100 MB RAM over weeks on
-// frequent users' phones → slow app open on old devices. Fire-and-forget
-// (don't block app boot waiting for SQLite).
-cleanupOldCommentary().catch((err) => {
-  // Preserve error via console.error (not silenced in release).
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.warn('[CommentaryDB] startup cleanup skipped:', err);
-  }
-});
 
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
