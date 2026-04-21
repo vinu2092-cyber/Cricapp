@@ -241,3 +241,23 @@ Placements unchanged from prior build (top of match, commentary over-breaks, sco
 
 ### Version: 1.0.11 unchanged (not yet uploaded)
 
+
+
+
+---
+
+## 2026-04-21 (part 2) — v1.0.12 inline loader fix for old phones
+
+### User report (with photos)
+Screenshots showed full-screen white spinner with "Loading cricket matches…" on initial home screen load, every tab switch (Live ↔ Recent ↔ Upcoming), and after match clicks. On old/small phones this felt like a constant "loading-loading-loading" loop because header + tab bar + league chips all disappeared behind the white spinner for 3-5s per interaction.
+
+### Fix shipped — `app/index.tsx`
+- Removed early `if (loading) return <FullScreenSpinner />` block.
+- Chrome (`<Header />`, tab bar, league chips, search, auto-refresh banner, Footer) now always renders immediately on mount.
+- Loading state moved into `FlatList.ListEmptyComponent` — a small inline `ActivityIndicator + "Loading cricket matches…"` tile inside the list slot. When data arrives the list populates and the spinner disappears naturally.
+- Error state still uses full `ErrorScreen` (terminal state blocks interaction anyway).
+- Tab switches feel instant because the scaffold never flickers away.
+
+Zero changes to: commentary pipeline, `api.ts` fetch logic, match screen, splash, ad rotation.
+
+### Version: 1.0.12 unchanged

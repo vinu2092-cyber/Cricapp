@@ -372,14 +372,14 @@ export default function Index() {
     router.push(`/match/${matchId}`);
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={styles.loadingText}>Loading cricket matches...</Text>
-      </View>
-    );
-  }
+  // v1.0.12 (2026-04-21 perf fix) — the full-screen "Loading cricket
+  // matches…" spinner used to cover the ENTIRE UI (header, tabs, league
+  // chips) on every first tab visit. Old-phone users reported this as
+  // constant loading loops. We now always render the chrome immediately
+  // and surface loading as a *small inline spinner* inside the list area
+  // via <ListEmptyComponent> — tab switches feel instant because the
+  // scaffold never disappears. Error state still uses the full ErrorScreen
+  // since an error is a terminal state that blocks interaction anyway.
 
   if (error) {
     return <ErrorScreen message={error} onRetry={handleRetry} />;
@@ -470,18 +470,27 @@ export default function Index() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="baseball-outline" size={48} color="#999" />
-              <Text style={styles.emptyText}>
-                {searchActive && searchQuery
-                  ? `No matches found for "${searchQuery}"`
-                  : activeTab === 'live' ? 'No live matches in this category'
-                  : activeTab === 'upcoming' ? 'No upcoming matches' : 'No recent matches'}
-              </Text>
-              <Text style={styles.emptySubtext}>
-                {searchActive ? 'Try a different search term' : 'Pull down to refresh or try another tab'}
-              </Text>
-            </View>
+            loading ? (
+              // v1.0.12 — inline spinner in the list slot so header +
+              // tabs remain visible during first fetch / tab switch.
+              <View style={styles.emptyContainer}>
+                <ActivityIndicator size="large" color="#4CAF50" />
+                <Text style={styles.emptyText}>Loading cricket matches…</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="baseball-outline" size={48} color="#999" />
+                <Text style={styles.emptyText}>
+                  {searchActive && searchQuery
+                    ? `No matches found for "${searchQuery}"`
+                    : activeTab === 'live' ? 'No live matches in this category'
+                    : activeTab === 'upcoming' ? 'No upcoming matches' : 'No recent matches'}
+                </Text>
+                <Text style={styles.emptySubtext}>
+                  {searchActive ? 'Try a different search term' : 'Pull down to refresh or try another tab'}
+                </Text>
+              </View>
+            )
           }
         />
       </AppBackground>
