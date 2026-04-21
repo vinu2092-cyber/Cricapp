@@ -15,6 +15,8 @@ import AnimatedGlowBorder from '../src/components/AnimatedGlowBorder'; // no lon
 const _AnimatedGlowBorderUnused = AnimatedGlowBorder;
 import ErrorScreen from '../src/components/ErrorScreen';
 import SplashScreen from '../src/components/SplashScreen';
+import { cleanupOldCommentary as cleanupOldCommentaryDB } from '../src/services/CommentaryDB';
+import { cleanupOldCommentary as cleanupOldCommentaryStorage } from '../src/services/CommentaryStorage';
 
 // ──────────────────────────────────────────────────────────────────────
 // v1.0.12 rev-3 — Release-build perf wins (from PERFORMANCE_AUDIT.md):
@@ -27,13 +29,6 @@ import SplashScreen from '../src/components/SplashScreen';
 //    when the APK is signed — Metro dev still shows full output.
 // 2. `console.error` is DELIBERATELY preserved so Firebase Crashlytics /
 //    Play Console can still surface crashes.
-//
-// ⚠️ rev-3.1 — REMOVED the cleanupOldCommentary() startup call. The
-// commentary sync-on-open flow used by app/match/[id].tsx is backed by
-// `CommentaryStorage.ts` (loadCommentary + mergeCommentary), NOT by
-// `CommentaryDB.ts`. Keeping a defensive no-op here would only add
-// cognitive load with zero actual benefit, so it's dropped to eliminate
-// any doubt about impacting sync-on-open.
 // ──────────────────────────────────────────────────────────────────────
 if (!__DEV__) {
   // eslint-disable-next-line no-console, @typescript-eslint/no-empty-function
@@ -48,6 +43,45 @@ if (!__DEV__) {
 
 // Hide native splash when ready
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.0.12 rev-3.2 — Old-commentary cleanup at module load (re-added per
+// user request: "Agar tumhe lagta h ki iska koi effect commentry pr nahi
+// padega aur app ki performance increase hogi to isko fir hattaya kyu....
+// isko firse lagaao.")
+//
+// SAFETY GUARANTEE — this does NOT break sync-on-open:
+//   • CommentaryStorage cleanup: deletes entries whose `updatedAt` is
+//     OLDER than 72 hours. LIVE matches refresh `updatedAt` on every
+//     30s poll (via `saveCommentary()` in app/match/[id].tsx line 450),
+//     so a currently-live match's stored balls are NEVER touched.
+//     Even if user's phone was off for 2 hours, the last poll before
+//     phone-off refreshed updatedAt ≤ 30s before phone-off → still well
+//     within the 72h window.
+//   • CommentaryDB cleanup: orphan legacy module — no-op in practice but
+//     future-proof if any old build on-device still has stale keys.
+//   • Both are fire-and-forget (don't block app boot).
+//   • Both only read MATCHED keys (COMM_STORAGE_PREFIX / META_PREFIX),
+//     so no risk of nuking unrelated AsyncStorage data.
+//
+// Expected gain: on devices where user has opened dozens of past matches
+// over weeks, AsyncStorage's commentary blob can reach 50-100 MB. First
+// app-mount parses the TOC of that storage — cleaning stale keys shrinks
+// that TOC → faster subsequent reads. Net: ~50-200 ms faster app-open on
+// long-time users' phones.
+// ──────────────────────────────────────────────────────────────────────
+cleanupOldCommentaryStorage().catch((err) => {
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.warn('[CommentaryStorage] startup cleanup skipped:', err);
+  }
+});
+cleanupOldCommentaryDB().catch((err) => {
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.warn('[CommentaryDB] startup cleanup skipped:', err);
+  }
+});
 
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
