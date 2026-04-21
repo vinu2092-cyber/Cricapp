@@ -543,9 +543,14 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   // onward, we keep at least one full over of content between any two
   // native ads on-screen.
   //
-  // We also track `overBreakAdCounter` — an ever-increasing number of
-  // over-break ads rendered — so each slot picks a stable ID via
-  // pickNativeAdUnit(counter+1) [+1 because slot 0 is the top ad].
+  // We also track `overBreakAdCounter` — purely for debugging/telemetry.
+  // v1.0.12 spec change: ALL over-break ads are pinned to **slot 2**
+  // which maps to Banner #3 (LARGE_BANNER 320×100) — the dedicated
+  // over-break creative. User brief: "Banner 3 ko (300x100) ... Jab sizes
+  // alag honge, to Google ads repeat nahi karega." Keeping every
+  // over-break on the same unit ID + size means AdMob rotates creatives
+  // within that unit naturally (no duplicate creatives on same screen
+  // because Banner #1/#2 use different sizes AND different unit IDs).
   let lastOverInt: number | null = null;
   let overBreakAdCounter = 0;
   const shouldShowBannerForItem = (item: Commentary, index: number): boolean => {
@@ -569,12 +574,30 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     return false;
   };
 
-  /** Returns a stable slot index for the NEXT over-break ad and advances. */
+  /**
+   * Returns slot index for the NEXT over-break ad. v1.0.12: always 2
+   * (Banner #3 LARGE_BANNER 320×100). Counter still advances so we can
+   * tell from logs how many over-break slots were rendered on a given
+   * page load, but every slot uses the same unit ID + size.
+   */
   const nextOverBreakSlot = (): number => {
-    // +1 because slotIndex 0 is reserved for the top-of-match NativeAdCard
-    const slot = overBreakAdCounter + 1;
     overBreakAdCounter += 1;
-    return slot;
+    return 2;
+  };
+
+  /**
+   * Per-instance stagger delay (ms) for over-break ads.
+   * Because every over-break ad on the page uses the SAME unit ID
+   * (Banner #3), firing multiple requests back-to-back risks AdMob
+   * returning the same creative twice. We give each instance an
+   * increasing stagger (starting at slot-2's base 7000ms + 1500ms per
+   * subsequent ad) so AdMob has time to rotate creatives.
+   */
+  const nextOverBreakDelayMs = (): number => {
+    // counter was already incremented by nextOverBreakSlot(); subtract
+    // 1 so the first over-break uses the base delay.
+    const idx = Math.max(0, overBreakAdCounter - 1);
+    return 7000 + idx * 1500;
   };
 
   return (
@@ -661,10 +684,11 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             const d = parseWicketDetails(item.english || '');
             const imgId = lookupImg(d.player, playerImgMap);
             const overBreakSlot = showOverBanner ? nextOverBreakSlot() : -1;
+            const overBreakDelay = showOverBanner ? nextOverBreakDelayMs() : 0;
             return (
               <View key={index}>
                 {showOverBanner && (
-                  <NativeAdCard slotIndex={overBreakSlot} marginVertical={8} />
+                  <NativeAdCard slotIndex={overBreakSlot} marginVertical={16} loadDelayMs={overBreakDelay} />
                 )}
                 <View style={[styles.eventCard, styles.eventCardOut]}>
                   <View style={styles.eventCardHeader}>
@@ -704,10 +728,11 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             const name = parseNewBatsman(item.english || '');
             const imgId = lookupImg(name, playerImgMap);
             const overBreakSlot = showOverBanner ? nextOverBreakSlot() : -1;
+            const overBreakDelay = showOverBanner ? nextOverBreakDelayMs() : 0;
             return (
               <View key={index}>
                 {showOverBanner && (
-                  <NativeAdCard slotIndex={overBreakSlot} marginVertical={8} />
+                  <NativeAdCard slotIndex={overBreakSlot} marginVertical={16} loadDelayMs={overBreakDelay} />
                 )}
                 <View style={[styles.eventCard, styles.eventCardNewBatsman]}>
                   <View style={[styles.eventCardHeader, { backgroundColor: '#388E3C' }]}>
@@ -734,10 +759,11 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             const name = parseBowlerChange(item.english || '');
             const imgId = lookupImg(name, playerImgMap);
             const overBreakSlot = showOverBanner ? nextOverBreakSlot() : -1;
+            const overBreakDelay = showOverBanner ? nextOverBreakDelayMs() : 0;
             return (
               <View key={index}>
                 {showOverBanner && (
-                  <NativeAdCard slotIndex={overBreakSlot} marginVertical={8} />
+                  <NativeAdCard slotIndex={overBreakSlot} marginVertical={16} loadDelayMs={overBreakDelay} />
                 )}
                 <View style={[styles.eventCard, styles.eventCardBowler]}>
                   <View style={[styles.eventCardHeader, { backgroundColor: '#1976D2' }]}>
@@ -761,10 +787,11 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           }
 
           const overBreakSlot = showOverBanner ? nextOverBreakSlot() : -1;
+            const overBreakDelay = showOverBanner ? nextOverBreakDelayMs() : 0;
           return (
             <View key={index}>
               {showOverBanner && (
-                <NativeAdCard slotIndex={overBreakSlot} marginVertical={8} />
+                <NativeAdCard slotIndex={overBreakSlot} marginVertical={16} loadDelayMs={overBreakDelay} />
               )}
 
               {isStats ? (

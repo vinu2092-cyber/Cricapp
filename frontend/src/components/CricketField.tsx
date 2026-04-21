@@ -1,5 +1,15 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Animated,
+  Dimensions,
+  TouchableOpacity,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Commentary } from '../types/match';
 
@@ -10,184 +20,277 @@ interface CricketFieldProps {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const FIELD_SIZE = Math.min(SCREEN_WIDTH - 64, 154); // Reduced 30% more from 220 to 154
+const FIELD_SIZE = Math.min(SCREEN_WIDTH - 64, 154);
+
+// v1.0.12 collapsible spec:
+//   • Default state: COLLAPSED so user sees Banner#1 + Scoreboard +
+//     Banner#2 + latest commentary in ONE frame on page load.
+//   • Tap the toggle handle to expand → plays "last ball movement"
+//     animation → auto-collapses after AUTO_COLLAPSE_MS.
+//   • Tap handle again while expanded to collapse immediately.
+const AUTO_COLLAPSE_MS = 10000; // 10 seconds per user confirmation
+const EXPAND_ANIM_MS = 280;
+
+// Enable LayoutAnimation on Android (no-op on iOS).
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Helper: convert literal \\n to actual newline for display
 const cleanDisplayText = (text: string): string => {
   if (!text) return '';
   return text.replace(/\\n/g, '\n').replace(/\\r/g, '');
 };
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _unusedCleanDisplayText = cleanDisplayText;
 
-const CricketField: React.FC<CricketFieldProps> = ({ 
-  lastCommentary, 
+const CricketField: React.FC<CricketFieldProps> = ({
+  lastCommentary,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   battingTeam = 'BAT',
-  bowlingTeam = 'BOWL' 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  bowlingTeam = 'BOWL',
 }) => {
   const ballPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const ballOpacity = useRef(new Animated.Value(0)).current;
 
+  // Collapsed by default (user brief confirmation: option "a").
+  const [expanded, setExpanded] = useState(false);
+  const autoCollapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAutoCollapse = useCallback(() => {
+    if (autoCollapseTimer.current) {
+      clearTimeout(autoCollapseTimer.current);
+      autoCollapseTimer.current = null;
+    }
+  }, []);
+
+  const scheduleAutoCollapse = useCallback(() => {
+    clearAutoCollapse();
+    autoCollapseTimer.current = setTimeout(() => {
+      LayoutAnimation.configureNext(
+        LayoutAnimation.create(EXPAND_ANIM_MS, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
+      );
+      setExpanded(false);
+    }, AUTO_COLLAPSE_MS);
+  }, [clearAutoCollapse]);
+
+  const animateBall = useCallback(
+    (event?: string) => {
+      // Reset ball position to bowler
+      ballPosition.setValue({ x: 0, y: -30 });
+      ballOpacity.setValue(1);
+
+      let destination = { x: 0, y: 0 };
+      switch (event) {
+        case 'six':
+          destination = { x: 0, y: -FIELD_SIZE / 2 + 20 };
+          break;
+        case 'four':
+          destination = { x: FIELD_SIZE / 3, y: -FIELD_SIZE / 3 };
+          break;
+        case 'wicket':
+          destination = { x: 0, y: 20 };
+          break;
+        case 'dot':
+          destination = { x: -20, y: 10 };
+          break;
+        default:
+          destination = { x: 30, y: -20 };
+      }
+
+      Animated.sequence([
+        Animated.timing(ballPosition, {
+          toValue: destination,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.delay(1000),
+        Animated.timing(ballOpacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    },
+    [ballPosition, ballOpacity],
+  );
+
+  // When the ground expands, replay the last-ball animation + start
+  // the auto-collapse countdown. When it collapses, cancel any pending timer.
   useEffect(() => {
-    if (lastCommentary) {
+    if (expanded) {
+      if (lastCommentary) animateBall(lastCommentary.event);
+      scheduleAutoCollapse();
+    } else {
+      clearAutoCollapse();
+    }
+    return () => clearAutoCollapse();
+    // lastCommentary identity changes intentionally don't re-trigger while
+    // expanded — only the initial expand triggers the animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded]);
+
+  // Reset animation when a new ball arrives while the ground is already expanded.
+  useEffect(() => {
+    if (expanded && lastCommentary) {
       animateBall(lastCommentary.event);
+      // Reset the auto-collapse countdown so user gets a fresh 10s to watch.
+      scheduleAutoCollapse();
     }
-  }, [lastCommentary]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastCommentary?.id]);
 
-  const animateBall = (event?: string) => {
-    // Reset ball position to bowler
-    ballPosition.setValue({ x: 0, y: -30 });
-    ballOpacity.setValue(1);
+  const toggleExpanded = useCallback(() => {
+    LayoutAnimation.configureNext(
+      LayoutAnimation.create(EXPAND_ANIM_MS, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
+    );
+    setExpanded((prev) => !prev);
+  }, []);
 
-    // Determine ball destination based on event
-    let destination = { x: 0, y: 0 };
-    
-    switch (event) {
-      case 'six':
-        destination = { x: 0, y: -FIELD_SIZE / 2 + 20 }; // Over the boundary
-        break;
-      case 'four':
-        destination = { x: FIELD_SIZE / 3, y: -FIELD_SIZE / 3 }; // To cover boundary
-        break;
-      case 'wicket':
-        destination = { x: 0, y: 20 }; // Hits stumps
-        break;
-      case 'dot':
-        destination = { x: -20, y: 10 }; // Defended to close fielder
-        break;
-      default:
-        destination = { x: 30, y: -20 }; // Single/runs
-    }
-
-    Animated.sequence([
-      Animated.timing(ballPosition, {
-        toValue: destination,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      Animated.delay(1000),
-      Animated.timing(ballOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getEventColor = (event?: string) => {
     switch (event) {
-      case 'wicket': return '#FF4444';
-      case 'six': return '#9C27B0';
-      case 'four': return '#4CAF50';
-      case 'dot': return '#666';
-      default: return '#2196F3';
+      case 'wicket':
+        return '#FF4444';
+      case 'six':
+        return '#9C27B0';
+      case 'four':
+        return '#4CAF50';
+      case 'dot':
+        return '#666';
+      default:
+        return '#2196F3';
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Field Position</Text>
-      
-      <View style={[styles.field, { width: FIELD_SIZE, height: FIELD_SIZE }]}>
-        {/* Outfield - Green grass */}
-        <View style={styles.outfield}>
-          {/* Inner Circle (30 yards) */}
-          <View style={styles.innerCircle}>
-            {/* Pitch */}
-            <View style={styles.pitch}>
-              {/* Crease lines */}
-              <View style={styles.crease} />
-              <View style={[styles.crease, styles.bowlerCrease]} />
-              
-              {/* Stumps */}
-              <View style={styles.stumpsContainer}>
-                <View style={styles.stumps}>
-                  <View style={styles.stump} />
-                  <View style={styles.stump} />
-                  <View style={styles.stump} />
+      {/*
+        Toggle handle — ALWAYS visible (whether collapsed or expanded).
+        User spec: "Toggle button jisko kinchna h isko tum new add karoge."
+        Tapping it flips expand state. Visual drag-indicator chevron +
+        3-dash "grab" bar convey the pull-down affordance.
+      */}
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={expanded ? 'Hide field position' : 'Show field position'}
+        activeOpacity={0.7}
+        onPress={toggleExpanded}
+        style={styles.handle}
+        hitSlop={{ top: 8, bottom: 8, left: 20, right: 20 }}
+      >
+        <View style={styles.grabBar} />
+        <View style={styles.handleRow}>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color="#1B5E20"
+            style={{ marginRight: 4 }}
+          />
+          <Text style={styles.title}>
+            {expanded ? 'Field Position' : 'Pull down for Field Position'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      {/*
+        Collapsible body — only mounted when expanded. Keeping it
+        un-mounted when collapsed means ZERO CPU cost on old phones
+        (which was a key perf concern from user brief: "purane phones par
+        CPU load badha rahi hain"). Animated chunks only run while visible.
+      */}
+      {expanded && (
+        <View style={styles.body}>
+          <View style={[styles.field, { width: FIELD_SIZE, height: FIELD_SIZE }]}>
+            <View style={styles.outfield}>
+              <View style={styles.innerCircle}>
+                <View style={styles.pitch}>
+                  <View style={styles.crease} />
+                  <View style={[styles.crease, styles.bowlerCrease]} />
+                  <View style={styles.stumpsContainer}>
+                    <View style={styles.stumps}>
+                      <View style={styles.stump} />
+                      <View style={styles.stump} />
+                      <View style={styles.stump} />
+                    </View>
+                    <Text style={styles.playerLabel}>🏏</Text>
+                  </View>
+                  <View style={[styles.stumpsContainer, styles.bowlerStumps]}>
+                    <View style={styles.stumps}>
+                      <View style={styles.stump} />
+                      <View style={styles.stump} />
+                      <View style={styles.stump} />
+                    </View>
+                    <Text style={styles.playerLabel}>⚾</Text>
+                  </View>
                 </View>
-                <Text style={styles.playerLabel}>🏏</Text>
               </View>
-              
-              <View style={[styles.stumpsContainer, styles.bowlerStumps]}>
-                <View style={styles.stumps}>
-                  <View style={styles.stump} />
-                  <View style={styles.stump} />
-                  <View style={styles.stump} />
-                </View>
-                <Text style={styles.playerLabel}>⚾</Text>
+
+              <View style={[styles.fielder, styles.slipFielder]}>
+                <Ionicons name="person" size={16} color="#FFF" />
               </View>
+              <View style={[styles.fielder, styles.pointFielder]}>
+                <Ionicons name="person" size={16} color="#FFF" />
+              </View>
+              <View style={[styles.fielder, styles.coverFielder]}>
+                <Ionicons name="person" size={16} color="#FFF" />
+              </View>
+              <View style={[styles.fielder, styles.midwicketFielder]}>
+                <Ionicons name="person" size={16} color="#FFF" />
+              </View>
+              <View style={[styles.fielder, styles.fineleg]}>
+                <Ionicons name="person" size={16} color="#FFF" />
+              </View>
+              <View style={[styles.fielder, styles.thirdman]}>
+                <Ionicons name="person" size={16} color="#FFF" />
+              </View>
+              <View style={[styles.fielder, styles.longon]}>
+                <Ionicons name="person" size={16} color="#FFF" />
+              </View>
+              <View style={[styles.fielder, styles.longoff]}>
+                <Ionicons name="person" size={16} color="#FFF" />
+              </View>
+              <View style={[styles.fielder, styles.deepmidwicket]}>
+                <Ionicons name="person" size={16} color="#FFF" />
+              </View>
+
+              <Animated.View
+                style={[
+                  styles.ball,
+                  {
+                    opacity: ballOpacity,
+                    transform: [
+                      { translateX: ballPosition.x },
+                      { translateY: ballPosition.y },
+                    ],
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.boundaryRope} />
+          </View>
+
+          {/* Legend */}
+          <View style={styles.legend}>
+            <View style={styles.legendItem}>
+              <Text style={styles.legendEmoji}>🏏</Text>
+              <Text style={styles.legendText}>Batsman</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <Text style={styles.legendEmoji}>⚾</Text>
+              <Text style={styles.legendText}>Bowler</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={styles.legendFielder}>
+                <Ionicons name="person" size={10} color="#FFF" />
+              </View>
+              <Text style={styles.legendText}>Fielder</Text>
             </View>
           </View>
-          
-          {/* Fielder positions */}
-          <View style={[styles.fielder, styles.slipFielder]}>
-            <Ionicons name="person" size={16} color="#FFF" />
-          </View>
-          <View style={[styles.fielder, styles.pointFielder]}>
-            <Ionicons name="person" size={16} color="#FFF" />
-          </View>
-          <View style={[styles.fielder, styles.coverFielder]}>
-            <Ionicons name="person" size={16} color="#FFF" />
-          </View>
-          <View style={[styles.fielder, styles.midwicketFielder]}>
-            <Ionicons name="person" size={16} color="#FFF" />
-          </View>
-          <View style={[styles.fielder, styles.fineleg]}>
-            <Ionicons name="person" size={16} color="#FFF" />
-          </View>
-          <View style={[styles.fielder, styles.thirdman]}>
-            <Ionicons name="person" size={16} color="#FFF" />
-          </View>
-          <View style={[styles.fielder, styles.longon]}>
-            <Ionicons name="person" size={16} color="#FFF" />
-          </View>
-          <View style={[styles.fielder, styles.longoff]}>
-            <Ionicons name="person" size={16} color="#FFF" />
-          </View>
-          <View style={[styles.fielder, styles.deepmidwicket]}>
-            <Ionicons name="person" size={16} color="#FFF" />
-          </View>
-
-          {/* Animated ball */}
-          <Animated.View
-            style={[
-              styles.ball,
-              {
-                opacity: ballOpacity,
-                transform: [
-                  { translateX: ballPosition.x },
-                  { translateY: ballPosition.y },
-                ],
-              },
-            ]}
-          />
         </View>
-        
-        {/* Boundary rope */}
-        <View style={styles.boundaryRope} />
-      </View>
-
-      {/* Last Ball Info box REMOVED (v1.0.11) — per user request.
-          The same info already shows at the top of the Commentary feed
-          (first row), and the extra box here was frequently empty /
-          late-updating, creating a visual gap users reported as a bug. */}
-
-      {/* Legend */}
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <Text style={styles.legendEmoji}>🏏</Text>
-          <Text style={styles.legendText}>Batsman</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <Text style={styles.legendEmoji}>⚾</Text>
-          <Text style={styles.legendText}>Bowler</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={styles.legendFielder}>
-            <Ionicons name="person" size={10} color="#FFF" />
-          </View>
-          <Text style={styles.legendText}>Fielder</Text>
-        </View>
-      </View>
+      )}
     </View>
   );
 };
@@ -198,16 +301,41 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginHorizontal: 16,
     marginVertical: 4,
-    padding: 8,
+    paddingHorizontal: 8,
+    paddingBottom: 4,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.4)',
   },
+  // Handle: grab bar + title + chevron — always visible.
+  handle: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+  },
+  grabBar: {
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#9E9E9E',
+    marginBottom: 4,
+    opacity: 0.6,
+  },
+  handleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 13,
+    fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: 6,
+  },
+  body: {
+    width: '100%',
+    alignItems: 'center',
+    paddingTop: 4,
   },
   field: {
     borderRadius: 999,
@@ -288,42 +416,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  slipFielder: {
-    right: '22%',
-    top: '55%',
-  },
-  pointFielder: {
-    right: '15%',
-    top: '40%',
-  },
-  coverFielder: {
-    right: '20%',
-    top: '25%',
-  },
-  midwicketFielder: {
-    left: '20%',
-    top: '35%',
-  },
-  fineleg: {
-    left: '25%',
-    bottom: '20%',
-  },
-  thirdman: {
-    right: '25%',
-    bottom: '20%',
-  },
-  longon: {
-    left: '35%',
-    top: '12%',
-  },
-  longoff: {
-    right: '35%',
-    top: '12%',
-  },
-  deepmidwicket: {
-    left: '15%',
-    top: '50%',
-  },
+  slipFielder: { right: '22%', top: '55%' },
+  pointFielder: { right: '15%', top: '40%' },
+  coverFielder: { right: '20%', top: '25%' },
+  midwicketFielder: { left: '20%', top: '35%' },
+  fineleg: { left: '25%', bottom: '20%' },
+  thirdman: { right: '25%', bottom: '20%' },
+  longon: { left: '35%', top: '12%' },
+  longoff: { right: '35%', top: '12%' },
+  deepmidwicket: { left: '15%', top: '50%' },
   boundaryRope: {
     position: 'absolute',
     width: '100%',
@@ -340,45 +441,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#D32F2F',
     borderWidth: 1,
     borderColor: '#B71C1C',
-  },
-  lastBallInfo: {
-    width: '100%',
-    marginTop: 8,
-    padding: 10,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
-    borderLeftWidth: 4,
-  },
-  lastBallHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  lastBallOver: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  eventBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  eventText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  runsText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-  },
-  lastBallText: {
-    fontSize: 13,
-    color: '#555',
-    lineHeight: 18,
   },
   legend: {
     flexDirection: 'row',

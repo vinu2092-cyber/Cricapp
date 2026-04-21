@@ -7,6 +7,7 @@ import {
   sendMatchAlert,
   cancelAllMatchAlerts,
   scheduleMatchReminder,
+  sendTossNotification,
   AlertType,
 } from '../services/NotificationService';
 
@@ -75,6 +76,10 @@ interface TrackedMatch {
   lastCommentaryId?: string;
   enabled: boolean;
   autoTracked?: boolean; // Auto-tracked IPL/International match
+  // v1.0.12 — once the toss notification has been sent for this match,
+  // flip this to true so we never double-notify. Persists across app
+  // restarts via the AsyncStorage snapshot of trackedMatches.
+  tossNotified?: boolean;
 }
 
 interface NotificationContextType {
@@ -353,6 +358,58 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         const ms = commData.miniscore || {};
         const inningScores = ms.inningsscores?.inningsscore || [];
         const commentaryList = commData.commentaryList || [];
+
+        // ---------------------------------------------------------------
+        // v1.0.12 — TOSS NOTIFICATION
+        // Detect the moment a tracked match's toss result is reported by
+        // Cricbuzz (BEFORE first ball). Two signals:
+        //   1. matchHeader.tossResults.tossWinnerName + .decision
+        //   2. matchHeader.status string containing "opt to" / "won the toss"
+        // Dedup via tracked.tossNotified (persisted in AsyncStorage).
+        // ---------------------------------------------------------------
+        if (!tracked.tossNotified) {
+          try {
+            const mh = commData.matchHeader || {};
+            const tr = mh.tossResults || {};
+            const stateStr = String(mh.state || '').toLowerCase();
+            const statusStr = String(mh.status || '').trim();
+            const statusLower = statusStr.toLowerCase();
+
+            let tossLine = '';
+            if (tr.tossWinnerName && tr.decision) {
+              const winner = String(tr.tossWinnerName).trim();
+              const decisionRaw = String(tr.decision).toLowerCase();
+              const decision = decisionRaw.includes('bat') ? 'bat first' : 'bowl first';
+              tossLine = `${winner} won the toss and elected to ${decision}.`;
+            } else if (statusLower.includes('opt to') || statusLower.includes('won the toss') || statusLower.includes('elected to')) {
+              tossLine = statusStr;
+            }
+
+            // Only fire if toss is resolved AND match hasn't started the 1st
+            // innings meaningfully (still upcoming / in toss / just started).
+            // If state is "Complete" we skip — no value in post-match toss alert.
+            const matchNotComplete = stateStr !== 'complete' && stateStr !== 'result' && stateStr !== 'abandon';
+
+            if (tossLine && matchNotComplete) {
+              await sendTossNotification({
+                matchId: tracked.matchId,
+                team1Short: tracked.team1Short,
+                team2Short: tracked.team2Short,
+                tossText: tossLine,
+                seriesName: tracked.seriesName,
+              });
+              // Persist the dedupe flag — survives next poll cycle + app restart.
+              setTrackedMatches(prev =>
+                prev.map(m =>
+                  m.matchId === tracked.matchId ? { ...m, tossNotified: true } : m,
+                ),
+              );
+              console.log(`[Toss] Notification sent for ${tracked.matchId}: ${tossLine}`);
+            }
+          } catch (tossErr) {
+            console.warn('[Toss] detection failed:', tossErr);
+          }
+        }
         
         // Get current batting team score
         let currentBatScore: any = null;

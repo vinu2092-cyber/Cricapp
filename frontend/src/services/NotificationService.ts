@@ -41,6 +41,21 @@ export async function setupNotificationChannel() {
       enableVibrate: true,
       showBadge: true,
     });
+
+    // v1.0.12 — Toss alert channel. Fires the moment a tracked upcoming
+    // match's toss result lands, BEFORE first ball. Uses MAX importance
+    // + long vibration + default system notification ringtone so old
+    // phones audibly alert the user even if they're not in the app.
+    await Notifications.setNotificationChannelAsync('match-toss', {
+      name: 'Match Toss Alerts',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 500, 250, 500, 250, 500],
+      lightColor: '#FFC107',
+      sound: 'default', // system default ringtone per user confirmation
+      description: 'Toss result — delivered before match start with ringtone',
+      enableVibrate: true,
+      showBadge: true,
+    });
   }
 }
 
@@ -162,4 +177,53 @@ export async function scheduleMatchReminder(
 // Cancel match reminder
 export async function cancelMatchReminder(matchId: string) {
   await Notifications.cancelScheduledNotificationAsync(`match-reminder-${matchId}`).catch(() => {});
+}
+
+/**
+ * v1.0.12 — Toss result notification.
+ *
+ * User brief: "Notification user k mobile par automatically toss hone k
+ * baad match start hone se pehle hi, meri cricapp notification send kare
+ * with ringtone aur ki is match ka toss is wali team me jeeta aur pehle
+ * betting ya bowling li. User click karne par same match k page par jaaye
+ * live mein."
+ *
+ * Fired from NotificationContext's poll loop the INSTANT a tracked
+ * upcoming match's statusText starts reporting toss (e.g.
+ *   "IND opt to bowl" / "AUS won the toss & elected to bat").
+ * Dedup key: `toss-{matchId}` so we never send twice for same match
+ * (context also persists the matchId in AsyncStorage as a belt-and-braces).
+ *
+ * Tapping the notification → NotificationDeepLinkHandler navigates to
+ * `/match/{matchId}` which is the LIVE match detail page.
+ */
+export async function sendTossNotification(payload: {
+  matchId: string;
+  team1Short: string;
+  team2Short: string;
+  tossText: string; // e.g. "IND opt to bowl" or the full status line
+  seriesName?: string;
+}) {
+  const identifier = `toss-${payload.matchId}`;
+  // Clean up any previously scheduled toss for this matchId (defensive).
+  await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
+
+  const title = `🪙 Toss: ${payload.team1Short} vs ${payload.team2Short}`;
+  const body = `${payload.tossText.trim()}\n${payload.seriesName ? payload.seriesName + ' · ' : ''}Match starts soon — tap to watch live!`;
+
+  await Notifications.scheduleNotificationAsync({
+    identifier,
+    content: {
+      title,
+      body,
+      data: { matchId: payload.matchId, type: 'toss', screen: 'match-detail' },
+      sound: 'default', // system ringtone
+      vibrate: [0, 500, 250, 500, 250, 500],
+      ...(Platform.OS === 'android' && {
+        channelId: 'match-toss',
+        priority: 'max',
+      }),
+    },
+    trigger: null, // fire immediately
+  });
 }

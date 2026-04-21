@@ -684,6 +684,17 @@ export default function MatchDetail() {
         to the top with the FAB / back press.
       */}
       <ScrollView ref={mainScrollRef}>
+        {/*
+          Banner #1 — HEADER ad (BANNER 320×50). v1.0.12 spec:
+          "Live, Recent, aur Upcoming sections mein Scoreboard k top par
+          BANNER lagayein. In ads ko pages k liye as a header treat karein."
+          Rendered as the first child of the scroll so it scrolls with the
+          rest of the page (scoreboard is non-sticky by design). Full-width,
+          zero horizontal margin — edge-to-edge. Different unit ID + size
+          from Banner #2/#3 so Google never repeats creatives on same screen.
+        */}
+        <NativeAdCard slotIndex={0} marginVertical={0} />
+
         {/* Scoreboard (scrolls with page) */}
         <View style={styles.scoreHeader}>
           <View style={styles.headerRow}>
@@ -972,13 +983,17 @@ export default function MatchDetail() {
               bowlingTeam={match.teams[1].shortName}
             />
 
-            {/* TOP ad — directly below scoreboard + cricket field, above the
-                commentary feed. slotIndex=0 maps to **Banner #1** (medium
-                rectangle 300×250) per v1.0.11 alternating rotation spec.
-                Policy spacing: the next ad in the feed is at the first
-                over-transition inside commentary (skipped for the very
-                first ball row), keeping a safe gap. */}
-            <NativeAdCard slotIndex={0} marginVertical={8} />
+            {/*
+              Banner #2 CONTEXTUAL — MEDIUM_RECTANGLE 300×250.
+              v1.0.12 spec: "Banner 2 humesha scoreboard aur latest ball
+              ke beech mein rahega". Rendered directly above the first
+              commentary row (which is always the MOST RECENT ball). Green
+              ground (CricketField) above may collapse/expand — Banner #2
+              stays pinned between scoreboard+field and commentary.
+              Staggered: this slot loads ~3.5s after Banner #1 → higher
+              fill rate + no two ads fire at identical instants.
+            */}
+            <NativeAdCard slotIndex={1} marginVertical={16} />
 
             {/* Commentary - with error boundary */}
             {match.commentary && match.commentary.length > 0 ? (
