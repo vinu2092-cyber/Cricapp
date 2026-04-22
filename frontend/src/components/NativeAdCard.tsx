@@ -1,23 +1,27 @@
 /**
- * NativeAdCard (v1.0.12 rev-3 — full-width adaptive + 0/3/6s stagger)
+ * NativeAdCard (v1.0.13 — 2-banner staggered fill-rate-optimized)
  * ---------------------------------------------------------------------
- * 2026-04-21 rev-3 user updates:
+ * User update 2026-04-22 (post AdMob report analysis):
  *
- *   • Full-width header:  "Top Banner (Banner 1) ko screen ke edges tak
- *     stretch karein (width: 100%). Container ki har tarah ki horizontal
- *     padding/margin hata dein." → container is stretch + 0 horizontal
- *     padding + 0 horizontal margin. We also use ANCHORED_ADAPTIVE_BANNER
- *     (which is natively full-width) so the ad creative itself fills the
- *     screen, not just the container.
+ *   • Banner 3 REMOVED globally (over-break ads in commentary dropped).
+ *     Only two active slots remain:
  *
- *   • Stagger per rev-3: Banner 1 = 0s, Banner 2 = 3s, Banner 3 = 6s.
- *     (Previously 0/3.5/7.) Ensures the three simultaneous ad requests
- *     fire 3s apart so Google's ad server cannot return the same creative
- *     to all three.
+ *       Slot 0 → Banner #1 HEADER (BANNER 320×50) — 0s load delay
+ *       Slot 1 → Banner #2 CONTEXTUAL (MEDIUM_RECTANGLE 300×250) — 3s stagger
  *
- *   • "Ek baar mein screen par sirf EK hi ad dikhe" — enforced together
- *     with CommentarySection which now keeps a minimum 10-row gap between
- *     over-break banners (see shouldShowBannerForItem).
+ *     Rationale: the previous 3-banner setup logged 290 low-fill requests
+ *     on slot 2 (29% match rate, $0.12 eCPM) which dragged the app's
+ *     overall eCPM down to $0.43. Cutting the tail request improves the
+ *     match rate at the cost of total impression volume — per user brief:
+ *       "रिक्वेस्ट बेशक कम हो। हमें अपनी रिपोर्ट खराब नहीं करनी है।"
+ *
+ *   • Banner 1 reverted from ANCHORED_ADAPTIVE_BANNER (0 prod impressions
+ *     in AdMob report) back to plain BANNER (320×50) — the most
+ *     compatible fixed size across old Android versions.
+ *
+ *   • Banner 2 reverted from INLINE_ADAPTIVE_BANNER (14% match rate) back
+ *     to MEDIUM_RECTANGLE (300×250) — the classic IAB slot with the
+ *     highest historical fill rate on AdMob.
  *
  * Failed loads collapse to null so no empty boxes ever appear.
  */
@@ -29,15 +33,18 @@ import {
   resolveAdSlot,
   resolveBannerSize,
   minHeightForSize,
+  isSlotActive,
   AdSlotDescriptor,
 } from '../services/NativeAdRotator';
 
-// Stagger delays per slot index — user rev-3 spec:
-//   slot 0 → 0s, slot 1 → 3s, slot 2 → 6s, slot 3+ → 6s (capped)
-// Multiple simultaneous requests for same unit ID (e.g. multiple
-// over-break ads) are further staggered per-instance by the caller via
-// the `loadDelayMs` prop.
-const STAGGER_DELAYS_MS = [0, 3000, 6000];
+// Stagger delays per slot index — v1.0.13 spec:
+//   slot 0 → 0s  (Banner 1 header, loads immediately)
+//   slot 1 → 3s  (Banner 2 contextual, staggered 3s so AdMob auction
+//                 has time to rotate creatives between the two banners
+//                 and can't return the same ad twice on screen)
+//   slot 2+ → effectively 0s but slot 2 is inactive anyway (see
+//             NativeAdRotator.ts — Banner 3 was removed in v1.0.13).
+const STAGGER_DELAYS_MS = [0, 3000];
 
 interface NativeAdCardProps {
   /** Explicit ad unit ID — treated as a MEDIUM_RECTANGLE banner. Back-compat. */
@@ -67,8 +74,9 @@ const NativeAdCard: React.FC<NativeAdCardProps> = ({
 }) => {
   const slot: AdSlotDescriptor = useMemo(() => {
     if (adUnitId) {
-      // Explicit unit ID — treat as contextual inline adaptive banner.
-      return { kind: 'banner', size: 'inline-adaptive-medium', unitId: adUnitId, label: 'explicit' };
+      // Explicit unit ID — treat as MEDIUM_RECTANGLE (only fixed format
+      // supported by the v1.0.13 BannerSize union besides 'standard').
+      return { kind: 'banner', size: 'medium-rect', unitId: adUnitId, label: 'explicit' };
     }
     const idx = typeof slotIndex === 'number' ? slotIndex : 0;
     return resolveAdSlot(idx);
@@ -81,6 +89,11 @@ const NativeAdCard: React.FC<NativeAdCardProps> = ({
     const safeIdx = Math.min(idx, STAGGER_DELAYS_MS.length - 1);
     return STAGGER_DELAYS_MS[safeIdx];
   }, [loadDelayMs, slotIndex]);
+
+  // v1.0.13 — if a legacy caller still passes slotIndex=2 (removed
+  // Banner 3), the resolver returns an inactive placeholder. Render
+  // nothing at all so we don't fire a request for an empty unit ID.
+  if (!isSlotActive(slot)) return null;
 
   return (
     <BannerSlot

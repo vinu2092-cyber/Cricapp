@@ -530,91 +530,18 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     return out;
   }, [commentary]);
 
-  // Track previous over to decide when to inject a Native Advanced ad.
-  // User wants the ad to appear at the *start of every over* in the
-  // commentary stream.
-  //
-  // v1.0.11 policy-spacing tweak: we deliberately SKIP the first
-  // over-transition ad (the one at the very first visible ball). Reason —
-  // the match screen now renders a top NativeAdCard right below the
-  // scoreboard + pitch. Showing another native ad on the very first
-  // commentary row would violate AdMob's "two ads too close together"
-  // policy. By starting over-break ads from the *second* transition
-  // onward, we keep at least one full over of content between any two
-  // native ads on-screen.
-  //
-  // We also track `overBreakAdCounter` — purely for debugging/telemetry.
-  // v1.0.12 rev-3 spec change:
-  //   "Agar screen par ek ad dikh raha hai, to uske agle 500px (ya 10
-  //    balls) tak doosra ad render nahi hona chahiye."
-  //
-  // So we ENFORCE A MINIMUM 10-COMMENTARY-ROW GAP between over-break ads.
-  // Even if multiple over-boundaries appear within 10 rows (possible when
-  // filters are active and overs are skipped e.g. 9.6 → 5.1 → 4.6), only
-  // the FIRST qualifying break renders an ad — the next one waits until
-  // 10 more rows have been rendered. This prevents the "Delivering to
-  // Nashville" stacking bug from screenshot 2.
-  //
-  // All over-break ads are pinned to slot 2 → Banner #3
-  // (INLINE_ADAPTIVE_BANNER full-width). User brief: "Banner3 ko bhi
-  // medium size aur automatically full width lene wala hi bana do."
-  const MIN_ROWS_BETWEEN_ADS = 10;
-  let lastOverInt: number | null = null;
-  let overBreakAdCounter = 0;
-  let lastAdRenderedAtIndex = -MIN_ROWS_BETWEEN_ADS - 1; // allow very first ad after 10 rows
-  const shouldShowBannerForItem = (item: Commentary, index: number): boolean => {
-    const overStr = item?.over || '';
-    const overFloat = parseFloat(overStr);
-    if (isNaN(overFloat)) return false;
-    const overInt = Math.floor(overFloat);
-    // SKIP the very first row — top NativeAdCard is already above the feed.
-    if (index === 0 && overInt >= 0) {
-      lastOverInt = overInt;
-      return false;
-    }
-    if (lastOverInt === null) {
-      lastOverInt = overInt;
-      return false;
-    }
-    const overChanged = overInt !== lastOverInt;
-    if (!overChanged) return false;
-    // Over changed — normally we'd render an ad. But enforce the
-    // 10-row minimum gap from the previous ad.
-    lastOverInt = overInt;
-    const rowsSinceLastAd = index - lastAdRenderedAtIndex;
-    if (rowsSinceLastAd < MIN_ROWS_BETWEEN_ADS) {
-      // Not enough space — skip this ad. The next over change that
-      // satisfies the gap will render one.
-      return false;
-    }
-    lastAdRenderedAtIndex = index;
-    return true;
-  };
-
-  /**
-   * Returns slot index for the NEXT over-break ad. v1.0.12: always 2
-   * (Banner #3 INLINE_ADAPTIVE_BANNER full-width). Counter still
-   * advances for logs but every slot uses the same unit ID + size.
-   */
-  const nextOverBreakSlot = (): number => {
-    overBreakAdCounter += 1;
-    return 2;
-  };
-
-  /**
-   * Per-instance stagger delay (ms) for over-break ads.
-   * Because every over-break ad on the page uses the SAME unit ID
-   * (Banner #3), firing multiple requests back-to-back risks AdMob
-   * returning the same creative twice. We give each instance an
-   * increasing stagger (base 6000ms + 1500ms per subsequent ad) so
-   * AdMob has time to rotate creatives. Combined with the 10-row
-   * spacing, creative duplication on one screen is mathematically
-   * impossible.
-   */
-  const nextOverBreakDelayMs = (): number => {
-    const idx = Math.max(0, overBreakAdCounter - 1);
-    return 6000 + idx * 1500;
-  };
+  // v1.0.13 — OVER-BREAK ADS REMOVED.
+  // After analysing AdMob's daily report, slot 2 (Banner #3 over-break)
+  // was identified as the #1 drag on overall eCPM — 290 requests/day,
+  // only 29.66% match rate, $0.12 eCPM. User brief post-report:
+  //   "रिक्वेस्ट बेशक कम हो। हमें अपनी रिपोर्ट खराब नहीं करनी है।"
+  // So the commentary scroll is now 100% ad-free. The two remaining
+  // banners (#1 header + #2 contextual below the scoreboard) live in
+  // match/[id].tsx and are the only ads shown on the match screen.
+  // NativeAdCard is still imported because the "upcoming match /
+  // empty commentary" placeholder branches below render one Banner #2
+  // inline — those are harmless single-impression spots that don't
+  // affect the main scroll's ad density.
 
   return (
     <View style={styles.container}>
@@ -681,11 +608,10 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
         {/* Ball-by-ball commentary */}
         {matchStatus !== 'upcoming' && displayedCommentary.map((item, index) => {
-          // Banner ad shows once per new over (and before the very first ball).
-          // The helper updates `lastOverInt` internally, so we call it exactly
-          // once per row. Kept outside the early event-card returns so every
-          // code path below renders the same banner-placement behaviour.
-          const showOverBanner = shouldShowBannerForItem(item, index);
+          // v1.0.13 — over-break banner ads REMOVED from the commentary
+          // scroll. The two remaining active banners live in
+          // match/[id].tsx (header + below-scoreboard). This keeps the
+          // commentary 100% ad-free as per post-AdMob-report directive.
           const isActualDelivery = item.over && item.over !== '0' && item.over !== '' && /\d/.test(item.over);
           const isStats = isStatsBlock(item);
           const eventType = detectEventType(item);
@@ -699,13 +625,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           if (eventType === 'wicket' && wicketTextReady) {
             const d = parseWicketDetails(item.english || '');
             const imgId = lookupImg(d.player, playerImgMap);
-            const overBreakSlot = showOverBanner ? nextOverBreakSlot() : -1;
-            const overBreakDelay = showOverBanner ? nextOverBreakDelayMs() : 0;
             return (
               <View key={index}>
-                {showOverBanner && (
-                  <NativeAdCard slotIndex={overBreakSlot} marginVertical={16} loadDelayMs={overBreakDelay} />
-                )}
                 <View style={[styles.eventCard, styles.eventCardOut]}>
                   <View style={styles.eventCardHeader}>
                     <Ionicons name="alert-circle" size={18} color="#FFF" />
@@ -743,13 +664,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           if (eventType === 'new-batsman') {
             const name = parseNewBatsman(item.english || '');
             const imgId = lookupImg(name, playerImgMap);
-            const overBreakSlot = showOverBanner ? nextOverBreakSlot() : -1;
-            const overBreakDelay = showOverBanner ? nextOverBreakDelayMs() : 0;
             return (
               <View key={index}>
-                {showOverBanner && (
-                  <NativeAdCard slotIndex={overBreakSlot} marginVertical={16} loadDelayMs={overBreakDelay} />
-                )}
                 <View style={[styles.eventCard, styles.eventCardNewBatsman]}>
                   <View style={[styles.eventCardHeader, { backgroundColor: '#388E3C' }]}>
                     <Ionicons name="person-add" size={18} color="#FFF" />
@@ -774,13 +690,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
           if (eventType === 'bowler-change') {
             const name = parseBowlerChange(item.english || '');
             const imgId = lookupImg(name, playerImgMap);
-            const overBreakSlot = showOverBanner ? nextOverBreakSlot() : -1;
-            const overBreakDelay = showOverBanner ? nextOverBreakDelayMs() : 0;
             return (
               <View key={index}>
-                {showOverBanner && (
-                  <NativeAdCard slotIndex={overBreakSlot} marginVertical={16} loadDelayMs={overBreakDelay} />
-                )}
                 <View style={[styles.eventCard, styles.eventCardBowler]}>
                   <View style={[styles.eventCardHeader, { backgroundColor: '#1976D2' }]}>
                     <Ionicons name="baseball" size={18} color="#FFF" />
@@ -802,14 +713,8 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             );
           }
 
-          const overBreakSlot = showOverBanner ? nextOverBreakSlot() : -1;
-            const overBreakDelay = showOverBanner ? nextOverBreakDelayMs() : 0;
           return (
             <View key={index}>
-              {showOverBanner && (
-                <NativeAdCard slotIndex={overBreakSlot} marginVertical={16} loadDelayMs={overBreakDelay} />
-              )}
-
               {isStats ? (
                 /* Stats/Record block - special formatting */
                 <View style={[styles.commentaryItem, styles.statsBlockContainer, { backgroundColor: getAlternatingBg(index) }]}>

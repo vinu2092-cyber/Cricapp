@@ -213,46 +213,54 @@ jobs:
         if: always()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.12
-          name: CricApp v1.0.12
+          tag_name: v1.0.13
+          name: CricApp v1.0.13
           body: |
-            ## CricApp v1.0.12 — Cold-start perf + banner-only ads
+            ## CricApp v1.0.13 — 2-banner ad rearchitecture (eCPM fix)
 
-            ### Cold-start perf (old phone fix)
-            - Native splash `1800ms → 600ms`, custom splash `2500ms → 800ms`.
-            - Total forced splash wait `4.3s → 1.4s` — saves ~3s on every cold start.
-            - Zero touch to commentary, API, or fetch logic.
+            ### AdMob report-driven ad cleanup
+            Analysed the daily AdMob report — Banner #3 (over-break slot)
+            was dragging overall match rate/eCPM down while generating
+            290 low-fill requests per day. Rearchitected to 2 active
+            banners only:
 
-            ### Ads — banner-only 3-slot alternating rotation
-            Native Advanced (Videoads1, Videoads2) had ~0% match rate → **removed entirely** from code.
-            New rotation:
-            - **Slot 0** → Banner #1 (`8616886104`) — MEDIUM_RECTANGLE 300×250 at match top
-            - **Slot 1** → Banner #2 (`2958604357`) — ANCHORED_ADAPTIVE_BANNER (auto-width) at 1st over-break / upcoming / empty state
-            - **Slot 2** → Banner #3 (`7614346881`, new) — MEDIUM_RECTANGLE 300×250 at scorecard mid
-            - Slot 3+ cycles 0→1→2 forever. Different creatives guaranteed by different unit IDs + AdMob refresh.
-            - Placements unchanged (top, commentary over-breaks, scorecard, squads).
+            - **Banner #1 HEADER** (`8616886104`) — reverted from
+              ANCHORED_ADAPTIVE_BANNER (0 prod impressions in AdMob
+              report) to plain **BANNER (320×50)** — the most reliable
+              fixed size across all Android versions. Placed above the
+              scoreboard on every match screen. Loads immediately (0s).
+            - **Banner #2 CONTEXTUAL** (`2958604357`) — reverted from
+              INLINE_ADAPTIVE_BANNER (14% match rate) to classic
+              **MEDIUM_RECTANGLE (300×250)** — historically the
+              highest-filling banner size on AdMob. Placed between the
+              scoreboard/field and the commentary feed. Loads with a
+              3s stagger so AdMob has time to rotate creatives between
+              Banner #1 and Banner #2 on the same screen.
+            - **Banner #3** (over-break) — **REMOVED COMPLETELY** from
+              the codebase. Commentary scroll is now 100% ad-free. This
+              cuts low-match-rate requests and lifts the app's overall
+              eCPM.
 
-            ### Commentary (from v1.0.11, preserved)
-            - Concise medium-length commentary version picked per ball.
-            - Structured outcome prefix (`FOUR!` / `SIX!` / `1 run.` / `OUT!` / `Wide.`) prepended from API structured fields when text doesn't state outcome clearly.
-            - Strict wicket/four/six highlighting — only API's `event` field triggers coloring.
-            - Empty wicket cards guarded.
+            Trade-off accepted per user brief:
+              "रिक्वेस्ट बेशक कम हो। हमें अपनी रिपोर्ट खराब नहीं करनी है।"
 
-            ### Scoreboard / Settings / API (from v1.0.11, preserved)
-            - Scoreboard: "THIS OVER" removed, short team names, dark blue rounded border.
-            - Settings: white wallpaper default, "Customize Wallpaper" above "Clear Cache".
-            - `FirebaseKeyService.shareKeysAcrossHosts = false` → Host 2 fallback 403 fix.
+            ### Preserved from v1.0.12
+            - Collapsible cricket field ground (auto-hide after 10s).
+            - Toss notification with system ringtone + deep link.
+            - Commentary medium-version picking + structured outcome
+              prefixes.
+            - Scoreboard/settings/API polish from v1.0.11.
 
             ### Ad Unit IDs (AdMob Console Verified)
             - App Open: `ca-app-pub-9675798593675825/4826782503`
             - Interstitial: `ca-app-pub-9675798593675825/8438724452`
-            - Banner #1: `ca-app-pub-9675798593675825/8616886104`
-            - Banner #2: `ca-app-pub-9675798593675825/2958604357`
-            - Banner #3: `ca-app-pub-9675798593675825/7614346881` (new)
+            - Banner #1 (HEADER, BANNER 320×50): `ca-app-pub-9675798593675825/8616886104`
+            - Banner #2 (CONTEXTUAL, MEDIUM_RECTANGLE 300×250): `ca-app-pub-9675798593675825/2958604357`
+            - Banner #3: **REMOVED in v1.0.13**
             - Rewarded: `ca-app-pub-9675798593675825/6702704058`
 
             ### Version
-            - `app.json` / `build.gradle` → **1.0.12**, versionCode **12**
+            - `app.json` / `build.gradle` → **1.0.13**, versionCode **13**
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab

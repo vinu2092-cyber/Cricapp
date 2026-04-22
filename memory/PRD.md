@@ -34,6 +34,21 @@ Banner & Interstitial work fine.
 ### 2026-04-19 — v1.0.11 (current) — AdMob Ads Restore
 - **Root cause**: v1.0.10 introduced 4 bugs in `AdMobContext.native.tsx` (aggressive parallel loads, same-instance reload, orphan App Open preload, 1s rate-limit retry).
 - **Fix**: Reverted `AdMobContext.native.tsx` to v1.0.8 proven working pattern. Fixed `_layout.tsx` race condition. Bumped version to 1.0.11.
+### 2026-04-22 — v1.0.13 — 2-Banner Ad Rearchitecture (eCPM fix)
+- **Trigger**: User shared AdMob daily report. Banner #1 had 0 prod impressions (ANCHORED_ADAPTIVE_BANNER incompatible on many devices), Banner #2 was 14% match rate (INLINE_ADAPTIVE_BANNER), Banner #3 was 290 low-fill requests/day dragging overall eCPM to $0.43.
+- **Changes**:
+  - `NativeAdRotator.ts` → 3 slots → 2 active slots (slot 2 now inactive stub).
+  - Banner #1 reverted `ANCHORED_ADAPTIVE_BANNER` → **BANNER (320×50)** fixed size.
+  - Banner #2 reverted `INLINE_ADAPTIVE_BANNER` → **MEDIUM_RECTANGLE (300×250)** fixed size.
+  - Banner #3 (`7614346881`) **REMOVED** from codebase entirely.
+  - `CommentarySection.tsx` → all over-break ad logic stripped (no more `shouldShowBannerForItem`, `nextOverBreakSlot`, 10-row gap tracking, per-instance delay). Commentary scroll is 100% ad-free; only the upcoming-match/empty-state branches keep one inline Banner #2.
+  - `NativeAdCard.tsx` → stagger `[0, 3000, 6000]` → `[0, 3000]`. Added `isSlotActive()` guard to return null for legacy `slotIndex={2}` callers.
+  - `app.json` → version `1.0.12` → `1.0.13`, versionCode `12` → `13`.
+  - `.github/workflows/build-android.yml` → release tag v1.0.12 → **v1.0.13** + updated release notes.
+- **Verification**: `tsc --noEmit` passes for all touched files (unrelated pre-existing errors in settings.tsx/FloatingScoreboard.tsx/SplashScreen.tsx left untouched). NO runtime testing per strict user directive.
+- **Status**: Awaiting user "Save to GitHub" → CI pipeline builds v1.0.13 APK/AAB → upload to Play Console.
+
+
 - **Files changed**: `frontend/src/context/AdMobContext.native.tsx`, `frontend/app/_layout.tsx`, `frontend/app.json`, `.github/workflows/build-android.yml`, `ADMOB_FIX_v1.0.11.md`
 - **Status**: Pushed → GitHub Actions build → APK/AAB. User must test on device with `adb logcat | grep AdMob` to verify ads loading.
 
