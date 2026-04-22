@@ -1,37 +1,48 @@
 /**
- * AdRotator (v1.0.12 rev-3 — ALL full-width adaptive)
- * ----------------------------------------------------
- * User update 2026-04-21 rev-3:
- *   "Muje sabhi banner full width wale chahiye."
- *   "Banner3 ko bhi medium size aur automatically full width lene wala
- *    hi bana do."
+ * AdRotator (v1.0.13 — 2-banner fill-rate-optimized spec)
+ * --------------------------------------------------------
+ * User update 2026-04-22 (after analysing AdMob daily report):
  *
- * So all three slots are now FULL-WIDTH adaptive banners from
- * react-native-google-mobile-ads (different unit IDs → different creative
- * pools → no duplicate creatives on same screen):
+ *   BEFORE (rev-3.2): 3 banner slots, all adaptive full-width.
+ *   Report showed:
+ *     • Banner 1 (8616886104): MISSING from report — 0 prod impressions
+ *     • Banner 2 (2958604357): 14.29% match rate, $0.05 eCPM
+ *     • Banner 3 (7614346881): 290 requests, 29.66% match rate, $0.12 eCPM
+ *     Aggregate: avg match rate 37.78%, eCPM $0.43 — TANKED by Banner 3.
  *
- *   Slot 0 → Banner #1 HEADER      — ANCHORED_ADAPTIVE_BANNER
- *            (full-width, ~50-100px — short strip above scoreboard)
- *   Slot 1 → Banner #2 CONTEXTUAL  — INLINE_ADAPTIVE_BANNER
- *            (full-width, medium/tall — scoreboard ↔ commentary)
- *   Slot 2 → Banner #3 OVER-BREAK  — INLINE_ADAPTIVE_BANNER
- *            (full-width, medium — between overs in commentary)
+ *   AFTER (v1.0.13): 2 banner slots only. Banner 3 REMOVED from code.
+ *   Commentary section is now 100% ad-free. Sizes reverted to standard
+ *   fixed formats with the highest historical fill rates on AdMob:
  *
- * Slot 1 and 2 share INLINE_ADAPTIVE_BANNER size but use DIFFERENT unit
- * IDs. AdMob's per-unit creative auction rotates independently per unit,
- * so creatives returned to slot 1 ≠ creatives returned to slot 2.
- * Combined with our 10-row minimum gap in CommentarySection (see
- * shouldShowBannerForItem), same creative can NEVER stack on one screen.
+ *     Slot 0 → Banner #1 HEADER      — BANNER (320×50)
+ *              Above scoreboard. Immediate load, NO stagger. The earlier
+ *              ANCHORED_ADAPTIVE_BANNER format was returning 0
+ *              impressions on production devices — reverted to plain
+ *              BANNER which is the most compatible format across old
+ *              Android versions and reliably hits AdMob servers.
  *
- * Stagger delays per user rev-3:  0s / 3s / 6s.
+ *     Slot 1 → Banner #2 CONTEXTUAL  — MEDIUM_RECTANGLE (300×250)
+ *              Between scoreboard+field and commentary. Loads 3s after
+ *              Banner 1 (staggered). Switched back from
+ *              INLINE_ADAPTIVE_BANNER (14% match rate) to the classic
+ *              MEDIUM_RECTANGLE — consistently best-filling banner size
+ *              in AdMob's auction.
+ *
+ *     Slot 2 → DEAD. Kept as unreachable stub so legacy callers (if any)
+ *              don't crash. Old Banner 3 unit ID 7614346881 is no longer
+ *              referenced anywhere in the app.
+ *
+ * Trade-off: fewer requests (no more 290/day from over-breaks) means
+ * slightly less total fill volume but MUCH higher match rate and eCPM.
+ * User brief: "रिक्वेस्ट बेशक कम हो। हमें अपनी रिपोर्ट खराब नहीं करनी है।"
  */
 import { BannerAdSize } from 'react-native-google-mobile-ads';
 
 export type AdSlotKind = 'banner';
 
-// NOTE: these labels are ABSTRACT — the runtime size returned by
-// resolveBannerSize() is what the BannerAd actually renders.
-export type BannerSize = 'anchored-adaptive' | 'inline-adaptive-tall' | 'inline-adaptive-medium';
+// Only two ABSTRACT sizes remain in production use.
+// 'medium-rect' is kept for legacy alias compatibility.
+export type BannerSize = 'standard' | 'medium-rect' | 'inactive';
 
 export interface AdSlotDescriptor {
   kind: AdSlotKind;
@@ -41,62 +52,69 @@ export interface AdSlotDescriptor {
   label: string;
 }
 
-// Ordered 3-role rotation — do NOT reorder without updating call sites.
-// Every call site pins to a specific slotIndex:
-//   match/[id].tsx top-of-page          → slotIndex=0 (header)
-//   match/[id].tsx below field          → slotIndex=1 (contextual)
-//   CommentarySection over-break        → slotIndex=2 (over-break)
-//   CommentarySection empty state       → slotIndex=1 (contextual)
-//   CommentarySection upcoming analysis → slotIndex=1 (contextual)
+// Ordered 2-role rotation. Slot 2 is INACTIVE — callers that still pass
+// slotIndex=2 will receive a no-op placeholder.
+//
+// Call sites after v1.0.13:
+//   match/[id].tsx top-of-page  → slotIndex=0 (header)
+//   match/[id].tsx below field  → slotIndex=1 (contextual)
+//   CommentarySection           → NO LONGER CALLS NativeAdCard for
+//                                 over-breaks. Commentary is ad-free.
 export const AD_ROTATION: AdSlotDescriptor[] = [
   {
     kind: 'banner',
-    size: 'anchored-adaptive',
+    size: 'standard',
     unitId: 'ca-app-pub-9675798593675825/8616886104',
-    label: 'Banner #1 HEADER (anchored-adaptive)',
+    label: 'Banner #1 HEADER (BANNER 320x50)',
   },
   {
     kind: 'banner',
-    size: 'inline-adaptive-tall',
+    size: 'medium-rect',
     unitId: 'ca-app-pub-9675798593675825/2958604357',
-    label: 'Banner #2 CONTEXTUAL (inline-adaptive)',
+    label: 'Banner #2 CONTEXTUAL (MEDIUM_RECTANGLE 300x250)',
   },
+  // Slot 2 intentionally inactive — Banner 3 removed per v1.0.13 plan.
+  // Kept in array so resolveAdSlot(2) doesn't crash but isActive=false
+  // tells the card to render nothing.
   {
     kind: 'banner',
-    size: 'inline-adaptive-medium',
-    unitId: 'ca-app-pub-9675798593675825/7614346881',
-    label: 'Banner #3 OVER-BREAK (inline-adaptive)',
+    size: 'inactive',
+    unitId: '',
+    label: 'Banner #3 REMOVED (v1.0.13)',
   },
 ];
+
+/** True if the slot should actually render an ad. */
+export function isSlotActive(slot: AdSlotDescriptor): boolean {
+  return slot.size !== 'inactive' && !!slot.unitId;
+}
 
 /** Maps our abstract size → the google-mobile-ads SDK enum. */
 export function resolveBannerSize(size: BannerSize): (typeof BannerAdSize)[keyof typeof BannerAdSize] {
   switch (size) {
-    case 'anchored-adaptive':
-      // Full-width, auto-calculated height based on screen density.
-      // Typical phone: ~50-60dp high. Short "strip" — perfect for header.
-      return BannerAdSize.ANCHORED_ADAPTIVE_BANNER;
-    case 'inline-adaptive-tall':
-    case 'inline-adaptive-medium':
+    case 'standard':
+      // 320×50 fixed — highest compatibility, best fill rate for headers.
+      return BannerAdSize.BANNER;
+    case 'medium-rect':
+      // 300×250 fixed — classic IAB Medium Rectangle. Consistently
+      // highest-filling banner size in AdMob's auction.
+      return BannerAdSize.MEDIUM_RECTANGLE;
+    case 'inactive':
     default:
-      // Full-width, variable-height up to ~250dp. Intended for scrolling
-      // content. Slot 1 and Slot 2 both use this — AdMob serves different
-      // creatives because unit IDs differ.
-      return BannerAdSize.INLINE_ADAPTIVE_BANNER;
+      return BannerAdSize.BANNER; // never rendered; placeholder only
   }
 }
 
 /** Minimum container height (px) per size — keeps layout stable during load. */
 export function minHeightForSize(size: BannerSize): number {
   switch (size) {
-    case 'anchored-adaptive':
-      return 60; // worst-case anchored banner height
-    case 'inline-adaptive-tall':
-      return 100; // medium/tall inline banner
-    case 'inline-adaptive-medium':
-      return 100; // medium inline banner
+    case 'standard':
+      return 50;
+    case 'medium-rect':
+      return 250;
+    case 'inactive':
     default:
-      return 60;
+      return 0;
   }
 }
 
@@ -115,9 +133,9 @@ export function resolveAdSlot(index: number): AdSlotDescriptor {
   return AD_ROTATION[safeIdx % AD_ROTATION.length];
 }
 
-// ---------- Back-compat shims (do not remove — still imported by some callers) ----------
+// ---------- Back-compat shims (kept so old imports don't break) ----------
 
-export const NATIVE_AD_UNIT_IDS = AD_ROTATION.map(s => s.unitId);
+export const NATIVE_AD_UNIT_IDS = AD_ROTATION.filter(isSlotActive).map(s => s.unitId);
 
 export function pickNativeAdUnit(index: number): string {
   return resolveAdSlot(index).unitId;
