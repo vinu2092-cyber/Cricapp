@@ -216,45 +216,68 @@ jobs:
           tag_name: v1.0.13
           name: CricApp v1.0.13
           body: |
-            ## CricApp v1.0.13 — 2-banner ad rearchitecture (eCPM fix)
+            ## CricApp v1.0.13 — Banner #1 rescue (post 2026-04-23 AdMob report)
 
-            ### AdMob report-driven ad cleanup
-            Analysed the daily AdMob report — Banner #3 (over-break slot)
-            was dragging overall match rate/eCPM down while generating
-            290 low-fill requests per day. Rearchitected to 2 active
-            banners only:
+            ### Problem
+            AdMob report for 2026-04-23 showed Banner #1 with **ZERO
+            requests** for the entire day — the previous
+            ANCHORED_ADAPTIVE_BANNER format wasn't rendering on real
+            Android devices. Banner #2 was working (1 req / 1 imp / 100%
+            match). App Open & Interstitial were fine. Net effect:
+            Banner #1 was contributing nothing to revenue.
 
-            - **Banner #1 HEADER** (`8616886104`) — reverted from
-              ANCHORED_ADAPTIVE_BANNER (0 prod impressions in AdMob
-              report) to plain **BANNER (320×50)** — the most reliable
-              fixed size across all Android versions. Placed above the
-              scoreboard on every match screen. Loads immediately (0s).
-            - **Banner #2 CONTEXTUAL** (`2958604357`) — reverted from
-              INLINE_ADAPTIVE_BANNER (14% match rate) to classic
+            ### Fixes
+
+            **Banner #1 format correction**
+            - Reverted `ANCHORED_ADAPTIVE_BANNER` → plain **BANNER (320×50)**
+              — the most compatible fixed format across old Android
+              versions. Guaranteed to render where the adaptive format
+              silently failed.
+
+            **Banner #1 now doubles as an over-separator**
+            The match page now shows Banner #1 in TWO positions:
+            1. Fixed header above the scoreboard (as before).
+            2. **Between overs** in the commentary stream — at every
+               over-transition (last ball of over N → first ball of
+               over N+1), a Banner #1 strip is rendered as a natural
+               break separator. Minimum 10-row gap between two banners
+               enforced so AdMob's "two ads too close" policy is never
+               breached. Per-instance stagger (4s + 2s × index) gives
+               AdMob's auction time to rotate different creatives across
+               the same unit ID.
+
+            **Upcoming match analysis page**
+            - Banner #1 strip injected after every 5 expert-analysis
+              cards, so upcoming-match views also drive Banner #1
+              requests.
+
+            **Banner #2 format correction**
+            - Reverted `INLINE_ADAPTIVE_BANNER` (14% match rate) → classic
               **MEDIUM_RECTANGLE (300×250)** — historically the
-              highest-filling banner size on AdMob. Placed between the
-              scoreboard/field and the commentary feed. Loads with a
-              3s stagger so AdMob has time to rotate creatives between
-              Banner #1 and Banner #2 on the same screen.
-            - **Banner #3** (over-break) — **REMOVED COMPLETELY** from
-              the codebase. Commentary scroll is now 100% ad-free. This
-              cuts low-match-rate requests and lifts the app's overall
-              eCPM.
+              highest-filling banner size on AdMob.
 
-            Trade-off accepted per user brief:
-              "रिक्वेस्ट बेशक कम हो। हमें अपनी रिपोर्ट खराब नहीं करनी है।"
+            **Banner #3 removed**
+            - Unit `7614346881` is no longer referenced anywhere. The
+              over-separator role is now performed by Banner #1.
+
+            ### Expected impact
+            - Banner #1 requests should jump from ~0/day to several per
+              live-match session (1 header + 1 per over = ~20 impressions
+              per full T20 match).
+            - Overall match rate should hold or rise because both active
+              banners (BANNER 320×50 and MEDIUM_RECTANGLE 300×250) are
+              Google's highest-fill fixed formats.
 
             ### Preserved from v1.0.12
-            - Collapsible cricket field ground (auto-hide after 10s).
+            - Collapsible cricket ground (auto-hide after 10s).
             - Toss notification with system ringtone + deep link.
-            - Commentary medium-version picking + structured outcome
-              prefixes.
+            - Commentary medium-version picking + structured outcome prefixes.
             - Scoreboard/settings/API polish from v1.0.11.
 
             ### Ad Unit IDs (AdMob Console Verified)
             - App Open: `ca-app-pub-9675798593675825/4826782503`
             - Interstitial: `ca-app-pub-9675798593675825/8438724452`
-            - Banner #1 (HEADER, BANNER 320×50): `ca-app-pub-9675798593675825/8616886104`
+            - Banner #1 (HEADER + OVER-SEPARATOR, BANNER 320×50): `ca-app-pub-9675798593675825/8616886104`
             - Banner #2 (CONTEXTUAL, MEDIUM_RECTANGLE 300×250): `ca-app-pub-9675798593675825/2958604357`
             - Banner #3: **REMOVED in v1.0.13**
             - Rewarded: `ca-app-pub-9675798593675825/6702704058`
