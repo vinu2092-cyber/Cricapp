@@ -213,10 +213,10 @@ jobs:
         if: always()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.13
-          name: CricApp v1.0.13
+          tag_name: v1.0.14
+          name: CricApp v1.0.14
           body: |
-            ## CricApp v1.0.13 — Banner #1 rescue (post 2026-04-23 AdMob report)
+            ## CricApp v1.0.14 — Banner #1 rescue (post 2026-04-23 AdMob report)
 
             ### Problem
             AdMob report for 2026-04-23 showed Banner #1 with **ZERO
@@ -279,11 +279,11 @@ jobs:
             - Interstitial: `ca-app-pub-9675798593675825/8438724452`
             - Banner #1 (HEADER + OVER-SEPARATOR, BANNER 320×50): `ca-app-pub-9675798593675825/8616886104`
             - Banner #2 (CONTEXTUAL, MEDIUM_RECTANGLE 300×250): `ca-app-pub-9675798593675825/2958604357`
-            - Banner #3: **REMOVED in v1.0.13**
+            - Banner #3: **REMOVED in v1.0.14**
             - Rewarded: `ca-app-pub-9675798593675825/6702704058`
 
             ### Version
-            - `app.json` / `build.gradle` → **1.0.13**, versionCode **13**
+            - `app.json` / `build.gradle` → **1.0.14**, versionCode **14**
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
             frontend/android/app/build/outputs/bundle/release/*.aab
