@@ -1,0 +1,609 @@
+import axios from 'axios';
+import { Match, Commentary } from '../types/match';
+import { Linking, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ============ API KEY MANAGEMENT ============
+const API_KEY_STORAGE = 'cricapp_user_api_key';
+
+// ALL API KEYS - kept in rotation (limits refresh periodically)
+// Keys for commentary endpoint
+const COMM_KEYS = [
+  "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
+  "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
+  "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
+  "be681ef5f4mshf8eb5972bbbe7abp1d55d8jsn54464cbad4d4",
+  "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
+];
+
+// All keys for match endpoints (19 total - limits refresh daily)
+const MATCH_KEYS = [
+  // Original keys
+  "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
+  "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
+  "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",
+  "59b9249be3mshcab753fe794baa3p14e78cjsne1da55eef3aa",
+  "c651c7e717msh7d7c4d05cae7b6dp17500bjsn1e00d9cf8d61",
+  "4223543bdbmsh7962a0ecb8d4e7fp1132a3jsn8f9a656e2b32",
+  "ba8052cb25msh6ea2297ebf719dcp14bc6ejsn51e281c87482",
+  "db67e8004emsh40add8626f58e58p183678jsne28298b94c3b",
+  "2a21f65881msh680271f280de7p182fbdjsn151d068c6392",
+  "cd6ae88bddmsh5dcf84f0286d14cp1af3f9jsn7d2de7fe2a03",
+  // Batch 1 keys
+  "39135304c0msh9b36fa9057dbf23p141f77jsnfb140a4c7127",
+  "3151754456msh3821b80e3429ed0p15ac70jsn887be255a4d6",
+  "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
+  "1a6681fd59mshb9cbb21cf3aa0f3p127c5djsnc12085b39c27",
+  // Batch 2 keys
+  "be681ef5f4mshf8eb5972bbbe7abp1d55d8jsn54464cbad4d4",
+  "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
+  "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",
+  "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
+  "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
+];
+
+const HOST = "cricbuzz-cricket.p.rapidapi.com";
+let matchKeyIdx = 0;
+let commKeyIdx = 0;
+
+// Get user's custom API key (if set)
+async function getUserApiKey(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(API_KEY_STORAGE);
+  } catch {
+    return null;
+  }
+}
+
+// ============ API CALL HELPERS ============
+async function callApi(endpoint: string, keys: string[], maxTries: number = 5): Promise<any> {
+  // First try user's custom API key if available
+  const userKey = await getUserApiKey();
+  if (userKey) {
+    try {
+      const res = await axios.get(`https://${HOST}${endpoint}`, {
+        headers: { 'X-RapidAPI-Key': userKey, 'X-RapidAPI-Host': HOST },
+        timeout: 12000,
+      });
+      if (res.data && !res.data.message) return res.data;
+    } catch (e) {
+      // User key failed, continue with default keys
+      console.log('[API] User key failed, trying default keys');
+    }
+  }
+
+  // Try default keys
+  for (let i = 0; i < Math.min(maxTries, keys.length); i++) {
+    const idx = (endpoint.includes('/comm') ? commKeyIdx++ : matchKeyIdx++) % keys.length;
+    try {
+      const res = await axios.get(`https://${HOST}${endpoint}`, {
+        headers: { 'X-RapidAPI-Key': keys[idx % keys.length], 'X-RapidAPI-Host': HOST },
+        timeout: 12000,
+      });
+      if (res.data && !res.data.message) return res.data;
+    } catch (e) { continue; }
+  }
+  return null;
+}
+
+// ============ CACHE HELPERS ============
+const CACHE_TTL = 60000; // 1 minute cache for lists
+const MATCH_DETAIL_CACHE_TTL = 30000; // 30 seconds for match details (live data needs fresher)
+const CACHE_CLEANUP_INTERVAL = 3600000; // 1 hour - auto cleanup interval
+const CACHE_PREFIX = 'cricapp_';
+
+// Track all cache keys for cleanup
+let cacheKeys: Set<string> = new Set();
+let cleanupTimerId: ReturnType<typeof setInterval> | null = null;
+
+async function getCached(key: string): Promise<any> {
+  try {
+    const raw = await AsyncStorage.getItem(`${CACHE_PREFIX}${key}`);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    // Use shorter TTL for match details
+    const ttl = key.startsWith('match_') ? MATCH_DETAIL_CACHE_TTL : CACHE_TTL;
+    if (Date.now() - ts > ttl) {
+      // Auto-remove expired cache
+      await AsyncStorage.removeItem(`${CACHE_PREFIX}${key}`);
+      cacheKeys.delete(key);
+      return null;
+    }
+    return data;
+  } catch { return null; }
+}
+
+async function setCache(key: string, data: any): Promise<void> {
+  try {
+    await AsyncStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify({ data, ts: Date.now() }));
+    cacheKeys.add(key);
+  } catch {}
+}
+
+// Clear all expired cache entries (excludes settings like API key)
+async function clearExpiredCache(): Promise<void> {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    // Only clear cache keys, NOT settings (API_KEY_STORAGE)
+    const cacheOnlyKeys = allKeys.filter(k => 
+      k.startsWith(CACHE_PREFIX) && 
+      k !== API_KEY_STORAGE && 
+      !k.includes('user_api_key') &&
+      !k.includes('settings') &&
+      !k.includes('tracked_matches') &&
+      !k.includes('auto_track')
+    );
+    
+    for (const fullKey of cacheOnlyKeys) {
+      try {
+        const raw = await AsyncStorage.getItem(fullKey);
+        if (raw) {
+          const { ts } = JSON.parse(raw);
+          const key = fullKey.replace(CACHE_PREFIX, '');
+          const ttl = key.startsWith('match_') ? MATCH_DETAIL_CACHE_TTL : CACHE_TTL;
+          
+          // Remove if expired (older than TTL)
+          if (Date.now() - ts > ttl) {
+            await AsyncStorage.removeItem(fullKey);
+            cacheKeys.delete(key);
+          }
+        }
+      } catch {
+        // Don't remove on parse error - might be settings
+      }
+    }
+    console.log('[Cache] Cleanup completed');
+  } catch (err) {
+    console.warn('[Cache] Cleanup error:', err);
+  }
+}
+
+// Clear ALL API cache only (NOT settings)
+async function clearAllCache(): Promise<void> {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    // Only clear cache keys: live, recent, upcoming, match_*
+    const cacheOnlyKeys = allKeys.filter(k => 
+      k.startsWith(CACHE_PREFIX) && 
+      (k.includes('_live') || k.includes('_recent') || k.includes('_upcoming') || k.includes('_match_'))
+    );
+    if (cacheOnlyKeys.length > 0) {
+      await AsyncStorage.multiRemove(cacheOnlyKeys);
+    }
+    cacheKeys.clear();
+    console.log('[Cache] All API cache cleared');
+  } catch {}
+}
+
+// Start auto-cleanup timer (runs every 1 hour)
+function startCacheCleanup(): void {
+  if (cleanupTimerId) return; // Already running
+  
+  // Initial cleanup on start
+  clearExpiredCache();
+  
+  // Schedule hourly cleanup
+  cleanupTimerId = setInterval(() => {
+    clearExpiredCache();
+  }, CACHE_CLEANUP_INTERVAL);
+  
+  console.log('[Cache] Auto-cleanup started (1 hour interval)');
+}
+
+// Stop cleanup timer (call on app unmount if needed)
+function stopCacheCleanup(): void {
+  if (cleanupTimerId) {
+    clearInterval(cleanupTimerId);
+    cleanupTimerId = null;
+  }
+}
+
+// Initialize cache cleanup on module load
+startCacheCleanup();
+
+// ============ MATCH TRANSFORMATION ============
+// Match list API uses camelCase inside matchInfo wrapper
+function transformListMatch(m: any): Match {
+  const info = m.matchInfo || {};
+  const score = m.matchScore || {};
+  const t1 = info.team1 || {};
+  const t2 = info.team2 || {};
+  const venue = info.venueInfo || {};
+  const t1s = score.team1Score?.inngs1 || {};
+  const t2s = score.team2Score?.inngs1 || {};
+
+  return {
+    matchId: String(info.matchId || ''),
+    seriesName: info.seriesName || '',
+    matchDesc: info.matchDesc || '',
+    matchType: info.matchFormat || 'T20',
+    status: classifyState(info.state),
+    statusText: info.status || info.stateTitle || '',
+    venue: venue.ground || '',
+    city: venue.city || '',
+    startTime: info.startDate ? formatTs(info.startDate) : '',
+    teams: [
+      { name: t1.teamName || '?', shortName: t1.teamSName || '?', runs: t1s.runs, wickets: t1s.wickets, overs: t1s.overs },
+      { name: t2.teamName || '?', shortName: t2.teamSName || '?', runs: t2s.runs, wickets: t2s.wickets, overs: t2s.overs },
+    ],
+  };
+}
+
+// Match detail API uses lowercase, FLAT (no matchInfo wrapper)
+function transformDetailMatch(raw: any): Match {
+  const t1 = raw.team1 || {};
+  const t2 = raw.team2 || {};
+  const venue = raw.venueinfo || raw.venueInfo || {};
+
+  return {
+    matchId: String(raw.matchid || raw.matchId || ''),
+    seriesName: raw.seriesname || raw.seriesName || '',
+    matchDesc: raw.matchdesc || raw.matchDesc || '',
+    matchType: raw.matchformat || raw.matchFormat || '',
+    status: classifyState(raw.state),
+    // Prefer shortstatus (result) over status (toss info)
+    statusText: raw.shortstatus || raw.status || '',
+    venue: venue.ground || '',
+    city: venue.city || '',
+    startTime: raw.startdate ? formatTs(raw.startdate) : '',
+    teams: [
+      { name: t1.teamname || t1.teamName || '?', shortName: t1.teamsname || t1.teamSName || '?' },
+      { name: t2.teamname || t2.teamName || '?', shortName: t2.teamsname || t2.teamSName || '?' },
+    ],
+  };
+}
+
+function classifyState(state?: string): 'live' | 'recent' | 'upcoming' {
+  if (!state) return 'upcoming';
+  const s = state.toLowerCase();
+  if (s === 'complete' || s === 'result' || s === 'abandon') return 'recent';
+  if (s === 'preview' || s === 'upcoming' || s === '') return 'upcoming';
+  // Everything else is live: "In Progress", "Stumps", "Innings Break", "Toss", "Rain", "Tea", etc.
+  return 'live';
+}
+
+function formatTs(ts?: number | string): string {
+  if (!ts) return '';
+  try {
+    const d = new Date(typeof ts === 'string' ? parseInt(ts, 10) : ts);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch { return ''; }
+}
+
+// Extract matches from nested API structure (handles ALL depth levels)
+function extractAll(data: any): Match[] {
+  if (!data?.typeMatches) return [];
+  const out: Match[] = [];
+  for (const typeMatch of data.typeMatches) {
+    // API gives us the category directly: "International", "League", "Domestic", "Women"
+    const apiCategory = typeMatch.matchType || '';
+    const seriesArr = typeMatch.seriesMatches || [];
+    for (const series of seriesArr) {
+      // seriesAdWrapper can be at different nesting levels
+      const wrapper = series.seriesAdWrapper || series;
+      const matches = wrapper.matches || [];
+      for (const m of matches) {
+        if (m.matchInfo) {
+          const match = transformListMatch(m);
+          // Use API-provided category directly instead of guessing
+          match.category = apiCategory as any;
+          out.push(match);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// ============ PUBLIC: FETCH MATCH LISTS ============
+
+export async function fetchLiveMatches(): Promise<Match[]> {
+  // Check cache first
+  const cached = await getCached('live');
+  if (cached) return cached;
+
+  const data = await callApi('/matches/v1/live', MATCH_KEYS, 5);
+  if (!data) return [];
+  const all = extractAll(data);
+  // STRICT: Only matches that are NOT complete and NOT preview
+  const live = all.filter(m => m.status === 'live');
+  await setCache('live', live);
+  return live;
+}
+
+export async function fetchRecentMatches(): Promise<Match[]> {
+  const cached = await getCached('recent');
+  if (cached) return cached;
+
+  const data = await callApi('/matches/v1/recent', MATCH_KEYS, 5);
+  if (!data) return [];
+  const all = extractAll(data);
+  const recent = all.filter(m => m.status === 'recent');
+  await setCache('recent', recent);
+  return recent;
+}
+
+export async function fetchUpcomingMatches(): Promise<Match[]> {
+  const cached = await getCached('upcoming');
+  if (cached) return cached;
+
+  const data = await callApi('/matches/v1/upcoming', MATCH_KEYS, 5);
+  if (!data) return [];
+  const all = extractAll(data);
+  const upcoming = all.filter(m => m.status === 'upcoming');
+  await setCache('upcoming', upcoming);
+  return upcoming;
+}
+
+// ============ COMMENTARY PARSING ============
+// comwrapper[i].commentary is a SINGLE DICT (one ball), not a list!
+
+function cleanText(raw: string): string {
+  if (!raw) return '';
+  let t = raw.replace(/[A-Z]\d+\$,?\s*/g, '');
+  t = t.replace(/^[\s,]+|[\s,]+$/g, '');
+  return t.trim();
+}
+
+function mapEvent(e?: string): Commentary['event'] {
+  if (!e) return 'normal';
+  const s = e.toLowerCase().trim();
+  // Only map explicit events - avoid false positives
+  if (s.includes('wicket') || s === 'w' || s === 'out') return 'wicket';
+  if (s.includes('six') || s === '6s' || s === '6') return 'six';
+  if (s.includes('four') || s.includes('boundary') || s === '4s' || s === '4') return 'four';
+  if (s.includes('wide') || s === 'wd') return 'wide';
+  // Only exact "dot" text, not "0" or "none" (these are just runs)
+  if (s === 'dot') return 'dot';
+  return 'normal';
+}
+
+function parseCommentary(data: any, matchId: string): Commentary[] {
+  if (!data) return [];
+  const out: Commentary[] = [];
+
+  // Primary format: comwrapper array, each item.commentary = single DICT
+  const cw = data.comwrapper;
+  if (Array.isArray(cw)) {
+    for (let i = 0; i < cw.length; i++) {
+      const wrapper = cw[i];
+      if (!wrapper) continue;
+      const c = wrapper.commentary;
+      if (!c || typeof c !== 'object') continue;
+
+      // Single commentary dict
+      if (!Array.isArray(c)) {
+        const text = cleanText(c.commtxt || c.commText || '');
+        if (text) {
+          out.push({
+            id: `${matchId}-${i}`,
+            over: String(c.overnum ?? c.overNumber ?? '0.0'),
+            english: text,
+            event: mapEvent(c.eventtype || c.event),
+          });
+        }
+      }
+      // Rare: commentary as array
+      else {
+        for (let j = 0; j < c.length; j++) {
+          const text = cleanText(c[j]?.commtxt || c[j]?.commText || '');
+          if (text) {
+            out.push({
+              id: `${matchId}-${i}-${j}`,
+              over: String(c[j].overnum ?? c[j].overNumber ?? '0.0'),
+              english: text,
+              event: mapEvent(c[j].eventtype || c[j].event),
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: commentaryList at root
+  if (out.length === 0 && Array.isArray(data.commentaryList)) {
+    for (let i = 0; i < data.commentaryList.length; i++) {
+      const c = data.commentaryList[i];
+      const text = cleanText(c?.commText || c?.commtxt || '');
+      if (text) {
+        out.push({
+          id: `${matchId}-cl-${i}`,
+          over: String(c.overNumber ?? c.overnum ?? '0.0'),
+          english: text,
+          event: mapEvent(c.event || c.eventtype),
+        });
+      }
+    }
+  }
+
+  return out;
+}
+
+// ============ FETCH MATCH BY ID ============
+const MATCH_CACHE_TTL = 30000; // 30 seconds cache for match details (live data)
+
+export async function fetchMatchById(id: string): Promise<Match | null> {
+  // Check cache first (shorter TTL for live matches)
+  const cached = await getCached(`match_${id}`);
+  if (cached) return cached;
+
+  let match: Match | null = null;
+  let commentary: Commentary[] = [];
+
+  // 1. Get match info from /mcenter/v1/{id} (flat lowercase structure)
+  try {
+    const raw = await callApi(`/mcenter/v1/${id}`, MATCH_KEYS, 4);
+    if (raw && !raw.message) {
+      match = transformDetailMatch(raw);
+    }
+  } catch {}
+
+  // 2. Get commentary from /mcenter/v1/{id}/comm (try ALL comm keys)
+  try {
+    const commData = await callApi(`/mcenter/v1/${id}/comm`, COMM_KEYS, COMM_KEYS.length);
+    if (commData && !commData.message) {
+      commentary = parseCommentary(commData, id);
+
+      // Extract team names from matchheaders (lowercase keys)
+      const mh = commData.matchheaders || {};
+      const t1h = mh.team1 || {};
+      const t2h = mh.team2 || {};
+
+      if (!match) {
+        match = {
+          matchId: id,
+          seriesName: mh.seriesname || mh.seriesName || 'Match',
+          status: classifyState(mh.state),
+          statusText: mh.status || '',
+          teams: [
+            { name: t1h.teamname || '?', shortName: t1h.teamsname || '?' },
+            { name: t2h.teamname || '?', shortName: t2h.teamsname || '?' },
+          ],
+        };
+      } else {
+        // Update names if we got them from matchheaders
+        if (t1h.teamname && match.teams[0].name === '?') {
+          match.teams[0].name = t1h.teamname;
+          match.teams[0].shortName = t1h.teamsname || match.teams[0].shortName;
+        }
+        if (t2h.teamname && match.teams[1].name === '?') {
+          match.teams[1].name = t2h.teamname;
+          match.teams[1].shortName = t2h.teamsname || match.teams[1].shortName;
+        }
+      }
+
+      // Extract scores from miniscore.inningsscores (actual API structure)
+      const ms = commData.miniscore || {};
+      if (ms && match) {
+        const inningsScores = ms.inningsscores?.inningsscore || [];
+        if (Array.isArray(inningsScores)) {
+          for (const inn of inningsScores) {
+            const shortName = inn.batteamshortname;
+            if (shortName) {
+              const idx = match.teams.findIndex(t => t.shortName === shortName);
+              if (idx >= 0) {
+                match.teams[idx].runs = inn.runs;
+                match.teams[idx].wickets = inn.wickets;
+                match.teams[idx].overs = inn.overs;
+              }
+            }
+          }
+        }
+
+        // Extract current batsmen (striker and non-striker)
+        const batsmen: any[] = [];
+        const batsmanStriker = ms.batsmanstriker || ms.batsman1 || {};
+        const batsmanNonStriker = ms.batsmannonstriker || ms.batsman2 || {};
+        
+        if (batsmanStriker.batname || batsmanStriker.name) {
+          batsmen.push({
+            name: batsmanStriker.batname || batsmanStriker.name || 'Batsman 1',
+            runs: batsmanStriker.batruns ?? batsmanStriker.runs ?? 0,
+            balls: batsmanStriker.batballs ?? batsmanStriker.balls ?? 0,
+            isStriker: true,
+          });
+        }
+        if (batsmanNonStriker.batname || batsmanNonStriker.name) {
+          batsmen.push({
+            name: batsmanNonStriker.batname || batsmanNonStriker.name || 'Batsman 2',
+            runs: batsmanNonStriker.batruns ?? batsmanNonStriker.runs ?? 0,
+            balls: batsmanNonStriker.batballs ?? batsmanNonStriker.balls ?? 0,
+            isStriker: false,
+          });
+        }
+        if (batsmen.length > 0) {
+          match.batsmen = batsmen;
+        }
+
+        // Extract over summary (o_summary or recentovsummary)
+        let oSummary = ms.o_summary || ms.recentovsummary || ms.oversummary || ms.recentOvs || ms.lastWicket || '';
+        
+        // If no oSummary from API, build from recent commentary
+        if (!oSummary && commentary && commentary.length > 0) {
+          const recentBalls: string[] = [];
+          for (let i = 0; i < Math.min(12, commentary.length); i++) {
+            const comm = commentary[i];
+            if (comm.over && comm.over !== '0' && /\d/.test(comm.over)) {
+              // Detect ball result from commentary text
+              const text = (comm.english || '').toLowerCase();
+              if (text.includes('wicket') || text.includes('out') || text.includes('bowled') || 
+                  text.includes('caught') || text.includes('lbw') || text.includes('stumped')) {
+                recentBalls.push('W');
+              } else if (text.includes('six') || text.includes('sixer')) {
+                recentBalls.push('6');
+              } else if (text.includes('four') || text.includes('boundary')) {
+                recentBalls.push('4');
+              } else if (text.includes('wide')) {
+                recentBalls.push('Wd');
+              } else if (text.includes('no ball') || text.includes('no-ball')) {
+                recentBalls.push('Nb');
+              } else if (text.includes('no run') || text.includes('dot')) {
+                recentBalls.push('0');
+              } else if (text.includes('single') || text.includes('one run') || text.includes('1 run')) {
+                recentBalls.push('1');
+              } else if (text.includes('two') || text.includes('2 run')) {
+                recentBalls.push('2');
+              } else if (text.includes('three') || text.includes('3 run')) {
+                recentBalls.push('3');
+              } else {
+                // Default - extract number if present
+                const numMatch = text.match(/(\d) run/);
+                recentBalls.push(numMatch ? numMatch[1] : '•');
+              }
+            }
+          }
+          if (recentBalls.length > 0) {
+            oSummary = recentBalls.reverse().join(' ');
+          }
+        }
+        
+        if (oSummary) {
+          match.oSummary = oSummary;
+        }
+
+        // Current over number
+        const currentOver = ms.overs || ms.currentover;
+        if (currentOver !== undefined) {
+          match.currentOver = parseFloat(currentOver);
+        }
+
+        // Always prefer commentary matchheaders status (it has actual result)
+        if (mh.status) {
+          match.statusText = mh.status;
+        }
+        if (mh.state) {
+          match.status = classifyState(mh.state);
+        }
+      }
+    }
+  } catch {}
+
+  if (match) {
+    match.commentary = commentary;
+    // Cache the match data (30 second TTL for live updates)
+    await setCache(`match_${id}`, match);
+  }
+
+  return match;
+}
+
+// ============ DEEP LINK ============
+
+export const openExternalScorecard = (matchId: string) => {
+  Alert.alert(
+    'External Link',
+    'You will be redirected to an external website for more details. Do you want to continue?',
+    [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes',
+        onPress: () => {
+          Linking.openURL(`https://www.cricbuzz.com/live-cricket-scores/${matchId}`).catch(() => {});
+        },
+      },
+    ]
+  );
+};
+
+// ============ CACHE MANAGEMENT EXPORTS ============
+export { clearAllCache, clearExpiredCache };

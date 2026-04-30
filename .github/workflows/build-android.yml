@@ -1,0 +1,247 @@
+name: Build Android APK & AAB
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle 8.14.3
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        # Use --no-lockfile to tolerate Emergent's Save-to-GitHub stripping yarn.lock.
+        # yarn will resolve from package.json and produce a fresh lockfile in the CI workspace.
+        run: |
+          if [ -f yarn.lock ]; then
+            echo "yarn.lock present — running full install"
+            yarn install --network-timeout 600000
+          else
+            echo "yarn.lock absent — resolving from package.json directly"
+            yarn install --no-lockfile --network-timeout 600000
+          fi
+
+      - name: Expo Prebuild (Android)
+        working-directory: frontend
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Patch AndroidManifest for Firebase conflicts
+        working-directory: frontend
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          
+          # Add tools namespace if not present
+          if ! grep -q 'xmlns:tools=' "$MANIFEST"; then
+            sed -i '1s/<manifest/<manifest xmlns:tools="http:\/\/schemas.android.com\/tools"/' "$MANIFEST"
+            echo "✅ Added tools namespace"
+          fi
+          
+          # Inject AdMob APPLICATION_ID meta-data if missing (CRITICAL for ads to work)
+          if ! grep -q "com.google.android.gms.ads.APPLICATION_ID" "$MANIFEST"; then
+            sed -i '/<application /a\    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-9675798593675825~2399929714" />' "$MANIFEST"
+            echo "✅ Injected AdMob APPLICATION_ID meta-data"
+          else
+            echo "ℹ️ APPLICATION_ID already present"
+          fi
+          
+          # Inject AD_ID permission if missing (required for Android 13+)
+          if ! grep -q "com.google.android.gms.permission.AD_ID" "$MANIFEST"; then
+            sed -i '/<uses-permission android:name="android.permission.INTERNET"\/>/a\  <uses-permission android:name="com.google.android.gms.permission.AD_ID" />' "$MANIFEST"
+            echo "✅ Injected AD_ID permission"
+          fi
+          
+          # Fix default_notification_channel_id conflict
+          if grep -q 'com.google.firebase.messaging.default_notification_channel_id' "$MANIFEST"; then
+            sed -i '/com.google.firebase.messaging.default_notification_channel_id/s/<meta-data/<meta-data tools:replace="android:value"/' "$MANIFEST"
+            echo "✅ Patched default_notification_channel_id"
+          fi
+          
+          # Fix default_notification_color conflict
+          if grep -q 'com.google.firebase.messaging.default_notification_color' "$MANIFEST"; then
+            sed -i '/com.google.firebase.messaging.default_notification_color/s/<meta-data/<meta-data tools:replace="android:resource"/' "$MANIFEST"
+            echo "✅ Patched default_notification_color"
+          fi
+          
+          # Fix default_notification_icon conflict (if exists)
+          if grep -q 'com.google.firebase.messaging.default_notification_icon' "$MANIFEST"; then
+            sed -i '/com.google.firebase.messaging.default_notification_icon/s/<meta-data/<meta-data tools:replace="android:resource"/' "$MANIFEST"
+            echo "✅ Patched default_notification_icon"
+          fi
+          
+          echo "--- Final AndroidManifest.xml verification ---"
+          grep "APPLICATION_ID" "$MANIFEST" || { echo "❌ CRITICAL: APPLICATION_ID missing after patch!"; exit 1; }
+          grep "AD_ID" "$MANIFEST" || { echo "❌ CRITICAL: AD_ID permission missing after patch!"; exit 1; }
+          grep -A 1 'com.google.firebase.messaging.default_notification' "$MANIFEST" || echo "ℹ️ No Firebase messaging meta-data found"
+          
+          echo "✅ ALL CRITICAL META-DATA VERIFIED!"
+
+      - name: Restore Release Keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        run: |
+          python3 -c "
+          import base64, os, sys
+          b64 = os.environ['KEYSTORE_B64'].strip()
+          data = base64.b64decode(b64)
+          with open('frontend/android/app/release-keystore.jks', 'wb') as f:
+              f.write(data)
+          print(f'Keystore restored: {len(data)} bytes')
+          if data[0] == 0x30:
+              print('Format: PKCS12 (OK)')
+          elif data[:4].hex() == 'feedfeed':
+              print('Format: JKS (OK)')
+          else:
+              print(f'WARNING: unknown format {data[:4].hex()}')
+              sys.exit(1)
+          "
+
+      - name: Configure Release Signing
+        run: python3 scripts/patch-signing.py
+
+      - name: Ensure google-services.json
+        run: ls -la frontend/android/app/google-services.json
+
+      - name: Fix Gradle Wrapper
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          mkdir -p gradle/wrapper
+          # ----- gradle-wrapper.jar -----
+          # Expo prebuild does NOT ship gradle-wrapper.jar inside the generated
+          # android/ folder, so the wrapper cannot even start. Build #86 relied
+          # on `gradle wrapper --gradle-version 8.14.3` to regenerate it, but
+          # that task's URL-validation step intermittently fails on GitHub
+          # runners (PR #86 failure). We download the JAR directly from the
+          # Gradle project's own source tree at tag v8.14.3 — a stable URL on
+          # raw.githubusercontent.com. The wrapper JAR is small (~43 KB) and
+          # is the same binary Gradle itself ships.
+          JAR_URL="https://github.com/gradle/gradle/raw/v8.14.3/gradle/wrapper/gradle-wrapper.jar"
+          echo "Downloading gradle-wrapper.jar from $JAR_URL"
+          for i in 1 2 3; do
+            if curl -fL --retry 3 --connect-timeout 30 --max-time 120 \
+                 -o gradle/wrapper/gradle-wrapper.jar "$JAR_URL"; then
+              echo "wrapper.jar downloaded on attempt $i"
+              break
+            fi
+            echo "Attempt $i failed, retrying…"
+            sleep 3
+          done
+          test -s gradle/wrapper/gradle-wrapper.jar || { echo "wrapper.jar download failed"; exit 1; }
+          # ----- gradle-wrapper.properties -----
+          cat > gradle/wrapper/gradle-wrapper.properties <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.3-bin.zip
+          networkTimeout=30000
+          validateDistributionUrl=false
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          chmod +x gradlew
+          echo "--- wrapper files ---"
+          ls -la gradle/wrapper/
+          echo "--- gradle-wrapper.properties ---"
+          cat gradle/wrapper/gradle-wrapper.properties
+          # Pre-warm: forces the wrapper to fetch Gradle 8.14.3 once so
+          # subsequent build steps don't race on the download.
+          ./gradlew --no-daemon -q --version
+
+      - name: Build Release APK
+        working-directory: frontend/android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease -x lint --no-daemon
+
+      - name: Build Release AAB
+        working-directory: frontend/android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew bundleRelease -x lint --no-daemon
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CricApp-APK
+          path: frontend/android/app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      - name: Upload AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CricApp-AAB
+          path: frontend/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.15
+          name: CricApp v1.0.15
+          body: |
+            ## CricApp v1.0.15 — Ad Optimisation + Share-to-Unlock Pro
+
+            ### Build fixes (resolves previous v1.0.15 failed build)
+            - Removed `@react-native-firebase/app` plugin from `app.json` (was breaking `expo prebuild` — package not installed)
+            - Restored `NativeAdCard.tsx` + `NativeAdRotator.ts` (deleted in earlier v1.0.15 commit, referenced by `match/[id].tsx`)
+
+            ### AdMob request-waste fixes (keeps income, reduces wasted requests)
+            - **CRITICAL FIX**: rewarded ad ID in native context was wrong (`6702740458`) — corrected to match `app.json` (`6702704058`). Main cause of UnlockProAd 66 req / 4 impr in last report.
+            - **App Open Ad**: shows ONCE per app session. No auto-reload after CLOSED. Error retries capped at 2 with 30s/60s back-off (previously infinite 5s retries).
+            - **Interstitial Ad**: LAZY load — no preload at app init. Prepared 3-5 clicks before threshold. No auto-reload after CLOSED. Error retries capped at 2 with 30s/60s back-off.
+            - **Rewarded Ad**: init preload retained for fast Pro modal.
+            - **Banner2**: completely untouched.
+
+            ### Unlock Pro — 3 ads → 1 ad
+            - `ProContext` `ADS_REQUIRED` 3 → 1. All progress UI shows `1 of 1`.
+
+            ### NEW — Share to Unlock Pro (viral growth)
+            - Single "Share" button inside Pro modal (index + match screens).
+            - Opens native Android share intent — user picks WhatsApp, Telegram, Instagram, Facebook, Gmail, SMS, etc.
+            - Shares Play Store link: https://play.google.com/store/apps/details?id=com.cricapp.live
+            - Pro granted ONLY on `Share.sharedAction` (native success). Dismiss → no Pro.
+            - **Daily quota: 1 share-unlock per device per day** — keeps AdMob revenue flowing while still giving viral incentive.
+
+            ### Ad Unit IDs (from AdMob Console)
+            - App Open: `ca-app-pub-9675798593675825/4826782503`
+            - Interstitial: `ca-app-pub-9675798593675825/8438724452`
+            - Banner: `ca-app-pub-9675798593675825/8616886104`
+            - Rewarded: `ca-app-pub-9675798593675825/6702704058`
+
+            ### Version
+            - `app.json` version **1.0.15**, versionCode **15**
+            - `react-native-google-mobile-ads` **14.11.0** (unchanged — stable)
+          files: |
+            frontend/android/app/build/outputs/apk/release/*.apk
+            frontend/android/app/build/outputs/bundle/release/*.aab
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

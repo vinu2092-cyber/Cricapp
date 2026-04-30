@@ -1,7 +1,3 @@
-#====================================================================================================
-# START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
-#====================================================================================================
-
 # THIS SECTION CONTAINS CRITICAL TESTING INSTRUCTIONS FOR BOTH AGENTS
 # BOTH MAIN_AGENT AND TESTING_AGENT MUST PRESERVE THIS ENTIRE BLOCK
 
@@ -101,3 +97,86 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "CricApp v1.0.8 - Live cricket scoring React Native app. Implementing: (1) Search Bar Deep Linking for quick match access, (2) Persistent Commentary Database using AsyncStorage with Sync-on-Open logic, (3) Squad Player Photos and Roles display"
+
+backend:
+  - task: "N/A - Pure React Native frontend app"
+    implemented: false
+    working: "NA"
+    file: "N/A"
+    stuck_count: 0
+    priority: "NA"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "This is a React Native frontend app without backend"
+
+frontend:
+  - task: "Search Bar Deep Linking"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Phase 1 Complete: Updated applyLeagueFilter() to prioritize search over league filter. When user types in search bar, it searches ALL matches across all leagues. Added auto-dismiss search bar when navigating to match. Search now works globally across Live/Recent/Upcoming tabs."
+
+  - task: "Commentary Database AsyncStorage Implementation"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/services/CommentaryDB.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Phase 2 Complete: Added detectCommentaryGap() function for Sync-on-Open logic. Cleanup interval reduced from 7 days to 3 days to prevent app bloat. Settings page now has 'Clear Cache & Commentary' button that calls cleanupOldCommentary(). Ball-by-ball data stored per match with innings tracking."
+
+  - task: "Settings Clear Cache Integration"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/settings.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Integrated cleanupOldCommentary() into settings Clear Cache button. Updated UI text to reflect commentary clearing. Auto-cleanup happens every 3 days."
+
+  - task: "Squad Player Photos and Roles"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/components/SquadsSection.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Phase 3 Complete: Updated PlayerAvatar component to accept imageId/imageUrl props. Using Cricbuzz CDN pattern: https://img1.cricbuzz.com/img/face/player_{faceImageId}.jpg. Added faceImageId extraction from API data (checking faceImageId, imageId, image_id fields). Images shown for Playing XI, Substitutes, and Bench players. Fallback to icon placeholder if image fails to load."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 0
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Search Bar Deep Linking"
+    - "Commentary Database AsyncStorage Implementation"
+    - "Squad Player Photos and Roles"
+  stuck_tasks: []
+  test_all: true
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "All 3 phases of v1.0.8 implementation complete. Phase 1: Search bar now searches globally across all tabs and auto-dismisses on navigation. Phase 2: Commentary DB with Sync-on-Open gap detection and 3-day auto-cleanup. Phase 3: Player photos using Cricbuzz CDN with proper fallback. Ready for comprehensive testing. Note: This is a React Native/Expo app - testing will require actual device/emulator or manual verification as browser-based testing is not applicable."

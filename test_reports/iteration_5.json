@@ -1,0 +1,63 @@
+{
+  "summary": "Completed comprehensive testing of CricApp Android Native project. Backend API infrastructure has critical issues with exhausted RapidAPI keys, but all three main features are correctly implemented in frontend code.",
+  "backend_issues": {
+    "critical_bugs": [
+      {
+        "endpoint": "/api/cricket/matches/live",
+        "issue": "All 14 RapidAPI keys exhausted/invalid - returning 403 Forbidden and 429 Too Many Requests",
+        "impact": "Blocks all cricket data functionality",
+        "fix_priority": "CRITICAL"
+      },
+      {
+        "endpoint": "/api/cricket/matches/*",
+        "issue": "Secondary provider 'cricbuzz.p.rapidapi.com' returns 404 'api doesn't exists'",
+        "impact": "Fallback provider non-functional",
+        "fix_priority": "HIGH"
+      }
+    ],
+    "working_endpoints": [
+      {
+        "endpoint": "/api/",
+        "status": "Working - returns API info"
+      },
+      {
+        "endpoint": "/api/health",
+        "status": "Working - shows healthy status and cache info"
+      },
+      {
+        "endpoint": "/api/cricket/match/{id}/events",
+        "status": "Working - returns empty events due to upstream API failure"
+      }
+    ]
+  },
+  "frontend_issues": {},
+  "passed_tests": [
+    "Task 1 - Scorecard DNB Fix: didBat() function correctly checks balls > 0, runs > 0, or valid dismissal",
+    "Task 1 - Scorecard DNB Fix: battedPlayers and yetToBat arrays properly separated using didBat() filter",
+    "Task 1 - Scorecard DNB Fix: Shows 'Yet to Bat' for live matches, 'Did Not Bat' for completed matches",
+    "Task 1 - Scorecard DNB Fix: Yet to Bat section displays comma-separated player names with (c)/(wk) indicators",
+    "Task 1 - Scorecard DNB Fix: Batting table only shows battedPlayers, excludes DNB players",
+    "Task 2 - AdMob Banner Sizing: BannerAdComponent uses Dimensions.get('window').width for exact screen width",
+    "Task 2 - AdMob Banner Sizing: Container has no extra padding, uses overflow hidden, proper alignment",
+    "Task 2 - AdMob Banner Sizing: Uses ANCHORED_ADAPTIVE_BANNER for responsive sizing",
+    "Task 3 - Notifications: RAPIDAPI_KEYS_P1 cleaned to 9 keys, NOT_SUBSCRIBED removed",
+    "Task 3 - Notifications: LEAGUE_KEYWORDS added with bbl, psl, cpl, sa20, hundred, etc.",
+    "Task 3 - Notifications: isIPLOrInternational checks IPL, International, and League keywords",
+    "Task 3 - Notifications: 'match-reminders' channel created with MAX importance",
+    "Task 3 - Notifications: scheduleMatchReminder uses 'match-reminders' channel with max priority",
+    "Task 3 - Notifications: Reminder content includes formatted time and date",
+    "Task 3 - Deep Linking: _layout.tsx imports Notifications and useRouter",
+    "Task 3 - Deep Linking: NotificationDeepLinkHandler handles taps with router.push to match detail",
+    "Task 3 - Deep Linking: Handles cold start via getLastNotificationResponseAsync",
+    "Task 3 - Deep Linking: Stack properly wrapped in NotificationDeepLinkHandler",
+    "Backend API structure: FastAPI server running on port 8001 with proper CORS and routing",
+    "Backend API structure: Health check endpoint functional with cache and key rotation info",
+    "Backend API structure: Proper error handling and logging implemented"
+  ],
+  "test_report_links": ["/app/backend_test.py"],
+  "action_item_for_main_agent": "CRITICAL: All RapidAPI keys for cricket data are exhausted/invalid. Need to: 1) Obtain fresh RapidAPI keys for cricbuzz-cricket.p.rapidapi.com, 2) Fix secondary provider URL (cricbuzz.p.rapidapi.com endpoints don't exist), 3) Update RAPIDAPI_KEYS array in server.py with working keys",
+  "updated_files": ["/app/backend_test.py"],
+  "success_percentage": "backend: 18% (3/17 endpoints working), frontend: 100% (all 3 features correctly implemented)",
+  "should_call_test_agent_after_fix": "true",
+  "should_main_agent_test_itself": "false"
+}
