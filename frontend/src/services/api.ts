@@ -585,6 +585,34 @@ function extractExtras(c: any): string | undefined {
   return undefined;
 }
 
+// v1.0.16 — Extract Hindi commentary text from a raw API row.
+// Cricbuzz's RapidAPI responses use several possible field names for
+// the editorial Hindi commentary; we try them all. Only returns a
+// string if the text is non-empty AND contains at least one Devanagari
+// character (Unicode block 0x0900-0x097F) so we never accidentally
+// route an English fallback string into the Hindi voice path (which
+// was the v1.0.15 bug — Hindi voice reading English = gibberish).
+function extractHindiText(c: any): string | undefined {
+  if (!c) return undefined;
+  const candidates = [
+    c.commhindi, c.commHindi,
+    c.commTxtHindi, c.commtxthindi,
+    c.commentaryHindi, c.commentaryhindi,
+    c.commTextHindi, c.commtexthindi,
+    c.hindiCommText, c.hindicommtext,
+    c.hindi, c.hindiText,
+  ];
+  for (const v of candidates) {
+    if (typeof v === 'string' && v.trim().length > 0) {
+      const cleaned = cleanText(v);
+      if (cleaned && /[\u0900-\u097F]/.test(cleaned)) {
+        return cleaned;
+      }
+    }
+  }
+  return undefined;
+}
+
 function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
   if (!data) return [];
   const out: Commentary[] = [];
@@ -601,6 +629,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
       // Single commentary dict
       if (!Array.isArray(c)) {
         const text = cleanText(c.commtxt || c.commText || '');
+        const hindiText = extractHindiText(c);
         const overVal = String(c.overnum ?? c.overNumber ?? '0.0');
         // Cricbuzz returns innings id per ball. We'll later filter the
         // commentary list to a single innings so recent/completed matches
@@ -611,6 +640,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
             id: `${matchId}-${overVal}-${text.substring(0,50).replace(/[^a-zA-Z0-9]/g, '')}`,
             over: overVal,
             english: text,
+            hindi: hindiText,
             event: resolveEvent(c),
             runs: extractRuns(c),
             extras: extractExtras(c),
@@ -622,6 +652,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
       else {
         for (let j = 0; j < c.length; j++) {
           const text = cleanText(c[j]?.commtxt || c[j]?.commText || '');
+          const hindiText = extractHindiText(c[j]);
           const overVal = String(c[j].overnum ?? c[j].overNumber ?? '0.0');
           const iid = c[j].inningsid ?? c[j].inningsId ?? c[j].iid;
           if (text) {
@@ -629,6 +660,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
               id: `${matchId}-${overVal}-${text.substring(0,50).replace(/[^a-zA-Z0-9]/g, '')}`,
               over: overVal,
               english: text,
+              hindi: hindiText,
               event: resolveEvent(c[j]),
               runs: extractRuns(c[j]),
               extras: extractExtras(c[j]),
@@ -645,6 +677,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
     for (let i = 0; i < data.commentaryList.length; i++) {
       const c = data.commentaryList[i];
       const text = cleanText(c?.commText || c?.commtxt || '');
+      const hindiText = extractHindiText(c);
       const overVal = String(c.overNumber ?? c.overnum ?? '0.0');
       const iid = c.inningsid ?? c.inningsId ?? c.iid;
       if (text) {
@@ -652,6 +685,7 @@ function parseCommentaryCricbuzz(data: any, matchId: string): Commentary[] {
           id: `${matchId}-${overVal}-${text.substring(0,50).replace(/[^a-zA-Z0-9]/g, '')}`,
           over: overVal,
           english: text,
+          hindi: hindiText,
           event: resolveEvent(c),
           runs: extractRuns(c),
           extras: extractExtras(c),

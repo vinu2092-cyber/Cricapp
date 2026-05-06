@@ -69,6 +69,16 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
     // the widget shows team1 if the React side hasn't flipped yet.
     private static String battingTeam = "team1";
     private static String bowlerOverBalls = "";
+    // v1.0.16 Rev 4 — voice prefs forwarded from CommentarySection picker.
+    //   • voiceLanguage: "en-IN" or "hi-IN".
+    //   • commentaryHindi: editorial Hindi text for current ball.
+    //     Only spoken when voiceLanguage="hi-IN" AND this string is
+    //     non-empty (Devanagari-validated upstream).
+    //   • voiceRate / voicePitch: tuned for "Excited" mode (1.15 / 1.05).
+    private static String voiceLanguage = "en-IN";
+    private static String commentaryHindi = "";
+    private static float voiceRate = 0.9f;
+    private static float voicePitch = 0.85f;
 
     @Nullable
     @Override
@@ -130,12 +140,45 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
                 if (intent.getStringExtra("bowlerOverBalls") != null) {
                     bowlerOverBalls = intent.getStringExtra("bowlerOverBalls");
                 }
+                // v1.0.16 Rev 4 — voice prefs
+                if (intent.getStringExtra("voiceLanguage") != null) {
+                    String newLang = intent.getStringExtra("voiceLanguage");
+                    if (!newLang.equals(voiceLanguage)) {
+                        voiceLanguage = newLang;
+                        applyTtsLocale();
+                        // Reset dedup so the next ball speaks in the new language
+                        lastSpokenCommentary = "";
+                    }
+                }
+                if (intent.getStringExtra("commentaryHindi") != null) {
+                    commentaryHindi = intent.getStringExtra("commentaryHindi");
+                }
+                if (intent.hasExtra("voiceMuted")) {
+                    boolean nextMuted = intent.getBooleanExtra("voiceMuted", isMuted);
+                    if (nextMuted != isMuted) {
+                        isMuted = nextMuted;
+                        if (isMuted && tts != null && tts.isSpeaking()) tts.stop();
+                        updateMuteButton();
+                    }
+                }
+                if (intent.hasExtra("voiceRate")) {
+                    voiceRate = intent.getFloatExtra("voiceRate", voiceRate);
+                    if (tts != null) tts.setSpeechRate(voiceRate);
+                }
+                if (intent.hasExtra("voicePitch")) {
+                    voicePitch = intent.getFloatExtra("voicePitch", voicePitch);
+                    if (tts != null) tts.setPitch(voicePitch);
+                }
 
                 String newCommentary = intent.getStringExtra("commentary");
-                if (newCommentary != null && !newCommentary.isEmpty() && !newCommentary.equals(lastSpokenCommentary)) {
+                if (newCommentary != null && !newCommentary.isEmpty()) {
                     commentary = newCommentary;
-                    speakCommentary(commentary);
-                    lastSpokenCommentary = commentary;
+                }
+                // Decide what (if anything) to speak based on language.
+                String spokenText = pickSpokenText();
+                if (spokenText != null && !spokenText.isEmpty() && !spokenText.equals(lastSpokenCommentary)) {
+                    speakCommentary(spokenText);
+                    lastSpokenCommentary = spokenText;
                 }
 
                 updateFloatingWidget();
@@ -146,6 +189,42 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
             }
         }
         return START_STICKY;
+    }
+
+    /**
+     * v1.0.16 Rev 4 — pick the text to speak based on voice language.
+     * Hindi mode is STRICT: we only speak when commentaryHindi is set
+     * (Devanagari-validated upstream). NEVER fall back to English in
+     * Hindi mode — that was the v1.0.15 pronunciation bug.
+     */
+    private String pickSpokenText() {
+        if ("hi-IN".equals(voiceLanguage)) {
+            if (commentaryHindi != null && !commentaryHindi.isEmpty()) {
+                return commentaryHindi;
+            }
+            return null; // silence > broken pronunciation
+        }
+        return commentary;
+    }
+
+    /**
+     * Re-apply the TTS Locale based on the current voiceLanguage. Picks
+     * Hindi-IN when available, falls back to US English otherwise.
+     */
+    private void applyTtsLocale() {
+        if (tts == null || !isTTSReady) return;
+        try {
+            Locale target = "hi-IN".equals(voiceLanguage)
+                ? new Locale("hi", "IN")
+                : Locale.US;
+            int result = tts.setLanguage(target);
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                // Hindi voice pack not installed on device — silently
+                // revert to English so we don't crash the speak() call.
+                tts.setLanguage(Locale.US);
+                voiceLanguage = "en-IN";
+            }
+        } catch (Exception e) {}
     }
 
     private void speakCommentary(String text) {

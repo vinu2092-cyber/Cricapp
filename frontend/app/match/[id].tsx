@@ -31,6 +31,7 @@ import {
   updateFloatingWidget,
   hideFloatingWidget,
 } from '../../src/services/FloatingWidgetService';
+import { getVoiceMode, isVoiceMuted } from '../../src/services/VoicePrefs';
 
 const AUTO_REFRESH = 30000; // 30 seconds refresh for live commentary
 const MATCH_CACHE_FLUSH = 1800000; // 30 minutes
@@ -283,6 +284,24 @@ export default function MatchDetail() {
       bowlerOverBalls = balls.reverse().join(' ');
     }
 
+    // v1.0.16 Rev 4 — voice prefs from CommentarySection picker.
+    // Default mode is 'english'; user can switch via the picker pill.
+    // We pass commentaryHindi explicitly so the native side can speak
+    // Hindi only when a real Devanagari string is available.
+    const mode = getVoiceMode();
+    const muted = isVoiceMuted();
+    let voiceLanguage: 'en-IN' | 'hi-IN' = 'en-IN';
+    let voiceRate = 0.95;
+    let voicePitch = 1.0;
+    if (mode === 'hindi') {
+      voiceLanguage = 'hi-IN';
+    } else if (mode === 'excited') {
+      voiceLanguage = 'en-IN';
+      voiceRate = 1.15;
+      voicePitch = 1.05;
+    }
+    const latestHindi = m.commentary?.[0]?.hindi || '';
+
     return {
       team1Name: team1Short,
       team2Name: team2Short,
@@ -300,6 +319,12 @@ export default function MatchDetail() {
       battingTeam,
       bowlerOverBalls,
       commentary: m.commentary?.[0]?.english || '',
+      // Voice prefs + Hindi text for the native overlay TTS.
+      voiceLanguage,
+      voiceRate,
+      voicePitch,
+      voiceMuted: muted,
+      commentaryHindi: latestHindi,
     };
   };
 

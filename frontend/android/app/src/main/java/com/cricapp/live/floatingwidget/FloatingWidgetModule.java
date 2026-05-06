@@ -83,6 +83,12 @@ public class FloatingWidgetModule extends ReactContextBaseJavaModule {
             // v1.0.16 — batting team flag + current-over balls
             if (scoreData.hasKey("battingTeam")) intent.putExtra("battingTeam", scoreData.getString("battingTeam"));
             if (scoreData.hasKey("bowlerOverBalls")) intent.putExtra("bowlerOverBalls", scoreData.getString("bowlerOverBalls"));
+            // v1.0.16 Rev 4 — voice language + Hindi text + mute flag
+            if (scoreData.hasKey("voiceLanguage")) intent.putExtra("voiceLanguage", scoreData.getString("voiceLanguage"));
+            if (scoreData.hasKey("commentaryHindi")) intent.putExtra("commentaryHindi", scoreData.getString("commentaryHindi"));
+            if (scoreData.hasKey("voiceMuted")) intent.putExtra("voiceMuted", scoreData.getBoolean("voiceMuted"));
+            if (scoreData.hasKey("voiceRate")) intent.putExtra("voiceRate", (float) scoreData.getDouble("voiceRate"));
+            if (scoreData.hasKey("voicePitch")) intent.putExtra("voicePitch", (float) scoreData.getDouble("voicePitch"));
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 reactContext.startForegroundService(intent);

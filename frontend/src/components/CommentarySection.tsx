@@ -16,6 +16,7 @@ import { Commentary, Language } from '../types/match';
 import { usePro } from '../context/ProContext';
 import { useAdMob } from '../context/AdMobContext.native';
 import NativeAdCard from './NativeAdCard';
+import { setVoiceMode as setSharedVoiceMode, setVoiceMuted as setSharedVoiceMuted } from '../services/VoicePrefs';
 
 interface CommentarySectionProps {
   commentary: Commentary[];
@@ -198,22 +199,67 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   const { trackClick } = useAdMob();
 
   // ===========================================================
-  // v1.0.16 — AUTO VOICE COMMENTARY
+  // v1.0.16 — AUTO VOICE COMMENTARY (Rev 4: language picker)
   // -----------------------------------------------------------
-  // Per user directive (2026-05-06 revision):
-  //   "Jo bhi last ball update hogi, vo last ball commentary
-  //    automatically bolkar bataye. Usko mute karne ka option
-  //    zaroor rakho commentary section mein."
+  // Per user directive (2026-05-06):
+  //   "Default mein last updated ball automatically voice aaye.
+  //    Jisko user manually on/off rakh sake. English / Hindi /
+  //    Excited mode dropdown rakho. Hindi available na ho match
+  //    mein to dropdown disable kar do. Hindi voice 100% accurate
+  //    honi chahiye otherwise feature drop."
   //
-  //   • Default state: UN-MUTED (auto-speak ON).
-  //   • Whenever the latest ball (commentary[0]) changes, we
-  //     pipe its english text through expo-speech.
-  //   • Mute toggle in the header lets users silence it instantly
-  //     (also stops any in-flight utterance).
-  //   • lastSpokenIdRef prevents duplicate speech on re-render.
+  // Strategy chosen (Option A, confirmed by user):
+  //   • Hindi text comes ONLY from Cricbuzz's editorial
+  //     `commhindi` field — extracted by api.ts/extractHindiText()
+  //     which guards with a Devanagari unicode check so an English
+  //     fallback can NEVER leak into Hindi voice.
+  //   • If ANY ball in the current commentary feed has a populated
+  //     `hindi` field → Hindi mode is offered; else dropdown is
+  //     disabled and we silently render English.
+  //   • Voice languages mapped to expo-speech locales:
+  //       'english'  → en-IN, rate 0.95, pitch 1.0
+  //       'hindi'    → hi-IN, rate 0.95, pitch 1.0
+  //       'excited'  → en-IN, rate 1.15, pitch 1.05  (faster, livelier)
+  //   • Default: voice ON, mode = 'english'.
+  //   • Mute pill toggles voice without disturbing the language pick.
   // ===========================================================
+  type VoiceMode = 'english' | 'hindi' | 'excited';
   const [autoSpeakMuted, setAutoSpeakMuted] = useState(false);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('english');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const lastSpokenIdRef = useRef<string | null>(null);
+
+  // Per-match Hindi availability — true iff at least one commentary
+  // row has Devanagari Hindi text. Used to disable the Hindi pick.
+  const hindiAvailable = (commentary || []).some(c => !!c.hindi);
+
+  // Auto-revert away from Hindi if the user switches to a match with
+  // no Hindi commentary so they don't sit on a stale (silent) mode.
+  useEffect(() => {
+    if (voiceMode === 'hindi' && !hindiAvailable) {
+      setVoiceMode('english');
+    }
+  }, [hindiAvailable, voiceMode]);
+
+  // Sync displayed-text language toggle with voice mode so text
+  // and voice always match (no English text + Hindi voice combo).
+  useEffect(() => {
+    if (voiceMode === 'hindi' && hindiAvailable) {
+      setLanguage('hindi');
+    } else {
+      setLanguage('english');
+    }
+  }, [voiceMode, hindiAvailable]);
+
+  // Mirror picker state into the shared VoicePrefs singleton so the
+  // floating-widget bridge in match/[id].tsx can pick the right
+  // language + commentary text on every 30s UPDATE_SCORE push.
+  useEffect(() => {
+    setSharedVoiceMode(voiceMode);
+  }, [voiceMode]);
+  useEffect(() => {
+    setSharedVoiceMuted(autoSpeakMuted);
+  }, [autoSpeakMuted]);
 
   useEffect(() => {
     if (autoSpeakMuted) return;
@@ -223,32 +269,63 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     if (matchStatus === 'upcoming') return;
 
     const latest = commentary[0];
-    if (!latest || !latest.english) return;
-    // Skip if we've already spoken this ball.
-    if (latest.id && latest.id === lastSpokenIdRef.current) return;
-    lastSpokenIdRef.current = latest.id || `${latest.over}-${(latest.english || '').slice(0, 32)}`;
+    if (!latest) return;
+    // Pick the text to speak based on voice mode. For Hindi mode we
+    // ONLY speak when the row has a real Devanagari `hindi` text —
+    // we never let English text fall into the Hindi voice path
+    // (the v1.0.15 pronunciation bug).
+    let textToSpeak: string | undefined;
+    let speechLang = 'en-IN';
+    let rate = 0.95;
+    let pitch = 1.0;
+    let overPrefix = '';
+    if (voiceMode === 'hindi') {
+      // Strict Hindi: ONLY speak when this ball has Devanagari Hindi.
+      // No fallback to English voice — that was the v1.0.15 bug
+      // (Hindi voice reading English = gibberish). Silence > garbage.
+      if (latest.hindi) {
+        textToSpeak = latest.hindi;
+        speechLang = 'hi-IN';
+        overPrefix = latest.over ? `ओवर ${latest.over}. ` : '';
+      } else {
+        return;
+      }
+    } else if (latest.english) {
+      textToSpeak = latest.english;
+      speechLang = 'en-IN';
+      overPrefix = latest.over ? `Over ${latest.over}. ` : '';
+      if (voiceMode === 'excited') {
+        rate = 1.15;
+        pitch = 1.05;
+      }
+    }
+    if (!textToSpeak) return;
+
+    // Skip if we've already spoken this ball IN THE SAME MODE.
+    const dedupKey = `${voiceMode}::${latest.id || latest.over}::${textToSpeak.slice(0, 32)}`;
+    if (dedupKey === lastSpokenIdRef.current) return;
+    lastSpokenIdRef.current = dedupKey;
 
     try {
       Speech.stop();
-      const overPrefix = latest.over ? `Over ${latest.over}. ` : '';
-      Speech.speak(overPrefix + latest.english, {
-        language: 'en-IN',
-        pitch: 1.0,
-        rate: 0.95,
+      Speech.speak(overPrefix + textToSpeak, {
+        language: speechLang,
+        pitch,
+        rate,
         onError: () => {},
       });
     } catch {}
-  }, [commentary, autoSpeakMuted, matchStatus]);
+  }, [commentary, autoSpeakMuted, matchStatus, voiceMode]);
 
-  // Stop any in-flight TTS when component unmounts or mute toggles on.
+  // Stop any in-flight TTS when component unmounts, mute toggles on,
+  // or the user switches voice mode mid-speech (so we don't hear half
+  // an English line followed by a Hindi line).
   useEffect(() => {
-    if (autoSpeakMuted) {
-      try { Speech.stop(); } catch {}
-    }
+    try { Speech.stop(); } catch {}
     return () => {
       try { Speech.stop(); } catch {}
     };
-  }, [autoSpeakMuted]);
+  }, [autoSpeakMuted, voiceMode]);
 
   // ===========================================================
   // v1.0.16 — FAKE pull-to-refresh on commentary scroll.
@@ -667,31 +744,103 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             <Ionicons name="chatbubbles" size={20} color="#4CAF50" />
             <Text style={styles.title}>Ball by Ball Commentary</Text>
           </View>
-          {/* v1.0.16 — Auto-speak mute toggle. Default unmuted; tap to
-              silence the live ball-by-ball voice. */}
-          <TouchableOpacity
-            style={[
-              styles.autoSpeakToggle,
-              autoSpeakMuted && styles.autoSpeakToggleMuted,
-            ]}
-            onPress={() => setAutoSpeakMuted(m => !m)}
-            data-testid="auto-speak-toggle"
-            accessibilityLabel={autoSpeakMuted ? 'Unmute live commentary voice' : 'Mute live commentary voice'}
-          >
-            <Ionicons
-              name={autoSpeakMuted ? 'volume-mute' : 'volume-high'}
-              size={16}
-              color={autoSpeakMuted ? '#E53935' : '#4CAF50'}
-            />
-            <Text
-              style={[
-                styles.autoSpeakToggleTxt,
-                autoSpeakMuted && { color: '#E53935' },
-              ]}
+          {/* v1.0.16 Rev 4 — Auto-speak controls.
+              Two pills:
+                • Voice mode picker (English / Hindi / Excited)
+                  – Hindi disabled when no Devanagari text is present
+                    in the current commentary feed.
+                • Mute toggle (Voice on/off) — does not change picked mode.
+              Defaults: mode='english', voice ON. */}
+          <View style={styles.voiceCtrlRow}>
+            <TouchableOpacity
+              style={[styles.voiceModePill]}
+              onPress={() => setPickerOpen(o => !o)}
+              data-testid="voice-mode-picker"
+              accessibilityLabel="Pick voice commentary language"
             >
-              {autoSpeakMuted ? 'Voice off' : 'Voice on'}
-            </Text>
-          </TouchableOpacity>
+              <Ionicons
+                name={voiceMode === 'hindi' ? 'language' : voiceMode === 'excited' ? 'flame' : 'globe-outline'}
+                size={14}
+                color="#1B5E20"
+              />
+              <Text style={styles.voiceModePillTxt}>
+                {voiceMode === 'hindi' ? 'हिंदी' : voiceMode === 'excited' ? 'Excited' : 'English'}
+              </Text>
+              <Ionicons name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={12} color="#1B5E20" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.autoSpeakToggle,
+                autoSpeakMuted && styles.autoSpeakToggleMuted,
+              ]}
+              onPress={() => setAutoSpeakMuted(m => !m)}
+              data-testid="auto-speak-toggle"
+              accessibilityLabel={autoSpeakMuted ? 'Unmute live commentary voice' : 'Mute live commentary voice'}
+            >
+              <Ionicons
+                name={autoSpeakMuted ? 'volume-mute' : 'volume-high'}
+                size={16}
+                color={autoSpeakMuted ? '#E53935' : '#4CAF50'}
+              />
+              <Text
+                style={[
+                  styles.autoSpeakToggleTxt,
+                  autoSpeakMuted && { color: '#E53935' },
+                ]}
+              >
+                {autoSpeakMuted ? 'Voice off' : 'Voice on'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Voice mode dropdown overlay */}
+      {pickerOpen && matchStatus !== 'upcoming' && (
+        <View style={styles.voiceModeMenu} data-testid="voice-mode-menu">
+          {[
+            { id: 'english' as VoiceMode, label: 'English', sub: 'Standard voice' },
+            { id: 'hindi' as VoiceMode, label: 'हिंदी (Hindi)', sub: hindiAvailable ? 'Editorial Hindi commentary' : 'Not available for this match' },
+            { id: 'excited' as VoiceMode, label: 'Excited', sub: 'English, faster + livelier' },
+          ].map(opt => {
+            const disabled = opt.id === 'hindi' && !hindiAvailable;
+            const isActive = voiceMode === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                disabled={disabled}
+                style={[
+                  styles.voiceModeMenuItem,
+                  isActive && styles.voiceModeMenuItemActive,
+                  disabled && styles.voiceModeMenuItemDisabled,
+                ]}
+                onPress={() => {
+                  if (disabled) return;
+                  setVoiceMode(opt.id);
+                  setPickerOpen(false);
+                }}
+                data-testid={`voice-mode-option-${opt.id}`}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[
+                    styles.voiceModeMenuItemLabel,
+                    isActive && { color: '#1B5E20' },
+                    disabled && { color: '#999' },
+                  ]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[
+                    styles.voiceModeMenuItemSub,
+                    disabled && { color: '#BBB' },
+                  ]}>
+                    {opt.sub}
+                  </Text>
+                </View>
+                {isActive && <Ionicons name="checkmark-circle" size={18} color="#2E7D32" />}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       )}
 
@@ -1017,6 +1166,67 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#4CAF50',
+  },
+  // v1.0.16 Rev 4 — voice mode picker (English / Hindi / Excited).
+  voiceCtrlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  voiceModePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 14,
+    backgroundColor: 'rgba(27,94,32,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(27,94,32,0.25)',
+  },
+  voiceModePillTxt: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1B5E20',
+  },
+  voiceModeMenu: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 6,
+    marginBottom: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.10)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.10,
+    shadowRadius: 6,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  voiceModeMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  voiceModeMenuItemActive: {
+    backgroundColor: 'rgba(76,175,80,0.10)',
+  },
+  voiceModeMenuItemDisabled: {
+    opacity: 0.55,
+  },
+  voiceModeMenuItemLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#222',
+  },
+  voiceModeMenuItemSub: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
   },
   commentaryList: { flex: 1 },
   commentaryItem: {

@@ -20,6 +20,20 @@ interface ScoreData {
   //     (e.g. "1 4 . . W"). Previous-over balls are NOT shown.
   battingTeam?: 'team1' | 'team2';
   bowlerOverBalls?: string;
+  // v1.0.16 Rev 4 — voice prefs for the floating overlay's TTS.
+  //   • voiceLanguage: 'en-IN' | 'hi-IN' — picks Locale on the native side.
+  //   • voiceRate / voicePitch: tuneable for "Excited" mode.
+  //   • voiceMuted: stops native TTS without tearing down the widget.
+  //   • commentaryHindi: editorial Hindi text for this ball (only set
+  //     when present + Devanagari-validated by api.ts). When language
+  //     is 'hi-IN', the native side speaks THIS string. If absent,
+  //     native side stays silent rather than reading english (avoids
+  //     the v1.0.15 Hindi-voice-reading-English gibberish bug).
+  voiceLanguage?: 'en-IN' | 'hi-IN';
+  voiceRate?: number;
+  voicePitch?: number;
+  voiceMuted?: boolean;
+  commentaryHindi?: string;
 }
 
 /**
