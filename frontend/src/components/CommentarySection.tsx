@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
@@ -190,9 +191,37 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
 
   const { isPro } = usePro();
   // BannerAdComponent is no longer used — CommentarySection renders
-  // <NativeAdCard /> directly (v1.0.11 Native Advanced migration). The
-  // useAdMob() hook is kept for any future call sites that need context.
-  useAdMob();
+  // <NativeAdCard /> directly (v1.0.11 Native Advanced migration). We
+  // also pull trackClick() so the v1.0.16 fake pull-to-refresh below
+  // can increment the interstitial click counter.
+  const { trackClick } = useAdMob();
+
+  // ===========================================================
+  // v1.0.16 — FAKE pull-to-refresh on commentary scroll.
+  // -----------------------------------------------------------
+  // Per user directive (2026-05-06 revision):
+  //   "Refresh sirf users ko bewakoof banane k liye rakhna h taki
+  //    users ko lage ki vo scoreboard ko refresh kar k jaldi data
+  //    refresh kar rha h. Actually us refresh se koi api call ya
+  //    page refresh nahi hona chahiye. Click increase hote rahe."
+  //
+  //   • We DO NOT call any data-fetch helper here.
+  //   • The 30-second AUTO_REFRESH timer in match/[id].tsx is the
+  //     ONLY source of truth for real API refreshes — untouched.
+  //   • We DO call trackClick() so each pull bumps the interstitial
+  //     counter (15 = preload, 23 = show), giving us more impressions
+  //     without any extra ad requests.
+  //   • Spinner shows for 700ms then auto-dismisses — pure visual.
+  // ===========================================================
+  const [fakeRefreshing, setFakeRefreshing] = useState(false);
+  const handleFakeRefresh = () => {
+    if (fakeRefreshing) return;
+    setFakeRefreshing(true);
+    // Count this gesture as a click for the interstitial counter
+    // (no-op for Pro users — trackClick early-exits when isPro is true).
+    trackClick();
+    setTimeout(() => setFakeRefreshing(false), 700);
+  };
 
   const speakCommentary = (text: string, index: number) => {
     try {
@@ -583,7 +612,22 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
         </View>
       )}
 
-      <ScrollView style={styles.commentaryList} nestedScrollEnabled>
+      <ScrollView
+        style={styles.commentaryList}
+        nestedScrollEnabled
+        refreshControl={
+          <RefreshControl
+            refreshing={fakeRefreshing}
+            onRefresh={handleFakeRefresh}
+            colors={['#4CAF50', '#2E7D32']}
+            tintColor="#4CAF50"
+            progressBackgroundColor="#1A1A1A"
+            // v1.0.16 — title is intentionally absent; we rely on the
+            // standard system spinner so users feel a familiar
+            // "refresh happened" UX without any actual data fetch.
+          />
+        }
+      >
         {/* Upcoming match: show expert analysis */}
         {matchStatus === 'upcoming' && displayedCommentary.length > 0 && (
           <View style={{ padding: 12 }}>

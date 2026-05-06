@@ -323,6 +323,47 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         muteButton.setBackground(muteBg);
         muteButton.setOnClickListener(v -> toggleMute());
 
+        // v1.0.16 — FAKE refresh button.
+        // Pure visual placebo per user directive (2026-05-06 revision):
+        //   "Yeh refresh ka logic jo humne user ko bewakoof banane k
+        //    liye rakha h yeh floating scoreboard par bhi hona chahiye,
+        //    jo actually koi data refresh na kare na hi API call kare.
+        //    Yeh scoreboard par refresh karne k clicks count na ho ,
+        //    kuki user time pro user hoga."
+        //
+        // - No data fetch.
+        // - No click-counter increment (Pro users see this overlay
+        //   and Pro users DO NOT see interstitials anyway).
+        // - 30s automatic refresh (driven by the React side via
+        //   UPDATE_SCORE intents) is the only real source of fresh data.
+        TextView refreshButton = new TextView(context);
+        refreshButton.setText("\uD83D\uDD04"); // 🔄
+        refreshButton.setTextSize(11);
+        refreshButton.setPadding(10, 4, 10, 4);
+        refreshButton.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable refreshBg = new android.graphics.drawable.GradientDrawable();
+        refreshBg.setColor(0x502196F3);
+        refreshBg.setCornerRadius(10f);
+        refreshButton.setBackground(refreshBg);
+        refreshButton.setOnClickListener(v -> {
+            // Visual-only feedback: brief rotate + background flash.
+            // Intentionally NOT calling updateFloatingWidget() or any
+            // intent — refresh is fake.
+            try {
+                v.animate().rotationBy(360f).setDuration(700).start();
+                final android.graphics.drawable.GradientDrawable activeBg = new android.graphics.drawable.GradientDrawable();
+                activeBg.setColor(0xCC2196F3);
+                activeBg.setCornerRadius(10f);
+                v.setBackground(activeBg);
+                v.postDelayed(() -> {
+                    final android.graphics.drawable.GradientDrawable idleBg = new android.graphics.drawable.GradientDrawable();
+                    idleBg.setColor(0x502196F3);
+                    idleBg.setCornerRadius(10f);
+                    v.setBackground(idleBg);
+                }, 700);
+            } catch (Exception e) {}
+        });
+
         TextView dragIndicator = new TextView(context);
         dragIndicator.setText("⋮⋮");
         dragIndicator.setTextColor(0xAAFFFFFF);
@@ -345,6 +386,7 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
 
         headerLayout.addView(liveBadge);
         headerLayout.addView(muteButton);
+        headerLayout.addView(refreshButton);
         headerLayout.addView(dragIndicator);
         headerLayout.addView(closeBtn);
         mainLayout.addView(headerLayout);

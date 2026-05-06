@@ -46,15 +46,15 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [isAdMobInitialized, setIsAdMobInitialized] = useState(false);
   const [isRewardedAdReady, setIsRewardedAdReady] = useState(false);
   const [clicks, setClicks] = useState(0);
-  // v1.0.16 — Interstitial flow per user directive (2026-05-06):
-  //   • 10 clicks → PRELOAD interstitial (request fires here)
-  //   • 15 clicks → SHOW interstitial (impression fires here)
-  // The 5-click gap between request and show keeps Google's auction
+  // v1.0.16 — Interstitial flow per user directive (2026-05-06, revised):
+  //   • 15 clicks → PRELOAD interstitial (request fires here)
+  //   • 23 clicks → SHOW interstitial (impression fires here)
+  // The 8-click gap between request and show keeps Google's auction
   // window short enough that the loaded creative is almost always still
   // valid when we call .show(), giving us a near-1:1 request:impression
   // match rate.
-  const INTERSTITIAL_PRELOAD_AT = 10;
-  const INTERSTITIAL_SHOW_AT = 15;
+  const INTERSTITIAL_PRELOAD_AT = 15;
+  const INTERSTITIAL_SHOW_AT = 23;
 
   // Interstitial refs (keep existing working pattern)
   const interstitialRef = useRef<InterstitialAd | null>(null);
@@ -580,12 +580,12 @@ export const AdMobProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
-  // v1.0.16 — 10/15 click flow.
-  //   • At click #10  → preload interstitial (single request fires)
-  //   • At click #15  → show interstitial (impression fires)
-  //   • After show    → counter resets to 0, awaiting next 15-click cycle.
+  // v1.0.16 — 15/23 click flow (revised).
+  //   • At click #15  → preload interstitial (single request fires)
+  //   • At click #23  → show interstitial (impression fires)
+  //   • After show    → counter resets to 0, awaiting next 23-click cycle.
   // This keeps ~1:1 request-to-impression match rate for the
-  // RandomInterstitial ad unit (8438724452) per user 2026-05-06 brief.
+  // RandomInterstitial ad unit (8438724452) per user directive.
   const trackClick = () => {
     if (isPro) return;
     const next = clicks + 1;
