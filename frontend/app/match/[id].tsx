@@ -243,38 +243,66 @@ export default function MatchDetail() {
     const batsmanLabel = striker
       ? `${striker.name} ${striker.runs}(${striker.balls})`
       : '';
-    // v1.0.16 Rev 7 — bowler label is JUST the name. Bowler stats
+
+    // v1.0.16 Rev 8 — Source of truth for "current bowler" and
+    // "current over" is now the LATEST commentary entry, NOT the
+    // miniscore.bowlerstriker field. User reported (build #126,
+    // 2026-05-06) that miniscore lags by ~1 over: it kept showing
+    // "Michelle Mavunga" while the live commentary already had
+    // "Lindokuhle Mabhero to Gull Feroza, no run" at over 30.5.
+    //
+    // Cricbuzz commentary text follows the format:
+    //     "<Bowler Name> to <Batter Name>, <result>"
+    // We extract the bowler segment with a tolerant regex that allows
+    // names with apostrophes, hyphens, dots and unicode letters.
+    let liveBowlerName: string | null = null;
+    let liveOverFloat: number | null = null;
+    if (m.commentary && m.commentary.length > 0) {
+      // Walk newest → oldest until we find a row that looks like a
+      // delivery (has both an `over` and a "X to Y" English text).
+      for (const c of m.commentary) {
+        if (!c.over || !c.english) continue;
+        const f = parseFloat(c.over);
+        if (Number.isNaN(f)) continue;
+        const m1 = c.english.match(/^([\p{L}'.\- ]{2,40}?)\s+to\s+/u);
+        if (m1) {
+          liveBowlerName = m1[1].trim();
+          liveOverFloat = f;
+          break;
+        }
+        // First delivery commentary that simply has a valid `over`
+        // even if the bowler can't be parsed — still pin currentOver.
+        if (liveOverFloat === null) liveOverFloat = f;
+      }
+    }
+
+    // v1.0.16 Rev 7/8 — bowler label is JUST the name. Bowler stats
     // ("O-M-R-W" e.g. "5.1-0-27-0") are intentionally OMITTED because
     // the user (2026-05-06 directive) interprets the embedded "5.1"
     // (= 5 overs + 1 ball) as a "ball number" — confusing. The
     // ball-by-ball strip below the player row already shows runs/W/Wd/
     // Nb per delivery, which is the only over-progress info needed.
-    const bowlerLabel = m.bowler && m.bowler.name ? m.bowler.name : '';
+    // Prefer the live commentary bowler over the (often stale)
+    // miniscore.bowlerstriker name.
+    const bowlerLabel = liveBowlerName
+      || (m.bowler && m.bowler.name ? m.bowler.name : '');
 
-    // Current-over balls only. The bowler's `overs` field is in
-    // Cricbuzz "X.Y" form (e.g. "3.4" = 3 overs + 4 balls into the
-    // 4th over). The current over is therefore floor(bowler.overs).
-    // We collect commentary rows whose Math.floor(parseFloat(over))
-    // equals that integer.
+    // v1.0.16 Rev 8 — Current-over balls strip.
+    // currentOverInt comes from the LATEST commentary row's `over`
+    // (which is always in sync with the actual live over), not from
+    // miniscore. Pre-Rev 8 we floored m.bowler.overs which was stale,
+    // producing an empty strip whenever a new bowler started a fresh
+    // over before miniscore caught up.
     let bowlerOverBalls = '';
-    if (m.commentary && m.commentary.length > 0 && m.bowler) {
-      const bowlerOversStr = String(m.bowler.overs || '0');
-      const [whole, ballsPart] = bowlerOversStr.split('.');
-      const completedOvers = Number(whole) || 0;
-      const ballsIntoOver = Number(ballsPart) || 0;
-      // If we're mid-over the current over int = completedOvers (since
-      // bowler's "3.4" = 3 done + 4 balls into over 4 → currentOver=3).
-      // If a fresh over just started bowler.overs would be "4.0" or "4"
-      // and currentOver=4.
-      const currentOverInt = ballsIntoOver === 0 ? completedOvers : completedOvers;
+    if (m.commentary && m.commentary.length > 0 && liveOverFloat !== null) {
+      const currentOverInt = Math.floor(liveOverFloat);
       const balls: string[] = [];
       for (const c of m.commentary) {
         if (!c.over) continue;
         const f = parseFloat(c.over);
-        if (isNaN(f)) continue;
+        if (Number.isNaN(f)) continue;
         if (Math.floor(f) !== currentOverInt) continue;
-        // Translate the ball into a short symbol, mirroring the
-        // formatOverSummary logic above.
+        // Translate the ball into a short symbol.
         if (c.event === 'wicket') balls.push('W');
         else if (c.extras === 'wide') balls.push('Wd');
         else if (c.extras === 'noball') balls.push('Nb');

@@ -616,16 +616,45 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         TextView batsman = floatingView.findViewWithTag("batsmanName");
         TextView bowler = floatingView.findViewWithTag("bowlerName");
 
-        // v1.0.16 Rev 7 — show ONLY the batting team's row.
-        // We use the direct LinearLayout references (not findViewWithTag)
-        // and apply visibility = GONE which removes the row from layout
-        // entirely, so the user only sees one row.
+        // v1.0.16 Rev 8 — show ONLY the batting team's row.
+        // Build #125 + #126 still showed both rows for some users
+        // despite Rev 4/Rev 7 visibility-toggle code. Root cause was
+        // most likely a visibility-caching corner case in the
+        // WindowManager-managed view tree. The ONLY rock-solid fix is
+        // to PHYSICALLY remove the non-batting row from its parent
+        // LinearLayout — a removed View can't render, period.
         boolean isTeam2Batting = "team2".equals(battingTeam);
-        if (team1RowView != null) {
-            team1RowView.setVisibility(isTeam2Batting ? View.GONE : View.VISIBLE);
-        }
-        if (team2RowView != null) {
-            team2RowView.setVisibility(isTeam2Batting ? View.VISIBLE : View.GONE);
+        if (floatingView instanceof LinearLayout) {
+            LinearLayout mainLayout = (LinearLayout) floatingView;
+            // Belt-and-braces: visibility GONE + height 0 + remove from parent.
+            if (team1RowView != null) {
+                team1RowView.setVisibility(isTeam2Batting ? View.GONE : View.VISIBLE);
+                if (isTeam2Batting) {
+                    if (team1RowView.getParent() == mainLayout) {
+                        mainLayout.removeView(team1RowView);
+                    }
+                } else {
+                    if (team1RowView.getParent() == null) {
+                        // Re-insert at index 1 (right after the header).
+                        mainLayout.addView(team1RowView, 1);
+                    }
+                }
+            }
+            if (team2RowView != null) {
+                team2RowView.setVisibility(isTeam2Batting ? View.VISIBLE : View.GONE);
+                if (!isTeam2Batting) {
+                    if (team2RowView.getParent() == mainLayout) {
+                        mainLayout.removeView(team2RowView);
+                    }
+                } else {
+                    if (team2RowView.getParent() == null) {
+                        // Insert right after team1Row's slot OR at index 1
+                        // if team1 was removed.
+                        int idx = (team1RowView != null && team1RowView.getParent() == mainLayout) ? 2 : 1;
+                        mainLayout.addView(team2RowView, idx);
+                    }
+                }
+            }
         }
 
         if (t1Name != null) t1Name.setText(team1Name);
@@ -636,12 +665,9 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         if (t2Overs != null) t2Overs.setText(team2Overs.isEmpty() ? "" : "(" + team2Overs + ")");
         if (status != null) status.setText(statusText);
         if (batsman != null) batsman.setText(batsmanName.isEmpty() ? "" : "\uD83C\uDFCF " + batsmanName);
-        // v1.0.16 Rev 7 — bowler row now shows only the bowler NAME.
-        // Per-ball runs/W/Wd/Nb live in `overBallsView` directly below
-        // (user explicitly asked: "Bowler k naam ek aage sirf overs ki
-        // balls par aaya result dikhna chahiye, balls ka number nahi").
-        // The bowlerName string is composed in match/[id].tsx and now
-        // contains only the name (no O-M-R-W stats).
+        // v1.0.16 Rev 7/8 — bowler row shows only the bowler NAME
+        // (parsed from latest commentary in match/[id].tsx). Per-ball
+        // runs/W/Wd/Nb live in `overBallsView` directly below.
         if (bowler != null) bowler.setText(bowlerName.isEmpty() ? "" : "\u26BE " + bowlerName);
         if (overBallsView != null) {
             if (bowlerOverBalls != null && !bowlerOverBalls.isEmpty()) {
