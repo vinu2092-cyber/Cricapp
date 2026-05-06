@@ -1,104 +1,36 @@
-# CricApp v1.0.16 — Production Release Notes
+# CricApp PRD — v1.0.16 Rev 5 (2026-05-06)
 
-## Original Problem Statement
-User: vinu2092-cyber/Cricapp (live on Play Store v1.0.15). Move to v1.0.16 and fix:
-1. Ad impression-vs-request gap (huge gap visible in AdMob report → close to 0%)
-2. Delete Banner1 ad unit globally; replace placements with Banner2 in similar (small) size
-3. Interstitial: 10 clicks → preload, 15 clicks → show
-4. Remove all Cricbuzz external links/buttons from all pages
-5. Floating scoreboard (native overlay): reduce size ~30%, hide non-batting team's row, show bowler + current-over balls only, refresh every 30s
-6. All work in /app/ so user can hit "Save to GitHub" → CI builds APK + AAB
+## Recent Changes (this session)
 
-## Architecture
-- **Frontend**: React Native + Expo Router (TS), `frontend/`
-- **Native (Android)**: Java native module `frontend/android/app/src/main/java/com/cricapp/live/floatingwidget/` (FloatingWidgetService + FloatingWidgetModule)
-- **Backend**: FastAPI (`backend/`) — unchanged
-- **CI**: `.github/workflows/build-android.yml` (Gradle 8.14.3, expo prebuild → assembleRelease + bundleRelease, artifacts uploaded)
+### 1. Voice Commentary Picker — collapsed to 2 options
+- **Before**: Hindi / English / Excited (3 options)
+- **After**: Hindi Excited / English Excited (2 options)
+- Both modes now use the "excited" rate (1.15) + pitch (1.05) profile
+- Difference is the speech locale only: `hi-IN` vs `en-IN`
+- Default: `english_excited`. Hindi Excited disabled if no Devanagari text
+- Files: `src/services/VoicePrefs.ts`, `src/components/CommentarySection.tsx`, `app/match/[id].tsx`
 
-## What's Been Implemented (2026-05-06, v1.0.16)
+### 2. League Filter — multi-select with "All" toggle
+- New `All` chip added at start of horizontal scroll (default ON)
+- "All" toggles on/off — pressing it when ON deselects everything; pressing again selects everything
+- All other chips (IPL, International, BBL, Women, etc.) are independently togglable; selecting any clears the All chip
+- List shows the **union** of matches across selected categories
+- Always **time-sorted ascending** (earliest start first), powered by new `startTimestamp` field on `Match`
+- Files: `app/index.tsx`, `src/services/api.ts`, `src/types/match.ts`
 
-### Revision 3 (2026-05-06, same v1.0.16) — voice + haptics
+### 3. Match-start Notification Reliability Fix
+- **Before**: 10-min reminder, only IPL/International auto-tracked, only when app is open → unreliable
+- **After**:
+  - Reminder fires **30 min before start** (per user directive)
+  - Body now includes **venue + city + start time** + series name
+  - New `preScheduleAllUpcomingReminders()` schedules local OS-level reminders for **every** upcoming match in the next 7 days, every time the upcoming tab is fetched
+  - These reminders fire reliably even when app is killed because Android's `AlarmManager` owns the schedule once registered
+  - Auto-track flow also forwards venue/city to the reminder
+- Files: `src/services/NotificationService.ts`, `src/context/NotificationContext.tsx`, `app/index.tsx`
 
-**A. Auto Voice Commentary on every new ball** (`frontend/src/components/CommentarySection.tsx`)
-- Default: **un-muted** (auto-speak ON). Whenever `commentary[0]` (latest ball) changes, the english text is read out via `expo-speech` (`en-IN`, rate 0.95, pitch 1.0) prefixed with "Over X.Y. ".
-- `lastSpokenIdRef` prevents duplicate speech on re-render.
-- New **mute toggle pill** in the commentary header: tap once → speech stops + future balls are silent (`Voice off`); tap again → resumes (`Voice on`). Auto-stops in-flight TTS the instant the user mutes or unmounts.
-- Floating scoreboard's existing native auto-speak (`FloatingWidgetService.java#speakCommentary`) is **untouched** — it already auto-reads on every `UPDATE_SCORE` intent and has its own mute button.
-- Skipped for `matchStatus === 'upcoming'` (those rows are expert-analysis blurbs, not ball-by-ball).
-
-**B. Subtle haptic vibration on fake pull-to-refresh** (`frontend/src/components/CommentarySection.tsx`)
-- `handleFakeRefresh()` now fires `Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)` on every pull (no-op on web/dev fallback). Reinforces the "real refresh happened" perception while the API stays on its 30s cycle.
-- `expo-haptics` already in `package.json` (`~15.0.8`) — no new dependency required.
-
----
-
-### Revision 2 (2026-05-06, same v1.0.16) — additional changes
-
-**A. Interstitial click thresholds revised**
-- `frontend/src/context/AdMobContext.native.tsx`: `INTERSTITIAL_PRELOAD_AT` 10 → **15**, `INTERSTITIAL_SHOW_AT` 15 → **23**. 8-click gap between request and show. Match-rate parity guarantee unchanged.
-
-**B. FAKE pull-to-refresh on commentary section** (`frontend/src/components/CommentarySection.tsx`)
-- Added `RefreshControl` on the commentary `ScrollView` with `fakeRefreshing` state.
-- `handleFakeRefresh()` only does TWO things: (1) starts a 700 ms spinner, (2) calls `trackClick()` to bump the interstitial click counter.
-- **NO API call, NO data fetch, NO actual refresh.** The 30-second `AUTO_REFRESH` interval in `match/[id].tsx` remains the SOLE source of real data refresh.
-- Net effect: every pull = 1 extra "click" for free → faster path to next interstitial impression.
-
-**C. FAKE refresh button on native floating scoreboard** (`frontend/android/.../FloatingWidgetService.java`)
-- Added 🔄 button next to the mute button in the overlay header.
-- On tap: 360° rotation animation + brief blue background flash (700 ms). **NO data fetch, NO intent dispatch, NO click-counter bump** (overlay = Pro users only; Pro users never see interstitials).
-- Real overlay refresh continues to come from the React side every 30 s via `UPDATE_SCORE` intents — untouched.
-
----
-
-### Revision 1 (initial v1.0.16 work)
-
-### 1. Version bump
-- `frontend/app.json`: version 1.0.15 → **1.0.16**, android.versionCode 15 → **16**
-- `frontend/android/app/build.gradle`: versionCode/versionName synced (regenerated by expo prebuild anyway)
-
-### 2. Ad impression/request match-rate fix
-- `frontend/src/services/NativeAdRotator.ts`: **Banner #1 (8616886104) deleted globally**. All active slots now point to Banner #2 (`2958604357`), differentiated by requested SIZE (320×50 header, 300×250 contextual). Slot 2 stays inactive (legacy Banner 3).
-- `frontend/src/components/NativeAdCard.tsx`: removed all stagger delays. Banner mounts and requests in same paint cycle as on-screen visibility — request:impression near 1:1.
-- `frontend/src/context/AdMobContext.native.tsx`:
-  - **Interstitial 10/15 flow**: `trackClick()` → at click 10 PRELOAD, at click 15 SHOW + reset counter. No fallback on-demand load (was burning requests). No CLOSED auto-preload (waits for next 10-click trigger).
-  - Removed all error-retry loops (interstitial, App Open, rewarded preload). Each retry was burning a request without an impression.
-  - Removed 60-second rewarded keepalive interval (was generating background requests that never converted).
-  - AppState 'active' rewarded re-arm kept (single request after user returns from lock).
-  - Removed `banner` entry from `AD_IDS` map.
-- `frontend/app/match/[id].tsx`: removed duplicate local click counter; delegates to AdMobContext's `trackClick()`.
-
-### 3. Cricbuzz external links/buttons removed
-- `frontend/app/match/[id].tsx`: header `open-outline` external icon button removed; "View Full Scorecard" button removed; `openExternalScorecard` import removed.
-- `frontend/src/components/CommentarySection.tsx`: "View Live Commentary" empty-state Alert button removed; "View Full Match Details on Web" action button + helper `handleViewFullDetails` removed; unused `Alert`/`Linking` imports removed.
-- `frontend/src/services/api.ts`: `openExternalScorecard` converted to no-op stub for back-compat; unused `Alert`/`Linking` imports removed.
-- **Kept (data sources, not user-facing links)**: `cricbuzz.com/a/img/v1/...` player/team photo URLs.
-- **Kept (functional, settings-only)**: `RAPIDAPI_URL` for "Get API Key" button (third-party API docs page).
-
-### 4. Floating Scoreboard (native overlay)
-- `frontend/android/app/src/main/java/com/cricapp/live/floatingwidget/FloatingWidgetService.java` rewritten:
-  - All text sizes & paddings reduced ~30% (e.g. team name 17→12, score 24→17, overs 13→9, status 12→8, batsman/bowler 11→8).
-  - Background opacity (`0x70000000`) **unchanged** per user spec.
-  - Added `battingTeam` flag → only the batting team's row is visible, non-batting team's row is `View.GONE`.
-  - Added `bowlerOverBalls` strip showing ONLY current over's ball-by-ball (e.g. "This over: 1 4 . . W"). Previous-over balls excluded.
-  - Notification text also batting-team only.
-- `frontend/android/.../FloatingWidgetModule.java`: forwards `battingTeam` + `bowlerOverBalls` extras.
-- `frontend/src/services/FloatingWidgetService.ts`: ScoreData TS interface extended.
-- `frontend/src/types/match.ts`: added `battingTeamShortName` field.
-- `frontend/src/services/api.ts`: derives `battingTeamShortName` from last entry of `inningsScores`.
-- `frontend/app/match/[id].tsx`: new `buildFloatingScoreData(match)` helper computes batting team, batsman label, bowler label, and current-over balls (filtered from commentary using `Math.floor(overFloat)`). All three call sites (permission-granted, score-change useEffect, pin-button onPress) now use this single builder. The existing 30-second `AUTO_REFRESH` interval continues to push fresh data into the overlay.
-
-### 5. CI / Build
-- All work merged into `/app/` (CricApp folder unwrapped). Existing `.github/workflows/build-android.yml` builds APK (`assembleRelease`) and AAB (`bundleRelease`) on push to `main`.
-
-## NOT Implemented / Out of Scope
-- No webpreview, no EAS build, no testing run (per user instruction).
-- AdMob console-side configuration (banner unit ad-format) is outside repo control. If Banner #2 unit was created as MEDIUM_RECTANGLE only, requesting BANNER (320×50) fills may be lower than ideal — user explicitly approved this trade-off.
-
-## Next Action Items
-- User clicks **Save to GitHub** in Emergent chatbox → `build-android.yml` triggers → APK + AAB artifacts available in GitHub Actions run.
-- After CI build completes, upload AAB to Google Play Console for v1.0.16 rollout.
-- Monitor AdMob report for next 7 days to confirm match-rate uplift.
-
-## Backlog (P1/P2)
-- (P2) Migrate banner unit IDs out of code into remote config so future changes don't require an app update.
-- (P2) Add a mid-innings break detector so the floating overlay swaps batting team automatically without waiting for the React `inningsScores` push.
+## Constraints respected
+- No EAS builds, no web preview, no test runs locally
+- `app.json` version stays `1.0.16` / `versionCode 16`
+- `metro.config.js`, `frontend/.env`, `backend/.env` untouched
+- AdMob unit IDs unchanged
+- `.github/workflows/build-android.yml` untouched — push to `main` triggers APK + AAB build

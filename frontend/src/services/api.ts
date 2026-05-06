@@ -420,6 +420,8 @@ function transformListMatch(m: any): Match {
   const t1s = score.team1Score?.inngs1 || {};
   const t2s = score.team2Score?.inngs1 || {};
 
+  const startEpoch = info.startDate ? Number(info.startDate) : undefined;
+
   return {
     matchId: String(info.matchId || ''),
     seriesName: info.seriesName || '',
@@ -430,6 +432,8 @@ function transformListMatch(m: any): Match {
     venue: venue.ground || '',
     city: venue.city || '',
     startTime: info.startDate ? formatTs(info.startDate) : '',
+    // v1.0.16 Rev 5 — numeric epoch for time-sorted multi-select list.
+    startTimestamp: typeof startEpoch === 'number' && !Number.isNaN(startEpoch) ? startEpoch : undefined,
     teams: [
       { name: t1.teamName || '?', shortName: t1.teamSName || '?', runs: t1s.runs, wickets: t1s.wickets, overs: t1s.overs, teamId: t1.teamId, imageId: t1.imageId },
       { name: t2.teamName || '?', shortName: t2.teamSName || '?', runs: t2s.runs, wickets: t2s.wickets, overs: t2s.overs, teamId: t2.teamId, imageId: t2.imageId },

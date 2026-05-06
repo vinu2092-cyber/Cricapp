@@ -129,36 +129,54 @@ export async function cancelAllMatchAlerts() {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
-// Schedule a notification for match start (10 minutes before)
+// Schedule a notification for match start (30 minutes before)
+// v1.0.16 Rev 5 (2026-05-06 user directive):
+//   "Jab bhi app mein new match live section ki list mein aata h jo
+//    usually 30 mins before start match aata h, tab user ko us match
+//    ki details venue aur timing ka message jaana chahiye."
+// Local OS-scheduled notifications fire reliably even when the app is
+// killed, as long as we register them while the app is alive. We also
+// include venue + start time in the body so the alert is self-contained.
 export async function scheduleMatchReminder(
   matchId: string,
   team1: string,
   team2: string,
   matchStartTime: Date,
-  seriesName: string
+  seriesName: string,
+  venue?: string,
+  city?: string,
 ) {
-  const reminderTime = new Date(matchStartTime.getTime() - 10 * 60 * 1000); // 10 min before
+  const reminderTime = new Date(matchStartTime.getTime() - 30 * 60 * 1000); // 30 min before
   const now = new Date();
-  
+
   if (reminderTime <= now) {
     // Match already started or about to start, skip scheduling
     return;
   }
 
   const identifier = `match-reminder-${matchId}`;
-  
+
   // Cancel existing reminder for this match if any
   await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
 
   // Format match time for display
   const timeStr = matchStartTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
   const dateStr = matchStartTime.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  const venueLine = venue
+    ? `📍 ${venue}${city ? ', ' + city : ''}`
+    : (city ? `📍 ${city}` : '');
+  const bodyLines = [
+    `🏏 ${seriesName}`,
+    `🕒 ${timeStr}, ${dateStr}`,
+    venueLine,
+    'Tap to view match details',
+  ].filter(Boolean);
 
   await Notifications.scheduleNotificationAsync({
     identifier,
     content: {
-      title: `${team1} vs ${team2} - Starting Soon!`,
-      body: `${seriesName}\nMatch starts at ${timeStr}, ${dateStr}\nTap to view match details`,
+      title: `${team1} vs ${team2} — Starting in 30 min!`,
+      body: bodyLines.join('\n'),
       data: { matchId, type: 'match-reminder', screen: 'match-detail' },
       sound: 'default',
       vibrate: [0, 300, 200, 300, 200, 300],
@@ -177,6 +195,74 @@ export async function scheduleMatchReminder(
 // Cancel match reminder
 export async function cancelMatchReminder(matchId: string) {
   await Notifications.cancelScheduledNotificationAsync(`match-reminder-${matchId}`).catch(() => {});
+}
+
+/**
+ * v1.0.16 Rev 5 — Bulk pre-scheduler.
+ *
+ * User pain point: notifications "don't fire when app is closed". Root
+ * cause: legacy auto-track ran only inside the app's React polling
+ * loop, so any match that became upcoming AFTER the user backgrounded
+ * the app never got a reminder scheduled. Local OS-scheduled
+ * notifications (the kind we use here) fire reliably even when the app
+ * is killed — provided the schedule was registered while the app was
+ * alive at least once.
+ *
+ * This helper is therefore called every time the app loads / refreshes
+ * the upcoming-match feed: it walks the list and schedules a
+ * "Starting in 30 min" reminder for every match whose start is between
+ * 30 minutes and 7 days from now. We use a stable identifier per
+ * matchId so re-invoking this function never produces duplicate
+ * notifications — `cancelScheduledNotificationAsync` inside
+ * `scheduleMatchReminder` deletes any prior schedule before re-adding.
+ *
+ * Permission gate: OS-level. If the user denied notifications, every
+ * `scheduleNotificationAsync` resolves silently — safe to call always.
+ */
+export async function preScheduleAllUpcomingReminders(
+  matches: Array<{
+    matchId: string;
+    teams?: Array<{ shortName?: string; name?: string }>;
+    seriesName?: string;
+    venue?: string;
+    city?: string;
+    startTimestamp?: number;
+    startDate?: string;
+  }>,
+): Promise<{ scheduled: number; skipped: number }> {
+  let scheduled = 0;
+  let skipped = 0;
+  const now = Date.now();
+  // Cap at 7 days out — Android's AlarmManager handles long-future
+  // alarms but there's no point queuing thousands of reminders.
+  const horizon = now + 7 * 24 * 60 * 60 * 1000;
+
+  for (const m of matches) {
+    try {
+      const tsRaw = m.startTimestamp ?? (m.startDate ? Number(m.startDate) : undefined);
+      if (!tsRaw || Number.isNaN(tsRaw)) { skipped++; continue; }
+      if (tsRaw <= now || tsRaw > horizon) { skipped++; continue; }
+
+      const team1 = m.teams?.[0]?.shortName || m.teams?.[0]?.name || 'TBA';
+      const team2 = m.teams?.[1]?.shortName || m.teams?.[1]?.name || 'TBA';
+      const seriesName = m.seriesName || 'Cricket Match';
+
+      await scheduleMatchReminder(
+        m.matchId,
+        team1,
+        team2,
+        new Date(tsRaw),
+        seriesName,
+        m.venue,
+        m.city,
+      );
+      scheduled++;
+    } catch {
+      skipped++;
+    }
+  }
+
+  return { scheduled, skipped };
 }
 
 /**

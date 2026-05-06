@@ -284,21 +284,19 @@ export default function MatchDetail() {
       bowlerOverBalls = balls.reverse().join(' ');
     }
 
-    // v1.0.16 Rev 4 — voice prefs from CommentarySection picker.
-    // Default mode is 'english'; user can switch via the picker pill.
-    // We pass commentaryHindi explicitly so the native side can speak
-    // Hindi only when a real Devanagari string is available.
+    // v1.0.16 Rev 5 — voice prefs from CommentarySection picker.
+    // Default mode is 'english_excited'; user can switch via the picker
+    // pill. Both modes now use the "excited" rate/pitch profile — the
+    // only difference is the speech locale. We pass commentaryHindi
+    // explicitly so the native side can speak Hindi only when a real
+    // Devanagari string is available.
     const mode = getVoiceMode();
     const muted = isVoiceMuted();
     let voiceLanguage: 'en-IN' | 'hi-IN' = 'en-IN';
-    let voiceRate = 0.95;
-    let voicePitch = 1.0;
-    if (mode === 'hindi') {
+    const voiceRate = 1.15;
+    const voicePitch = 1.05;
+    if (mode === 'hindi_excited') {
       voiceLanguage = 'hi-IN';
-    } else if (mode === 'excited') {
-      voiceLanguage = 'en-IN';
-      voiceRate = 1.15;
-      voicePitch = 1.05;
     }
     const latestHindi = m.commentary?.[0]?.hindi || '';
 

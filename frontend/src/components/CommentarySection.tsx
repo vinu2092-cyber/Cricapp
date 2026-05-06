@@ -199,33 +199,25 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   const { trackClick } = useAdMob();
 
   // ===========================================================
-  // v1.0.16 — AUTO VOICE COMMENTARY (Rev 4: language picker)
+  // v1.0.16 — AUTO VOICE COMMENTARY (Rev 5: excited only, 2 langs)
   // -----------------------------------------------------------
-  // Per user directive (2026-05-06):
-  //   "Default mein last updated ball automatically voice aaye.
-  //    Jisko user manually on/off rakh sake. English / Hindi /
-  //    Excited mode dropdown rakho. Hindi available na ho match
-  //    mein to dropdown disable kar do. Hindi voice 100% accurate
-  //    honi chahiye otherwise feature drop."
+  // Per user directive (2026-05-06 revision):
+  //   "Abhi 3 options hain Hindi/English/Excited, tum Hindi excited /
+  //    English excited kar do. Mtlb jo excited wala features h isko
+  //    dono language mein rakh do."
   //
-  // Strategy chosen (Option A, confirmed by user):
-  //   • Hindi text comes ONLY from Cricbuzz's editorial
-  //     `commhindi` field — extracted by api.ts/extractHindiText()
-  //     which guards with a Devanagari unicode check so an English
-  //     fallback can NEVER leak into Hindi voice.
-  //   • If ANY ball in the current commentary feed has a populated
-  //     `hindi` field → Hindi mode is offered; else dropdown is
-  //     disabled and we silently render English.
-  //   • Voice languages mapped to expo-speech locales:
-  //       'english'  → en-IN, rate 0.95, pitch 1.0
-  //       'hindi'    → hi-IN, rate 0.95, pitch 1.0
-  //       'excited'  → en-IN, rate 1.15, pitch 1.05  (faster, livelier)
-  //   • Default: voice ON, mode = 'english'.
+  // So the picker now offers exactly TWO modes — both livelier
+  // "excited" profile, differing only in speech locale:
+  //       'english_excited' → en-IN, rate 1.15, pitch 1.05
+  //       'hindi_excited'   → hi-IN, rate 1.15, pitch 1.05
+  //   • Hindi Excited is disabled when no Devanagari text is present
+  //     in the current commentary feed (user saw silent mode = bug).
+  //   • Default: voice ON, mode = 'english_excited'.
   //   • Mute pill toggles voice without disturbing the language pick.
   // ===========================================================
-  type VoiceMode = 'english' | 'hindi' | 'excited';
+  type VoiceMode = 'english_excited' | 'hindi_excited';
   const [autoSpeakMuted, setAutoSpeakMuted] = useState(false);
-  const [voiceMode, setVoiceMode] = useState<VoiceMode>('english');
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('english_excited');
   const [pickerOpen, setPickerOpen] = useState(false);
   const lastSpokenIdRef = useRef<string | null>(null);
 
@@ -233,18 +225,19 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   // row has Devanagari Hindi text. Used to disable the Hindi pick.
   const hindiAvailable = (commentary || []).some(c => !!c.hindi);
 
-  // Auto-revert away from Hindi if the user switches to a match with
-  // no Hindi commentary so they don't sit on a stale (silent) mode.
+  // Auto-revert away from Hindi Excited if the user switches to a
+  // match with no Hindi commentary so they don't sit on a stale
+  // (silent) mode.
   useEffect(() => {
-    if (voiceMode === 'hindi' && !hindiAvailable) {
-      setVoiceMode('english');
+    if (voiceMode === 'hindi_excited' && !hindiAvailable) {
+      setVoiceMode('english_excited');
     }
   }, [hindiAvailable, voiceMode]);
 
   // Sync displayed-text language toggle with voice mode so text
   // and voice always match (no English text + Hindi voice combo).
   useEffect(() => {
-    if (voiceMode === 'hindi' && hindiAvailable) {
+    if (voiceMode === 'hindi_excited' && hindiAvailable) {
       setLanguage('hindi');
     } else {
       setLanguage('english');
@@ -279,13 +272,16 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
     let rate = 0.95;
     let pitch = 1.0;
     let overPrefix = '';
-    if (voiceMode === 'hindi') {
+    if (voiceMode === 'hindi_excited') {
       // Strict Hindi: ONLY speak when this ball has Devanagari Hindi.
       // No fallback to English voice — that was the v1.0.15 bug
       // (Hindi voice reading English = gibberish). Silence > garbage.
       if (latest.hindi) {
         textToSpeak = latest.hindi;
         speechLang = 'hi-IN';
+        // Excited profile for Hindi too.
+        rate = 1.15;
+        pitch = 1.05;
         overPrefix = latest.over ? `ओवर ${latest.over}. ` : '';
       } else {
         return;
@@ -294,10 +290,9 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       textToSpeak = latest.english;
       speechLang = 'en-IN';
       overPrefix = latest.over ? `Over ${latest.over}. ` : '';
-      if (voiceMode === 'excited') {
-        rate = 1.15;
-        pitch = 1.05;
-      }
+      // All English modes are now "excited" (faster + livelier).
+      rate = 1.15;
+      pitch = 1.05;
     }
     if (!textToSpeak) return;
 
@@ -744,13 +739,13 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             <Ionicons name="chatbubbles" size={20} color="#4CAF50" />
             <Text style={styles.title}>Ball by Ball Commentary</Text>
           </View>
-          {/* v1.0.16 Rev 4 — Auto-speak controls.
+          {/* v1.0.16 Rev 5 — Auto-speak controls.
               Two pills:
-                • Voice mode picker (English / Hindi / Excited)
-                  – Hindi disabled when no Devanagari text is present
-                    in the current commentary feed.
+                • Voice mode picker (Hindi Excited / English Excited)
+                  – Hindi Excited disabled when no Devanagari text
+                    is present in the current commentary feed.
                 • Mute toggle (Voice on/off) — does not change picked mode.
-              Defaults: mode='english', voice ON. */}
+              Defaults: mode='english_excited', voice ON. */}
           <View style={styles.voiceCtrlRow}>
             <TouchableOpacity
               style={[styles.voiceModePill]}
@@ -759,12 +754,12 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
               accessibilityLabel="Pick voice commentary language"
             >
               <Ionicons
-                name={voiceMode === 'hindi' ? 'language' : voiceMode === 'excited' ? 'flame' : 'globe-outline'}
+                name={voiceMode === 'hindi_excited' ? 'language' : 'flame'}
                 size={14}
                 color="#1B5E20"
               />
               <Text style={styles.voiceModePillTxt}>
-                {voiceMode === 'hindi' ? 'हिंदी' : voiceMode === 'excited' ? 'Excited' : 'English'}
+                {voiceMode === 'hindi_excited' ? 'हिंदी Excited' : 'English Excited'}
               </Text>
               <Ionicons name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={12} color="#1B5E20" />
             </TouchableOpacity>
@@ -800,11 +795,10 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
       {pickerOpen && matchStatus !== 'upcoming' && (
         <View style={styles.voiceModeMenu} data-testid="voice-mode-menu">
           {[
-            { id: 'english' as VoiceMode, label: 'English', sub: 'Standard voice' },
-            { id: 'hindi' as VoiceMode, label: 'हिंदी (Hindi)', sub: hindiAvailable ? 'Editorial Hindi commentary' : 'Not available for this match' },
-            { id: 'excited' as VoiceMode, label: 'Excited', sub: 'English, faster + livelier' },
+            { id: 'english_excited' as VoiceMode, label: 'English Excited', sub: 'Livelier English commentary' },
+            { id: 'hindi_excited' as VoiceMode, label: 'हिंदी Excited (Hindi)', sub: hindiAvailable ? 'Livelier Hindi commentary' : 'Not available for this match' },
           ].map(opt => {
-            const disabled = opt.id === 'hindi' && !hindiAvailable;
+            const disabled = opt.id === 'hindi_excited' && !hindiAvailable;
             const isActive = voiceMode === opt.id;
             return (
               <TouchableOpacity

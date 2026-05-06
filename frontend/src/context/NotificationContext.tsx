@@ -283,6 +283,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
               const team1Short = matchInfo.team1?.teamSName || 'TBA';
               const team2Short = matchInfo.team2?.teamSName || 'TBA';
               const startTime = matchInfo.startDate ? new Date(parseInt(matchInfo.startDate)).toISOString() : undefined;
+              const venueName = matchInfo.venueInfo?.ground;
+              const venueCity = matchInfo.venueInfo?.city;
               
               // Check if already tracking
               const alreadyTracking = trackedMatches.some(m => m.matchId === matchId);
@@ -298,10 +300,20 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 autoTracked: true,
               });
               
-              // Schedule reminder for upcoming matches (10 min before)
+              // v1.0.16 Rev 5 — Schedule reminder 30 min before with
+              // venue + timing baked into the body (per user directive
+              // 2026-05-06).
               if (!isLive && startTime && !scheduledReminders.includes(matchId)) {
                 const matchStartDate = new Date(startTime);
-                await scheduleMatchReminder(matchId, team1Short, team2Short, matchStartDate, seriesName);
+                await scheduleMatchReminder(
+                  matchId,
+                  team1Short,
+                  team2Short,
+                  matchStartDate,
+                  seriesName,
+                  venueName,
+                  venueCity,
+                );
                 setScheduledReminders(prev => [...prev, matchId]);
               }
             }

@@ -51,6 +51,8 @@ export interface Match {
   city?: string;
   startTime?: string;
   startDate?: string;
+  // v1.0.16 Rev 5 — numeric epoch ms for time-sorted match list.
+  startTimestamp?: number;
   result?: string;
   teams: Team[];
   commentary?: Commentary[];

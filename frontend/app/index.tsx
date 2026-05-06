@@ -31,11 +31,22 @@ import {
   fetchRecentMatches,
   fetchUpcomingMatches,
 } from '../src/services/api';
+import { preScheduleAllUpcomingReminders } from '../src/services/NotificationService';
 
 type TabType = 'live' | 'recent' | 'upcoming';
 
 // ---- LEAGUE CATEGORIES (horizontal scroll tabs) ----
+// v1.0.16 Rev 5 (2026-05-06) — multi-select filter.
+//   • "All" tab → single-press toggle: pressing when inactive selects
+//     ALL categories (shows every match); pressing when active deselects
+//     everything (shows none).
+//   • Every other tab → additive multi-select. Tapping a specific tab
+//     clears the "All" state and toggles that tab in/out of the active
+//     set. List shows the UNION of matches across all selected tabs,
+//     sorted by start time ascending (earliest first) so users see the
+//     next match first.
 const LEAGUE_TABS = [
+  { key: 'all', label: 'All' },
   { key: 'international', label: 'International' },
   { key: 'ipl', label: 'IPL' },
   { key: 'bbl', label: 'BBL' },
@@ -53,6 +64,8 @@ const LEAGUE_TABS = [
 ] as const;
 
 type LeagueCategoryKey = typeof LEAGUE_TABS[number]['key'];
+// Categories that ACTUALLY map to matches (exclude 'all' which is a UI-only toggle).
+type RealCategoryKey = Exclude<LeagueCategoryKey, 'all'>;
 
 const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
 const CACHE_FLUSH_INTERVAL = 1800000; // 30 minutes
@@ -63,7 +76,14 @@ export default function Index() {
   const { isPro, adsWatched, setProFromAdMob, canShareUnlockToday, markSharedUnlockToday } = usePro();
   
   const [activeTab, setActiveTab] = useState<TabType>('live');
-  const [selectedLeague, setSelectedLeague] = useState<LeagueCategoryKey>('international');
+  // v1.0.16 Rev 5 — multi-select league filter.
+  // Default: only 'all' in the set → every match visible.
+  // Invariants enforced by togglers below:
+  //   • If 'all' is in the set, no other key is.
+  //   • If any specific key is in the set, 'all' is NOT.
+  const [selectedLeagues, setSelectedLeagues] = useState<Set<LeagueCategoryKey>>(
+    new Set<LeagueCategoryKey>(['all']),
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [searchActive, setSearchActive] = useState(false);
   const [filteredMatches, setFilteredMatches] = useState<Match[]>([]);
@@ -126,6 +146,16 @@ export default function Index() {
       // Save to in-memory cache
       if (matchesWithCategory.length > 0) {
         tabCacheRef.current[tab] = matchesWithCategory;
+      }
+
+      // v1.0.16 Rev 5 — Pre-schedule LOCAL OS notifications for every
+      // upcoming match (any series) so the user gets a 30-min-before
+      // alert with venue + timing — and crucially this fires even when
+      // the app is killed because Android's AlarmManager owns the
+      // schedule once it's registered. Done as fire-and-forget so it
+      // never blocks the UI render path.
+      if (tab === 'upcoming' && matchesWithCategory.length > 0) {
+        preScheduleAllUpcomingReminders(matchesWithCategory).catch(() => {});
       }
       return matchesWithCategory;
     } catch (err) {
@@ -200,15 +230,7 @@ export default function Index() {
     cacheFlushRef.current = setInterval(() => {
       flushAllCache();
       fetchMatches(activeTab, true).then(data => {
-        applyLeagueFilter(data, selectedLeague, searchQuery);
-      }).catch(console.error);
-    }, CACHE_FLUSH_INTERVAL);
-
-    if (activeTab === 'live') {
-      autoRefreshRef.current = setInterval(() => {
-        tabCacheRef.current['live'] = [];
-        fetchMatches('live', true).then(data => {
-          if (activeTab === 'live') applyLeagueFilter(data, selectedLeague, searchQuery);
+        applyLeagueFilter(data, selectedLeagues, searchQuery);
         }).catch(console.error);
       }, AUTO_REFRESH_INTERVAL);
     }
@@ -224,7 +246,7 @@ export default function Index() {
         cacheFlushRef.current = null;
       }
     };
-  }, [activeTab, selectedLeague, searchQuery]);
+  }, [activeTab, selectedLeagues, searchQuery]);
 
   // App state listener for background/foreground
   useEffect(() => {
@@ -233,7 +255,7 @@ export default function Index() {
         // App came to foreground - refresh data
         console.log('[Memory] App foregrounded - refreshing');
         fetchMatches(activeTab, true).then(data => {
-          applyLeagueFilter(data, selectedLeague, searchQuery);
+          applyLeagueFilter(data, selectedLeagues, searchQuery);
         }).catch(console.error);
       }
       appStateRef.current = nextAppState;
@@ -242,7 +264,7 @@ export default function Index() {
     return () => {
       subscription.remove();
     };
-  }, [activeTab, selectedLeague, searchQuery]);
+  }, [activeTab, selectedLeagues, searchQuery]);
 
   // Search aliases for common short forms
   const SEARCH_ALIASES: Record<string, string[]> = {
@@ -268,8 +290,58 @@ export default function Index() {
     'afg': ['afghanistan'],
   };
 
+  // v1.0.16 Rev 5 — Compare two matches by start time ascending.
+  // We prefer `startTimestamp` (numeric epoch when available) and fall
+  // back to parsing `startTime` / `startDate`. Matches with no parsable
+  // time sink to the bottom.
+  const getMatchEpoch = (m: Match): number => {
+    const anyMatch = m as any;
+    if (typeof anyMatch.startTimestamp === 'number' && anyMatch.startTimestamp > 0) {
+      return anyMatch.startTimestamp;
+    }
+    const raw = anyMatch.startDate || anyMatch.startTime;
+    if (raw) {
+      const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+      if (!Number.isNaN(n) && n > 1000000000) return n;
+      const t = new Date(String(raw)).getTime();
+      if (!Number.isNaN(t)) return t;
+    }
+    return Number.POSITIVE_INFINITY;
+  };
+  const sortByStartAsc = (arr: Match[]): Match[] =>
+    [...arr].sort((a, b) => getMatchEpoch(a) - getMatchEpoch(b));
+
+  // v1.0.16 Rev 5 — Toggle the "All" tab.
+  //   • If 'all' is active  → pressing it clears the entire selection
+  //     (no matches visible). User can tap any specific tab to opt back
+  //     in, or tap "All" again to restore.
+  //   • If 'all' is NOT active → pressing it replaces the selection
+  //     with just ['all'] (every match visible).
+  const toggleAllLeague = () => {
+    setSelectedLeagues(prev => {
+      if (prev.has('all')) return new Set<LeagueCategoryKey>();
+      return new Set<LeagueCategoryKey>(['all']);
+    });
+  };
+
+  // v1.0.16 Rev 5 — Toggle a specific category tab.
+  //   • Pressing a non-All tab ALWAYS clears the 'all' key (switching
+  //     from "show everything" to specific picks).
+  //   • If the key was already selected → remove it (deselect). If it
+  //     was not → add it. Users can freely combine categories to see
+  //     their unioned, time-sorted list.
+  const toggleLeague = (key: RealCategoryKey) => {
+    setSelectedLeagues(prev => {
+      const next = new Set(prev);
+      next.delete('all');
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   // Apply league tab filter + search
-  const applyLeagueFilter = (matches: Match[], league: LeagueCategoryKey, query: string) => {
+  const applyLeagueFilter = (matches: Match[], leagues: Set<LeagueCategoryKey>, query: string) => {
     let result = matches;
 
     // Apply search filter if active (takes priority - search ALL matches, ignore league filter)
@@ -290,20 +362,25 @@ export default function Index() {
         // Match if ANY expanded query matches
         return expandedQueries.some(eq => searchFields.includes(eq));
       });
+    } else if (leagues.has('all')) {
+      // "All" active → every match passes.
+      result = matches;
+    } else if (leagues.size === 0) {
+      // Nothing selected → empty list (user explicitly deselected All).
+      result = [];
     } else {
-      // Filter by league category only when NOT searching
-      result = result.filter(m => {
-        // ALWAYS compute category from seriesName — never trust stored/API category here,
-        // because API hands out coarse "League" labels which won't match 'ipl'/'bbl'/'psl'/etc.
+      // Multi-select: show matches whose computed category is in the set.
+      result = matches.filter(m => {
         const cat = categorizeMatch(
           m.matchFormat || m.matchType || '',
-          m.seriesName || m.series || ''
-        ).toLowerCase();
-        return cat === league;
+          m.seriesName || m.series || '',
+        ).toLowerCase() as LeagueCategoryKey;
+        return leagues.has(cat);
       });
     }
 
-    setFilteredMatches(result);
+    // Always time-sort the visible list: earliest first.
+    setFilteredMatches(sortByStartAsc(result));
   };
 
   // Initial load and tab changes - show cached data instantly, refresh in background
@@ -312,9 +389,9 @@ export default function Index() {
       // If we have cached data for this tab, show it immediately (no loading spinner)
       const cached = tabCacheRef.current[activeTab];
       if (cached.length > 0) {
-        applyLeagueFilter(cached, selectedLeague, searchQuery);
+        applyLeagueFilter(cached, selectedLeagues, searchQuery);
         fetchMatches(activeTab).then(data => {
-          if (data.length > 0) applyLeagueFilter(data, selectedLeague, searchQuery);
+          if (data.length > 0) applyLeagueFilter(data, selectedLeagues, searchQuery);
         }).catch(console.error);
         return;
       }
@@ -323,7 +400,7 @@ export default function Index() {
         setLoading(true);
         setError(null);
         const data = await fetchMatches(activeTab);
-        applyLeagueFilter(data, selectedLeague, searchQuery);
+        applyLeagueFilter(data, selectedLeagues, searchQuery);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load matches');
       } finally {
@@ -338,15 +415,15 @@ export default function Index() {
   useEffect(() => {
     const cached = tabCacheRef.current[activeTab] || [];
     if (cached.length > 0) {
-      applyLeagueFilter(cached, selectedLeague, searchQuery);
+      applyLeagueFilter(cached, selectedLeagues, searchQuery);
     }
-  }, [selectedLeague, searchQuery]);
+  }, [selectedLeagues, searchQuery]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
       const data = await fetchMatches(activeTab, true);
-      applyLeagueFilter(data, selectedLeague, searchQuery);
+      applyLeagueFilter(data, selectedLeagues, searchQuery);
     } catch (err) {
       console.error('Refresh error:', err);
     } finally {
@@ -358,7 +435,7 @@ export default function Index() {
     setLoading(true);
     setError(null);
     fetchMatches(activeTab, true)
-      .then(data => applyLeagueFilter(data, selectedLeague, searchQuery))
+      .then(data => applyLeagueFilter(data, selectedLeagues, searchQuery))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
   };
@@ -431,20 +508,28 @@ export default function Index() {
           </TouchableOpacity>
         )}
 
-        {/* Horizontal Scrollable League Tabs */}
+        {/* Horizontal Scrollable League Tabs — v1.0.16 Rev 5 multi-select */}
         {!searchActive && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.leagueScroll} contentContainerStyle={styles.leagueScrollContent}>
-            {LEAGUE_TABS.map((tab) => (
-              <TouchableOpacity
-                key={tab.key}
-                style={[styles.leagueChip, selectedLeague === tab.key && styles.activeLeagueChip]}
-                onPress={() => setSelectedLeague(tab.key)}
-              >
-                <Text style={[styles.leagueText, selectedLeague === tab.key && styles.activeLeagueText]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {LEAGUE_TABS.map((tab) => {
+              const isActive = selectedLeagues.has(tab.key);
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[styles.leagueChip, isActive && styles.activeLeagueChip]}
+                  onPress={() => {
+                    if (tab.key === 'all') toggleAllLeague();
+                    else toggleLeague(tab.key as RealCategoryKey);
+                  }}
+                  data-testid={`league-chip-${tab.key}`}
+                  accessibilityLabel={`${tab.label} filter ${isActive ? 'active' : 'inactive'}`}
+                >
+                  <Text style={[styles.leagueText, isActive && styles.activeLeagueText]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         )}
       </View>
