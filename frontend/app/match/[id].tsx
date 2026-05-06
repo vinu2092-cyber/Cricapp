@@ -243,9 +243,13 @@ export default function MatchDetail() {
     const batsmanLabel = striker
       ? `${striker.name} ${striker.runs}(${striker.balls})`
       : '';
-    const bowlerLabel = m.bowler && m.bowler.name
-      ? `${m.bowler.name} ${m.bowler.overs}-${m.bowler.maidens}-${m.bowler.runs}-${m.bowler.wickets}`
-      : '';
+    // v1.0.16 Rev 7 — bowler label is JUST the name. Bowler stats
+    // ("O-M-R-W" e.g. "5.1-0-27-0") are intentionally OMITTED because
+    // the user (2026-05-06 directive) interprets the embedded "5.1"
+    // (= 5 overs + 1 ball) as a "ball number" — confusing. The
+    // ball-by-ball strip below the player row already shows runs/W/Wd/
+    // Nb per delivery, which is the only over-progress info needed.
+    const bowlerLabel = m.bowler && m.bowler.name ? m.bowler.name : '';
 
     // Current-over balls only. The bowler's `overs` field is in
     // Cricbuzz "X.Y" form (e.g. "3.4" = 3 overs + 4 balls into the

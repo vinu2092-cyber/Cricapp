@@ -49,6 +49,15 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
     private View floatingView;
     private boolean isMinimized = false;
 
+    // v1.0.16 Rev 7 — DIRECT references to the team rows. We learnt
+    // (build #125, user screenshot 2026-05-06 showing both rows still
+    // visible) that `findViewWithTag` based hiding wasn't taking
+    // effect reliably in production. Holding direct LinearLayout
+    // references and toggling visibility on them is bullet-proof.
+    private LinearLayout team1RowView;
+    private LinearLayout team2RowView;
+    private TextView overBallsView;
+
     private TextToSpeech tts;
     private boolean isTTSReady = false;
     private boolean isMuted = false;
@@ -470,10 +479,14 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         headerLayout.addView(closeBtn);
         mainLayout.addView(headerLayout);
 
-        // v1.0.16 — both team rows are added but only the batting team's
-        // row is shown (View.GONE on the other) inside updateFloatingWidget.
-        mainLayout.addView(createTeamRow(context, "team1"));
-        mainLayout.addView(createTeamRow(context, "team2"));
+        // v1.0.16 Rev 7 — direct references guarantee row hide works.
+        // Assigning into the service fields after creation lets
+        // updateFloatingWidget() / toggleMinimize() bypass the
+        // findViewWithTag traversal entirely.
+        team1RowView = createTeamRow(context, "team1");
+        team2RowView = createTeamRow(context, "team2");
+        mainLayout.addView(team1RowView);
+        mainLayout.addView(team2RowView);
 
         // ============= Status =============
         TextView statusView = new TextView(context);
@@ -513,14 +526,17 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         playerLayout.addView(bowlerView);
         mainLayout.addView(playerLayout);
 
-        // v1.0.16 — current-over balls strip ("This over: 1 4 . . W").
-        // Shows ONLY the current over's balls, no previous-over data.
-        TextView overBallsView = new TextView(context);
+        // v1.0.16 Rev 7 — current-over balls strip ("This over: 1 4 . . W").
+        // Now uses an instance field so updateFloatingWidget can update
+        // it without re-traversing the view tree, and so we can ALWAYS
+        // make it visible (even if empty we'll write a placeholder).
+        overBallsView = new TextView(context);
         overBallsView.setTag("bowlerOverBalls");
         overBallsView.setTextColor(0xFFFFFFFF);
-        overBallsView.setTextSize(8);
+        overBallsView.setTextSize(11);
+        overBallsView.setTypeface(null, android.graphics.Typeface.BOLD);
         overBallsView.setGravity(Gravity.CENTER);
-        overBallsView.setPadding(0, 4, 0, 0);
+        overBallsView.setPadding(0, 6, 0, 0);
         overBallsView.setShadowLayer(2f, 1f, 1f, 0x99000000);
         mainLayout.addView(overBallsView);
 
@@ -599,14 +615,18 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         TextView status = floatingView.findViewWithTag("statusText");
         TextView batsman = floatingView.findViewWithTag("batsmanName");
         TextView bowler = floatingView.findViewWithTag("bowlerName");
-        TextView overBalls = floatingView.findViewWithTag("bowlerOverBalls");
 
-        // v1.0.16 — show only the batting team's row.
-        View t1Row = floatingView.findViewWithTag("team1Row");
-        View t2Row = floatingView.findViewWithTag("team2Row");
+        // v1.0.16 Rev 7 — show ONLY the batting team's row.
+        // We use the direct LinearLayout references (not findViewWithTag)
+        // and apply visibility = GONE which removes the row from layout
+        // entirely, so the user only sees one row.
         boolean isTeam2Batting = "team2".equals(battingTeam);
-        if (t1Row != null) t1Row.setVisibility(isTeam2Batting ? View.GONE : View.VISIBLE);
-        if (t2Row != null) t2Row.setVisibility(isTeam2Batting ? View.VISIBLE : View.GONE);
+        if (team1RowView != null) {
+            team1RowView.setVisibility(isTeam2Batting ? View.GONE : View.VISIBLE);
+        }
+        if (team2RowView != null) {
+            team2RowView.setVisibility(isTeam2Batting ? View.VISIBLE : View.GONE);
+        }
 
         if (t1Name != null) t1Name.setText(team1Name);
         if (t2Name != null) t2Name.setText(team2Name);
@@ -616,13 +636,19 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         if (t2Overs != null) t2Overs.setText(team2Overs.isEmpty() ? "" : "(" + team2Overs + ")");
         if (status != null) status.setText(statusText);
         if (batsman != null) batsman.setText(batsmanName.isEmpty() ? "" : "\uD83C\uDFCF " + batsmanName);
-        if (bowler != null) bowler.setText(bowlerName.isEmpty() ? "" : "⚾ " + bowlerName);
-        if (overBalls != null) {
+        // v1.0.16 Rev 7 — bowler row now shows only the bowler NAME.
+        // Per-ball runs/W/Wd/Nb live in `overBallsView` directly below
+        // (user explicitly asked: "Bowler k naam ek aage sirf overs ki
+        // balls par aaya result dikhna chahiye, balls ka number nahi").
+        // The bowlerName string is composed in match/[id].tsx and now
+        // contains only the name (no O-M-R-W stats).
+        if (bowler != null) bowler.setText(bowlerName.isEmpty() ? "" : "\u26BE " + bowlerName);
+        if (overBallsView != null) {
             if (bowlerOverBalls != null && !bowlerOverBalls.isEmpty()) {
-                overBalls.setText("This over: " + bowlerOverBalls);
-                overBalls.setVisibility(View.VISIBLE);
+                overBallsView.setText(bowlerOverBalls);
+                overBallsView.setVisibility(View.VISIBLE);
             } else {
-                overBalls.setVisibility(View.GONE);
+                overBallsView.setVisibility(View.GONE);
             }
         }
 
@@ -648,16 +674,17 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
             for (int i = 0; i < mainLayout.getChildCount(); i++) {
                 mainLayout.getChildAt(i).setVisibility(View.VISIBLE);
             }
-            // Re-apply batting-team-only visibility after expand.
-            View t1Row = floatingView.findViewWithTag("team1Row");
-            View t2Row = floatingView.findViewWithTag("team2Row");
+            // v1.0.16 Rev 7 — Re-apply batting-team-only via direct refs.
             boolean isTeam2Batting = "team2".equals(battingTeam);
-            if (t1Row != null) t1Row.setVisibility(isTeam2Batting ? View.GONE : View.VISIBLE);
-            if (t2Row != null) t2Row.setVisibility(isTeam2Batting ? View.VISIBLE : View.GONE);
+            if (team1RowView != null) {
+                team1RowView.setVisibility(isTeam2Batting ? View.GONE : View.VISIBLE);
+            }
+            if (team2RowView != null) {
+                team2RowView.setVisibility(isTeam2Batting ? View.VISIBLE : View.GONE);
+            }
             // Hide over-balls strip if no data.
-            TextView overBalls = floatingView.findViewWithTag("bowlerOverBalls");
-            if (overBalls != null && (bowlerOverBalls == null || bowlerOverBalls.isEmpty())) {
-                overBalls.setVisibility(View.GONE);
+            if (overBallsView != null && (bowlerOverBalls == null || bowlerOverBalls.isEmpty())) {
+                overBallsView.setVisibility(View.GONE);
             }
         }
 
@@ -677,5 +704,11 @@ public class FloatingWidgetService extends Service implements TextToSpeech.OnIni
         if (floatingView != null && windowManager != null) {
             windowManager.removeView(floatingView);
         }
+
+        // v1.0.16 Rev 7 — release direct view refs so the next service
+        // start gets a fresh layout (avoids leaking detached views).
+        team1RowView = null;
+        team2RowView = null;
+        overBallsView = null;
     }
 }
