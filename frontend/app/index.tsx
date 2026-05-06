@@ -231,6 +231,14 @@ export default function Index() {
       flushAllCache();
       fetchMatches(activeTab, true).then(data => {
         applyLeagueFilter(data, selectedLeagues, searchQuery);
+      }).catch(console.error);
+    }, CACHE_FLUSH_INTERVAL);
+
+    if (activeTab === 'live') {
+      autoRefreshRef.current = setInterval(() => {
+        tabCacheRef.current['live'] = [];
+        fetchMatches('live', true).then(data => {
+          if (activeTab === 'live') applyLeagueFilter(data, selectedLeagues, searchQuery);
         }).catch(console.error);
       }, AUTO_REFRESH_INTERVAL);
     }
