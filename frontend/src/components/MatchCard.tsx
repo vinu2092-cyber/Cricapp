@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Match } from '../types/match';
 import { MatchStatusBadge } from './LiveIndicator';
-import { useNotifications } from '../context/NotificationContext';
 
 interface MatchCardProps {
   match: Match;
@@ -11,20 +10,14 @@ interface MatchCardProps {
 }
 
 const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
-  const { isTracking, toggleTracking, notificationsEnabled, enableNotifications } = useNotifications();
-  const tracked = isTracking(match.matchId);
+  // v1.0.16 Rev 6 (2026-05-06) — Removed per-card notification bell
+  // icon (was useless to users; reminder scheduling is now handled
+  // automatically inside `preScheduleAllUpcomingReminders` for every
+  // upcoming match). Also removed the absolute-positioned chevron
+  // arrow that overlapped with the score column.
 
-  const handleBellPress = async () => {
-    if (!notificationsEnabled) {
-      const granted = await enableNotifications();
-      if (!granted) return;
-    }
-    toggleTracking(match.matchId, match.teams[0]?.shortName || 'TM1', match.teams[1]?.shortName || 'TM2');
-  };
-  
   // Dynamic status badge based on actual match state
   const getStatusBadge = () => {
-    // Use statusText from API to determine actual state
     const isLive = match.status === 'live';
     return <MatchStatusBadge state={match.statusText} isLive={isLive} />;
   };
@@ -50,21 +43,6 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
           {formatSeries(match.series || match.seriesName)}
         </Text>
         <View style={styles.headerRight}>
-          {/* Bell icon next to LIVE badge for live matches */}
-          {match.status === 'live' && (
-            <TouchableOpacity
-              style={[styles.bellBtnHeader, tracked && styles.bellBtnHeaderActive]}
-              onPress={handleBellPress}
-              data-testid={`alert-toggle-${match.matchId}`}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons
-                name={tracked ? 'notifications' : 'notifications-outline'}
-                size={16}
-                color={tracked ? '#4CAF50' : '#888'}
-              />
-            </TouchableOpacity>
-          )}
           {getStatusBadge()}
         </View>
       </View>
@@ -132,10 +110,6 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onPress }) => {
           {match.statusText}
         </Text>
       )}
-
-      <View style={styles.cardFooter}>
-        <Ionicons name="chevron-forward" size={20} color="#666" />
-      </View>
     </TouchableOpacity>
   );
 };
@@ -169,14 +143,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  bellBtnHeader: {
-    padding: 6,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  bellBtnHeaderActive: {
-    backgroundColor: 'rgba(76, 175, 80, 0.15)',
-  },
   matchTitle: {
     fontSize: 12,
     fontWeight: '600',
@@ -184,46 +150,8 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  liveBadge: {
-    backgroundColor: '#FF4444',
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#FFFFFF',
-    marginRight: 4,
-  },
-  liveText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 10,
-  },
-  resultBadge: {
-    backgroundColor: '#4CAF50',
-  },
-  resultText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 10,
-  },
-  upcomingBadge: {
-    backgroundColor: '#2196F3',
-  },
-  upcomingText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 10,
-  },
   teamsContainer: {
-    marginBottom: 8,
+    marginVertical: 4,
   },
   teamRow: {
     flexDirection: 'row',
@@ -235,6 +163,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 1,
   },
   teamLogoImg: {
     width: 28,
@@ -250,6 +179,7 @@ const styles = StyleSheet.create({
   scoreContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingLeft: 8,
   },
   score: {
     fontSize: 16,
@@ -260,12 +190,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     fontWeight: 'normal',
-  },
-  result: {
-    fontSize: 13,
-    color: '#4CAF50',
-    fontWeight: '500',
-    marginTop: 4,
   },
   resultStatus: {
     fontSize: 13,
@@ -301,28 +225,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     flex: 1,
-  },
-  startTime: {
-    fontSize: 13,
-    color: '#2196F3',
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  cardFooter: {
-    position: 'absolute',
-    right: 8,
-    top: '50%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  bellBtn: {
-    padding: 4,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  bellBtnActive: {
-    backgroundColor: 'rgba(76, 175, 80, 0.15)',
   },
 });
 
