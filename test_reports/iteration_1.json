@@ -1,0 +1,58 @@
+{
+  "summary": "Completed comprehensive testing of Cricket App backend APIs and code structure verification. Backend fully functional with all cricket data endpoints working. Frontend is React Native Expo app - code structure verified but web testing limited due to mobile-first architecture.",
+  
+  "backend_issues": {
+    "critical_bugs": [],
+    "flaky_endpoints": []
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "component": "Web Frontend Access",
+        "issue": "React Native Expo app not accessible via web browser - designed for mobile devices",
+        "affected_selectors": ["N/A - Mobile app"],
+        "fix_priority": "INFO",
+        "note": "This is expected behavior for React Native apps"
+      }
+    ],
+    "design_issues": []
+  },
+
+  "passed_tests": [
+    "Backend root endpoint /api/ returns Hello World",
+    "Backend status endpoints working (GET/POST)",
+    "Backend live matches endpoint working (5 matches found)",
+    "Backend recent matches endpoint working (47 matches found)", 
+    "Backend upcoming matches endpoint working (9 matches found)",
+    "Backend commentary endpoint working with real match IDs",
+    "Backend API key rotation system implemented",
+    "getBackendUrl properly exported from api.ts",
+    "index.tsx extractMatches creates proper Match objects with matchId, teams[], status, category fields",
+    "Category filter uses match.category instead of match.matchFormat",
+    "Navigation uses matchId instead of id for routing",
+    "Header component onUnlockPro prop is optional",
+    "ErrorScreen supports both onGoBack and onRetry props",
+    "FloatingScoreboard has increased size (minWidth 230, proper font sizes)",
+    "app.json has SYSTEM_ALERT_WINDOW permission",
+    "Match type interface has proper matchId, teams, status fields",
+    "Backend URL configuration correct in api.ts",
+    "TypeMatches structure validation in API responses"
+  ],
+
+  "test_report_links": ["/app/backend_test.py"],
+  
+  "action_item_for_main_agent": "",
+  
+  "updated_files": ["/app/backend_test.py"],
+  
+  "success_percentage": {
+    "backend": "100%",
+    "frontend_code_structure": "100%",
+    "frontend_web_testing": "N/A - React Native mobile app"
+  },
+
+  "should_call_test_agent_after_fix": "false",
+  "should_main_agent_test_itself": "true"
+}

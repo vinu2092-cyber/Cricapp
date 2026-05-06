@@ -1,0 +1,639 @@
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
+import { AppState, AppStateStatus, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  setupNotificationChannel,
+  requestNotificationPermission,
+  sendMatchAlert,
+  cancelAllMatchAlerts,
+  scheduleMatchReminder,
+  sendTossNotification,
+  AlertType,
+} from '../services/NotificationService';
+
+// Firebase - safe lazy load (won't crash if firebase fails)
+let _getFirebaseKey: (() => { apiKey: string; apiHost: string } | null) | null = null;
+let _getAllProviders: (() => Array<{ name: string; host: string; keys: string[] }>) | null = null;
+try {
+  const fb = require('../services/FirebaseKeyService');
+  fb.initFirebaseKeyFetch();
+  _getFirebaseKey = fb.getFirebaseKey;
+  _getAllProviders = fb.getAllProviders;
+} catch (e) {
+  _getFirebaseKey = null;
+  _getAllProviders = null;
+}
+
+const TRACKED_MATCHES_KEY = 'cricapp_tracked_matches';
+const AUTO_TRACK_ENABLED_KEY = 'cricapp_auto_track_enabled';
+const SCHEDULED_REMINDERS_KEY = 'cricapp_scheduled_reminders';
+const POLL_INTERVAL_ACTIVE = 30000;
+const POLL_INTERVAL_BACKGROUND = 60000;
+const AUTO_TRACK_CHECK_INTERVAL = 300000;
+
+// ---- Provider 1: cricbuzz-cricket (Primary - Firebase-driven) ----
+const RAPIDAPI_HOST_1 = "cricbuzz-cricket.p.rapidapi.com";
+const RAPIDAPI_KEYS_P1 = [
+  "d5dc9c8512mshe9bec708eb2b011p14ac97jsn4a79d9ec6dc4",
+  "7a2524853emsh5f7b21ec1386710p17ba7djsn8c535a072237",
+  "90023f4cffmsh601a9c68cd49cc7p181c2ajsn5bc8b2d875fc",
+  "59b9249be3mshcab753fe794baa3p14e78cjsne1da55eef3aa",
+  "6a948b174dmsh4e7c9f6c75d3531p10b8e4jsna91b6b6ba925",
+  "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
+  "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",
+  "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
+  "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
+];
+
+// ---- Provider 2: cricbuzz-cricket2 (Secondary fallback) ----
+const RAPIDAPI_HOST_2 = "cricbuzz-cricket2.p.rapidapi.com";
+const RAPIDAPI_KEYS_P2 = [
+  "49895f57cbmshcecd98ee667ebbep185640jsn45fede2e9915",
+  "60879faad9msh89b61d15d1973d2p179cc2jsn14d1545f0248",
+  "3b5c50ff5fmsh88c6a221cb3a9a7p165328jsn4cba85fb1e16",
+  "948dd6c539mshaa5cfb3e03965b1p1f1a63jsnbc538a0ddabf",
+  "efa0ba9303mshae4ea9f45a69057p1fde83jsn4ec1c45ca5e5",
+];
+
+let notifKeyIndex = 0;
+let notifProviderIndex = 0;
+
+// IPL, International, and League series identifiers
+const IPL_KEYWORDS = ['ipl', 'indian premier league', 'tata ipl'];
+const INTERNATIONAL_KEYWORDS = ['test', 'odi', 'odis', 't20i', 't20is', 'world cup', 'asia cup', 'champions trophy', 'icc'];
+const LEAGUE_KEYWORDS = ['bbl', 'big bash', 'psl', 'pakistan super league', 'cpl', 'caribbean premier', 'sa20', 'hundred', 'bpl', 'bangladesh premier', 'ilt20', 'major league cricket', 'mlc', 'super smash', 'vitality blast', 'county'];
+
+interface TrackedMatch {
+  matchId: string;
+  team1Short: string;
+  team2Short: string;
+  seriesName?: string;
+  matchStartTime?: string;
+  lastScore?: string;
+  lastWickets?: number;
+  lastRuns?: number;
+  lastOvers?: string;
+  lastCommentaryId?: string;
+  enabled: boolean;
+  autoTracked?: boolean; // Auto-tracked IPL/International match
+  // v1.0.12 — once the toss notification has been sent for this match,
+  // flip this to true so we never double-notify. Persists across app
+  // restarts via the AsyncStorage snapshot of trackedMatches.
+  tossNotified?: boolean;
+}
+
+interface NotificationContextType {
+  trackedMatches: TrackedMatch[];
+  isTracking: (matchId: string) => boolean;
+  toggleTracking: (matchId: string, team1Short: string, team2Short: string, seriesName?: string, startTime?: string) => void;
+  notificationsEnabled: boolean;
+  autoTrackEnabled: boolean;
+  enableNotifications: () => Promise<boolean>;
+  disableNotifications: () => void;
+  toggleAutoTrack: () => void;
+}
+
+const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+
+// Helper: Check if series is IPL, International, or a major League
+const isIPLOrInternational = (seriesName: string): boolean => {
+  const lower = seriesName.toLowerCase();
+  return IPL_KEYWORDS.some(k => lower.includes(k)) || 
+         INTERNATIONAL_KEYWORDS.some(k => lower.includes(k)) ||
+         LEAGUE_KEYWORDS.some(k => lower.includes(k));
+};
+
+// Helper: Get next API key and host using Triple-Engine Firebase rotation
+const getNextKeyAndHost = (): { key: string; host: string } => {
+  // Try Firebase triple-engine first (3 providers with up to 5 keys each)
+  if (_getAllProviders) {
+    const providers = _getAllProviders();
+    if (providers.length > 0) {
+      // Round-robin across all providers and their keys
+      const provider = providers[notifProviderIndex % providers.length];
+      const key = provider.keys[notifKeyIndex % provider.keys.length];
+      notifKeyIndex++;
+      // Move to next provider every 5 key rotations (to spread load)
+      if (notifKeyIndex % 5 === 0) notifProviderIndex++;
+      return { key, host: provider.host };
+    }
+  }
+  // Single Firebase key fallback
+  if (_getFirebaseKey) {
+    const firebaseKey = _getFirebaseKey();
+    if (firebaseKey) {
+      return { key: firebaseKey.apiKey, host: firebaseKey.apiHost };
+    }
+  }
+  // Final fallback: hardcoded keys
+  const key = RAPIDAPI_KEYS_P1[notifKeyIndex % RAPIDAPI_KEYS_P1.length];
+  notifKeyIndex++;
+  return { key, host: RAPIDAPI_HOST_1 };
+};
+
+// Helper: Get fallback key (next provider in rotation)
+const getNextP2KeyAndHost = (): { key: string; host: string } => {
+  if (_getAllProviders) {
+    const providers = _getAllProviders();
+    if (providers.length > 1) {
+      // Use a different provider than primary
+      const provider = providers[(notifProviderIndex + 1) % providers.length];
+      const key = provider.keys[notifKeyIndex % provider.keys.length];
+      notifKeyIndex++;
+      return { key, host: provider.host };
+    }
+  }
+  const key = RAPIDAPI_KEYS_P2[notifKeyIndex % RAPIDAPI_KEYS_P2.length];
+  notifKeyIndex++;
+  return { key, host: RAPIDAPI_HOST_2 };
+};
+
+// Helper: Detect event type from commentary text
+const detectEventFromCommentary = (commText: string): { type: AlertType | null; emoji: string } => {
+  const lower = commText.toLowerCase();
+  
+  if (lower.includes('out') || lower.includes('wicket') || lower.includes('caught') || 
+      lower.includes('bowled') || lower.includes('lbw') || lower.includes('stumped') ||
+      lower.includes('run out') || lower.includes('hit wicket')) {
+    return { type: 'wicket', emoji: '🔴' };
+  }
+  if (lower.includes('six') || lower.includes('sixer') || lower.includes('huge hit') || 
+      lower.includes('over the boundary') || lower.includes('maximum')) {
+    return { type: 'six', emoji: '6️⃣' };
+  }
+  if (lower.includes('four') || lower.includes('boundary') || lower.includes('to the fence') ||
+      lower.includes('races away')) {
+    return { type: 'four', emoji: '4️⃣' };
+  }
+  if (lower.includes('fifty') || lower.includes('50 runs') || lower.includes('half century') ||
+      lower.includes('hundred') || lower.includes('century') || lower.includes('100 runs')) {
+    return { type: 'milestone', emoji: '🎯' };
+  }
+  
+  return { type: null, emoji: '' };
+};
+
+export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [trackedMatches, setTrackedMatches] = useState<TrackedMatch[]>([]);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [autoTrackEnabled, setAutoTrackEnabled] = useState(true); // Auto-track ON by default
+  const [scheduledReminders, setScheduledReminders] = useState<string[]>([]);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoTrackRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
+  // Load settings from storage on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const [storedMatches, storedAutoTrack, storedReminders] = await Promise.all([
+          AsyncStorage.getItem(TRACKED_MATCHES_KEY),
+          AsyncStorage.getItem(AUTO_TRACK_ENABLED_KEY),
+          AsyncStorage.getItem(SCHEDULED_REMINDERS_KEY),
+        ]);
+        
+        if (storedMatches) setTrackedMatches(JSON.parse(storedMatches));
+        if (storedAutoTrack !== null) setAutoTrackEnabled(JSON.parse(storedAutoTrack));
+        if (storedReminders) setScheduledReminders(JSON.parse(storedReminders));
+        
+        await setupNotificationChannel();
+        const hasPermission = await requestNotificationPermission();
+        setNotificationsEnabled(hasPermission);
+      } catch (err) {
+        console.warn('Failed to load notification settings:', err);
+      }
+    })();
+  }, []);
+
+  // Save tracked matches whenever they change
+  useEffect(() => {
+    AsyncStorage.setItem(TRACKED_MATCHES_KEY, JSON.stringify(trackedMatches)).catch(() => {});
+  }, [trackedMatches]);
+
+  // Save auto-track setting
+  useEffect(() => {
+    AsyncStorage.setItem(AUTO_TRACK_ENABLED_KEY, JSON.stringify(autoTrackEnabled)).catch(() => {});
+  }, [autoTrackEnabled]);
+
+  // Save scheduled reminders
+  useEffect(() => {
+    AsyncStorage.setItem(SCHEDULED_REMINDERS_KEY, JSON.stringify(scheduledReminders)).catch(() => {});
+  }, [scheduledReminders]);
+
+  // Auto-track IPL and International matches
+  const checkAndAutoTrackMatches = useCallback(async () => {
+    if (!autoTrackEnabled || !notificationsEnabled) return;
+
+    try {
+      const { key: key1, host: host1 } = getNextKeyAndHost();
+      const { key: key2, host: host2 } = getNextKeyAndHost();
+      
+      // Fetch live and upcoming matches
+      const [liveRes, upcomingRes] = await Promise.all([
+        fetch(`https://${host1}/matches/v1/live`, {
+          headers: { 'X-RapidAPI-Key': key1, 'X-RapidAPI-Host': host1 },
+          signal: AbortSignal.timeout(10000),
+        }).catch(() => null),
+        fetch(`https://${host2}/matches/v1/upcoming`, {
+          headers: { 'X-RapidAPI-Key': key2, 'X-RapidAPI-Host': host2 },
+          signal: AbortSignal.timeout(10000),
+        }).catch(() => null),
+      ]);
+
+      // If primary provider failed, try Provider 2
+      let finalLiveRes = liveRes;
+      let finalUpcomingRes = upcomingRes;
+      
+      if (!liveRes || !liveRes.ok) {
+        const { key: p2k, host: p2h } = getNextP2KeyAndHost();
+        try {
+          finalLiveRes = await fetch(`https://${p2h}/matches/v1/live`, {
+            headers: { 'X-RapidAPI-Key': p2k, 'X-RapidAPI-Host': p2h },
+            signal: AbortSignal.timeout(10000),
+          });
+        } catch { /* silent */ }
+      }
+      if (!upcomingRes || !upcomingRes.ok) {
+        const { key: p2k, host: p2h } = getNextP2KeyAndHost();
+        try {
+          finalUpcomingRes = await fetch(`https://${p2h}/matches/v1/upcoming`, {
+            headers: { 'X-RapidAPI-Key': p2k, 'X-RapidAPI-Host': p2h },
+            signal: AbortSignal.timeout(10000),
+          });
+        } catch { /* silent */ }
+      }
+
+      const processMatches = async (data: any, isLive: boolean) => {
+        const typeMatches = data?.typeMatches || [];
+        const newMatches: TrackedMatch[] = [];
+        
+        for (const typeMatch of typeMatches) {
+          for (const series of typeMatch.seriesMatches || []) {
+            const seriesInfo = series.seriesAdWrapper;
+            if (!seriesInfo) continue;
+            
+            const seriesName = seriesInfo.seriesName || '';
+            if (!isIPLOrInternational(seriesName)) continue;
+            
+            for (const match of seriesInfo.matches || []) {
+              const matchInfo = match.matchInfo;
+              if (!matchInfo) continue;
+              
+              const matchId = String(matchInfo.matchId);
+              const team1Short = matchInfo.team1?.teamSName || 'TBA';
+              const team2Short = matchInfo.team2?.teamSName || 'TBA';
+              const startTime = matchInfo.startDate ? new Date(parseInt(matchInfo.startDate)).toISOString() : undefined;
+              
+              // Check if already tracking
+              const alreadyTracking = trackedMatches.some(m => m.matchId === matchId);
+              if (alreadyTracking) continue;
+              
+              newMatches.push({
+                matchId,
+                team1Short,
+                team2Short,
+                seriesName,
+                matchStartTime: startTime,
+                enabled: true,
+                autoTracked: true,
+              });
+              
+              // Schedule reminder for upcoming matches (10 min before)
+              if (!isLive && startTime && !scheduledReminders.includes(matchId)) {
+                const matchStartDate = new Date(startTime);
+                await scheduleMatchReminder(matchId, team1Short, team2Short, matchStartDate, seriesName);
+                setScheduledReminders(prev => [...prev, matchId]);
+              }
+            }
+          }
+        }
+        
+        return newMatches;
+      };
+
+      const liveData = finalLiveRes?.ok ? await finalLiveRes.json() : null;
+      const upcomingData = finalUpcomingRes?.ok ? await finalUpcomingRes.json() : null;
+      
+      const liveMatches = liveData ? await processMatches(liveData, true) : [];
+      const upcomingMatches = upcomingData ? await processMatches(upcomingData, false) : [];
+      
+      const allNewMatches = [...liveMatches, ...upcomingMatches];
+      
+      if (allNewMatches.length > 0) {
+        setTrackedMatches(prev => [...prev, ...allNewMatches]);
+        console.log(`[AutoTrack] Added ${allNewMatches.length} IPL/International matches`);
+      }
+    } catch (err) {
+      console.warn('[AutoTrack] Failed to check for new matches:', err);
+    }
+  }, [autoTrackEnabled, notificationsEnabled, trackedMatches, scheduledReminders]);
+
+  // Poll for match updates with event detection
+  const pollMatchUpdates = useCallback(async () => {
+    const activeMatches = trackedMatches.filter(m => m.enabled);
+    if (activeMatches.length === 0) return;
+
+    for (const tracked of activeMatches) {
+      try {
+        const { key, host } = getNextKeyAndHost();
+        
+        // Fetch commentary for this match
+        let commRes = await fetch(`https://${host}/mcenter/v1/${tracked.matchId}/comm`, {
+          headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': host },
+          signal: AbortSignal.timeout(10000),
+        }).catch(() => null);
+        
+        // Fallback to Provider 2 if primary failed
+        if (!commRes || !commRes.ok) {
+          const { key: p2k, host: p2h } = getNextP2KeyAndHost();
+          commRes = await fetch(`https://${p2h}/mcenter/v1/${tracked.matchId}/comm`, {
+            headers: { 'X-RapidAPI-Key': p2k, 'X-RapidAPI-Host': p2h },
+            signal: AbortSignal.timeout(10000),
+          }).catch(() => null);
+        }
+        
+        if (!commRes || !commRes.ok) continue;
+        
+        const commData = await commRes.json();
+        const ms = commData.miniscore || {};
+        const inningScores = ms.inningsscores?.inningsscore || [];
+        const commentaryList = commData.commentaryList || [];
+
+        // ---------------------------------------------------------------
+        // v1.0.12 — TOSS NOTIFICATION
+        // Detect the moment a tracked match's toss result is reported by
+        // Cricbuzz (BEFORE first ball). Two signals:
+        //   1. matchHeader.tossResults.tossWinnerName + .decision
+        //   2. matchHeader.status string containing "opt to" / "won the toss"
+        // Dedup via tracked.tossNotified (persisted in AsyncStorage).
+        // ---------------------------------------------------------------
+        if (!tracked.tossNotified) {
+          try {
+            const mh = commData.matchHeader || {};
+            const tr = mh.tossResults || {};
+            const stateStr = String(mh.state || '').toLowerCase();
+            const statusStr = String(mh.status || '').trim();
+            const statusLower = statusStr.toLowerCase();
+
+            let tossLine = '';
+            if (tr.tossWinnerName && tr.decision) {
+              const winner = String(tr.tossWinnerName).trim();
+              const decisionRaw = String(tr.decision).toLowerCase();
+              const decision = decisionRaw.includes('bat') ? 'bat first' : 'bowl first';
+              tossLine = `${winner} won the toss and elected to ${decision}.`;
+            } else if (statusLower.includes('opt to') || statusLower.includes('won the toss') || statusLower.includes('elected to')) {
+              tossLine = statusStr;
+            }
+
+            // Only fire if toss is resolved AND match hasn't started the 1st
+            // innings meaningfully (still upcoming / in toss / just started).
+            // If state is "Complete" we skip — no value in post-match toss alert.
+            const matchNotComplete = stateStr !== 'complete' && stateStr !== 'result' && stateStr !== 'abandon';
+
+            if (tossLine && matchNotComplete) {
+              await sendTossNotification({
+                matchId: tracked.matchId,
+                team1Short: tracked.team1Short,
+                team2Short: tracked.team2Short,
+                tossText: tossLine,
+                seriesName: tracked.seriesName,
+              });
+              // Persist the dedupe flag — survives next poll cycle + app restart.
+              setTrackedMatches(prev =>
+                prev.map(m =>
+                  m.matchId === tracked.matchId ? { ...m, tossNotified: true } : m,
+                ),
+              );
+              console.log(`[Toss] Notification sent for ${tracked.matchId}: ${tossLine}`);
+            }
+          } catch (tossErr) {
+            console.warn('[Toss] detection failed:', tossErr);
+          }
+        }
+        
+        // Get current batting team score
+        let currentBatScore: any = null;
+        for (const inn of inningScores) {
+          if (inn.batteamshortname === tracked.team1Short || inn.batteamshortname === tracked.team2Short) {
+            currentBatScore = inn;
+            break;
+          }
+        }
+        
+        if (!currentBatScore) continue;
+        
+        const currentRuns = currentBatScore.runs || 0;
+        const currentWickets = currentBatScore.wickets || 0;
+        const currentOvers = String(currentBatScore.overs || '0');
+        const battingTeam = currentBatScore.batteamshortname;
+        
+        // Detect events
+        const events: { type: AlertType; message: string; score: string }[] = [];
+        
+        // Check for wicket
+        if (tracked.lastWickets !== undefined && currentWickets > tracked.lastWickets) {
+          events.push({
+            type: 'wicket',
+            message: `🔴 WICKET! ${battingTeam} loses a wicket!\nScore: ${currentRuns}/${currentWickets} (${currentOvers} ov)`,
+            score: `${currentRuns}/${currentWickets}`,
+          });
+        }
+        
+        // Check commentary for Four/Six
+        if (commentaryList.length > 0) {
+          const latestComm = commentaryList[0];
+          const commId = String(latestComm.timestamp || latestComm.commId || '');
+          
+          if (commId !== tracked.lastCommentaryId && latestComm.commText) {
+            const { type, emoji } = detectEventFromCommentary(latestComm.commText);
+            
+            if (type === 'six') {
+              events.push({
+                type: 'six',
+                message: `6️⃣ SIX! ${battingTeam} smashes it!\n${latestComm.commText.substring(0, 100)}`,
+                score: `${currentRuns}/${currentWickets}`,
+              });
+            } else if (type === 'four') {
+              events.push({
+                type: 'four',
+                message: `4️⃣ FOUR! ${battingTeam} finds the boundary!\n${latestComm.commText.substring(0, 100)}`,
+                score: `${currentRuns}/${currentWickets}`,
+              });
+            } else if (type === 'milestone') {
+              events.push({
+                type: 'milestone',
+                message: `🎯 MILESTONE! ${latestComm.commText.substring(0, 120)}`,
+                score: `${currentRuns}/${currentWickets}`,
+              });
+            }
+            
+            // Update last commentary ID
+            setTrackedMatches(prev =>
+              prev.map(m =>
+                m.matchId === tracked.matchId ? { ...m, lastCommentaryId: commId } : m
+              )
+            );
+          }
+        }
+        
+        // Send notifications for detected events
+        for (const event of events) {
+          await sendMatchAlert({
+            matchId: tracked.matchId,
+            type: event.type,
+            title: `${tracked.team1Short} vs ${tracked.team2Short}`,
+            body: event.message,
+            team1Short: tracked.team1Short,
+            team2Short: tracked.team2Short,
+            score: event.score,
+          });
+        }
+        
+        // Update tracked state with latest score
+        setTrackedMatches(prev =>
+          prev.map(m =>
+            m.matchId === tracked.matchId
+              ? {
+                  ...m,
+                  lastScore: `${currentRuns}/${currentWickets}`,
+                  lastWickets: currentWickets,
+                  lastRuns: currentRuns,
+                  lastOvers: currentOvers,
+                }
+              : m
+          )
+        );
+      } catch (err) {
+        // Silent fail - will retry next poll
+      }
+    }
+  }, [trackedMatches]);
+
+  // Manage polling based on app state
+  useEffect(() => {
+    const activeMatches = trackedMatches.filter(m => m.enabled);
+    
+    // Clear existing intervals
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    
+    if (activeMatches.length === 0 || !notificationsEnabled) return;
+
+    const startPolling = (interval: number) => {
+      pollingRef.current = setInterval(pollMatchUpdates, interval);
+      pollMatchUpdates(); // Immediate first poll
+    };
+
+    startPolling(appStateRef.current === 'active' ? POLL_INTERVAL_ACTIVE : POLL_INTERVAL_BACKGROUND);
+
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (nextState === 'active') {
+        startPolling(POLL_INTERVAL_ACTIVE);
+      } else {
+        startPolling(POLL_INTERVAL_BACKGROUND);
+      }
+      appStateRef.current = nextState;
+    });
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      subscription.remove();
+    };
+  }, [trackedMatches, notificationsEnabled, pollMatchUpdates]);
+
+  // Auto-track check interval
+  useEffect(() => {
+    if (autoTrackRef.current) {
+      clearInterval(autoTrackRef.current);
+      autoTrackRef.current = null;
+    }
+    
+    if (!autoTrackEnabled || !notificationsEnabled) return;
+    
+    // Initial check
+    checkAndAutoTrackMatches();
+    
+    // Periodic check
+    autoTrackRef.current = setInterval(checkAndAutoTrackMatches, AUTO_TRACK_CHECK_INTERVAL);
+    
+    return () => {
+      if (autoTrackRef.current) clearInterval(autoTrackRef.current);
+    };
+  }, [autoTrackEnabled, notificationsEnabled, checkAndAutoTrackMatches]);
+
+  const isTracking = (matchId: string): boolean =>
+    trackedMatches.some(m => m.matchId === matchId && m.enabled);
+
+  const toggleTracking = (matchId: string, team1Short: string, team2Short: string, seriesName?: string, startTime?: string) => {
+    setTrackedMatches(prev => {
+      const existing = prev.find(m => m.matchId === matchId);
+      if (existing) {
+        return prev.map(m =>
+          m.matchId === matchId ? { ...m, enabled: !m.enabled } : m
+        );
+      }
+      return [
+        ...prev,
+        {
+          matchId,
+          team1Short,
+          team2Short,
+          seriesName,
+          matchStartTime: startTime,
+          enabled: true,
+          autoTracked: false,
+        },
+      ];
+    });
+  };
+
+  const enableNotifications = async (): Promise<boolean> => {
+    const granted = await requestNotificationPermission();
+    setNotificationsEnabled(granted);
+    if (!granted) {
+      Alert.alert('Permission Required', 'Please enable notifications in device Settings to receive match alerts.');
+    }
+    return granted;
+  };
+
+  const disableNotifications = () => {
+    setNotificationsEnabled(false);
+    cancelAllMatchAlerts();
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  };
+
+  const toggleAutoTrack = () => {
+    setAutoTrackEnabled(prev => !prev);
+  };
+
+  return (
+    <NotificationContext.Provider
+      value={{
+        trackedMatches,
+        isTracking,
+        toggleTracking,
+        notificationsEnabled,
+        autoTrackEnabled,
+        enableNotifications,
+        disableNotifications,
+        toggleAutoTrack,
+      }}
+    >
+      {children}
+    </NotificationContext.Provider>
+  );
+};
+
+export const useNotifications = (): NotificationContextType => {
+  const context = useContext(NotificationContext);
+  if (!context) {
+    throw new Error('useNotifications must be used within NotificationProvider');
+  }
+  return context;
+};
