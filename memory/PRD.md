@@ -17,6 +17,21 @@ User: vinu2092-cyber/Cricapp (live on Play Store v1.0.15). Move to v1.0.16 and f
 
 ## What's Been Implemented (2026-05-06, v1.0.16)
 
+### Revision 3 (2026-05-06, same v1.0.16) — voice + haptics
+
+**A. Auto Voice Commentary on every new ball** (`frontend/src/components/CommentarySection.tsx`)
+- Default: **un-muted** (auto-speak ON). Whenever `commentary[0]` (latest ball) changes, the english text is read out via `expo-speech` (`en-IN`, rate 0.95, pitch 1.0) prefixed with "Over X.Y. ".
+- `lastSpokenIdRef` prevents duplicate speech on re-render.
+- New **mute toggle pill** in the commentary header: tap once → speech stops + future balls are silent (`Voice off`); tap again → resumes (`Voice on`). Auto-stops in-flight TTS the instant the user mutes or unmounts.
+- Floating scoreboard's existing native auto-speak (`FloatingWidgetService.java#speakCommentary`) is **untouched** — it already auto-reads on every `UPDATE_SCORE` intent and has its own mute button.
+- Skipped for `matchStatus === 'upcoming'` (those rows are expert-analysis blurbs, not ball-by-ball).
+
+**B. Subtle haptic vibration on fake pull-to-refresh** (`frontend/src/components/CommentarySection.tsx`)
+- `handleFakeRefresh()` now fires `Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)` on every pull (no-op on web/dev fallback). Reinforces the "real refresh happened" perception while the API stays on its 30s cycle.
+- `expo-haptics` already in `package.json` (`~15.0.8`) — no new dependency required.
+
+---
+
 ### Revision 2 (2026-05-06, same v1.0.16) — additional changes
 
 **A. Interstitial click thresholds revised**

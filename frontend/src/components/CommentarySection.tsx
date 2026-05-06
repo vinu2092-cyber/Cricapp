@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
+import * as Haptics from 'expo-haptics';
 import { Commentary, Language } from '../types/match';
 import { usePro } from '../context/ProContext';
 import { useAdMob } from '../context/AdMobContext.native';
@@ -197,6 +198,59 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   const { trackClick } = useAdMob();
 
   // ===========================================================
+  // v1.0.16 — AUTO VOICE COMMENTARY
+  // -----------------------------------------------------------
+  // Per user directive (2026-05-06 revision):
+  //   "Jo bhi last ball update hogi, vo last ball commentary
+  //    automatically bolkar bataye. Usko mute karne ka option
+  //    zaroor rakho commentary section mein."
+  //
+  //   • Default state: UN-MUTED (auto-speak ON).
+  //   • Whenever the latest ball (commentary[0]) changes, we
+  //     pipe its english text through expo-speech.
+  //   • Mute toggle in the header lets users silence it instantly
+  //     (also stops any in-flight utterance).
+  //   • lastSpokenIdRef prevents duplicate speech on re-render.
+  // ===========================================================
+  const [autoSpeakMuted, setAutoSpeakMuted] = useState(false);
+  const lastSpokenIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (autoSpeakMuted) return;
+    if (!commentary || commentary.length === 0) return;
+    // Only auto-speak in matches that have ball-by-ball commentary
+    // (skip 'upcoming' = expert analysis cards).
+    if (matchStatus === 'upcoming') return;
+
+    const latest = commentary[0];
+    if (!latest || !latest.english) return;
+    // Skip if we've already spoken this ball.
+    if (latest.id && latest.id === lastSpokenIdRef.current) return;
+    lastSpokenIdRef.current = latest.id || `${latest.over}-${(latest.english || '').slice(0, 32)}`;
+
+    try {
+      Speech.stop();
+      const overPrefix = latest.over ? `Over ${latest.over}. ` : '';
+      Speech.speak(overPrefix + latest.english, {
+        language: 'en-IN',
+        pitch: 1.0,
+        rate: 0.95,
+        onError: () => {},
+      });
+    } catch {}
+  }, [commentary, autoSpeakMuted, matchStatus]);
+
+  // Stop any in-flight TTS when component unmounts or mute toggles on.
+  useEffect(() => {
+    if (autoSpeakMuted) {
+      try { Speech.stop(); } catch {}
+    }
+    return () => {
+      try { Speech.stop(); } catch {}
+    };
+  }, [autoSpeakMuted]);
+
+  // ===========================================================
   // v1.0.16 — FAKE pull-to-refresh on commentary scroll.
   // -----------------------------------------------------------
   // Per user directive (2026-05-06 revision):
@@ -211,12 +265,16 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
   //   • We DO call trackClick() so each pull bumps the interstitial
   //     counter (15 = preload, 23 = show), giving us more impressions
   //     without any extra ad requests.
+  //   • A subtle haptic tap fires on every pull so users get the
+  //     tactile "real refresh" feel (per v1.0.16 rev-3 directive).
   //   • Spinner shows for 700ms then auto-dismisses — pure visual.
   // ===========================================================
   const [fakeRefreshing, setFakeRefreshing] = useState(false);
   const handleFakeRefresh = () => {
     if (fakeRefreshing) return;
     setFakeRefreshing(true);
+    // Subtle haptic tap — "Light" impact on iOS, soft buzz on Android.
+    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
     // Count this gesture as a click for the interstitial counter
     // (no-op for Pro users — trackClick early-exits when isPro is true).
     trackClick();
@@ -609,6 +667,31 @@ const CommentarySection: React.FC<CommentarySectionProps> = ({
             <Ionicons name="chatbubbles" size={20} color="#4CAF50" />
             <Text style={styles.title}>Ball by Ball Commentary</Text>
           </View>
+          {/* v1.0.16 — Auto-speak mute toggle. Default unmuted; tap to
+              silence the live ball-by-ball voice. */}
+          <TouchableOpacity
+            style={[
+              styles.autoSpeakToggle,
+              autoSpeakMuted && styles.autoSpeakToggleMuted,
+            ]}
+            onPress={() => setAutoSpeakMuted(m => !m)}
+            data-testid="auto-speak-toggle"
+            accessibilityLabel={autoSpeakMuted ? 'Unmute live commentary voice' : 'Mute live commentary voice'}
+          >
+            <Ionicons
+              name={autoSpeakMuted ? 'volume-mute' : 'volume-high'}
+              size={16}
+              color={autoSpeakMuted ? '#E53935' : '#4CAF50'}
+            />
+            <Text
+              style={[
+                styles.autoSpeakToggleTxt,
+                autoSpeakMuted && { color: '#E53935' },
+              ]}
+            >
+              {autoSpeakMuted ? 'Voice off' : 'Voice on'}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -916,6 +999,25 @@ const styles = StyleSheet.create({
   },
   titleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   title: { fontSize: 16, fontWeight: '700', color: '#333' },
+  // v1.0.16 — auto-speak toggle pill. Sits in the commentary header,
+  // toggles voice on/off without touching the rest of the UI.
+  autoSpeakToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(76,175,80,0.15)',
+  },
+  autoSpeakToggleMuted: {
+    backgroundColor: 'rgba(229,57,53,0.15)',
+  },
+  autoSpeakToggleTxt: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4CAF50',
+  },
   commentaryList: { flex: 1 },
   commentaryItem: {
     flexDirection: 'row',
