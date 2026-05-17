@@ -19,6 +19,7 @@ import NativeAdCard from '../../src/components/NativeAdCard';
 import FloatingScoreboard from '../../src/components/FloatingScoreboard';
 import AppBackground from '../../src/components/AppBackground';
 import MatchMoodMeter from '../../src/components/MatchMoodMeter';
+import LiveShoutbox from '../../src/components/LiveShoutbox';
 import { saveCommentary, loadCommentary, mergeCommentary, shouldPersistCommentary } from '../../src/services/CommentaryStorage';
 import { usePro } from '../../src/context/ProContext';
 import { useAdMob } from '../../src/context/AdMobContext.native';
@@ -1106,6 +1107,9 @@ export default function MatchDetail() {
           </>
         )}
       </ScrollView>
+
+      {/* Live Shoutbox — v1.0.17 — glass chat popup over scoreboard/commentary */}
+      <LiveShoutbox matchId={id || ''} />
 
       {/* Pro Modal - 3 Rewarded Ads */}
       <Modal visible={showProModal} transparent animationType="fade">

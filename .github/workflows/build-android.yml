@@ -213,56 +213,43 @@ jobs:
         if: always()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.15
-          name: CricApp v1.0.15
+          tag_name: v1.0.17
+          name: CricApp v1.0.17
           body: |
-            ## CricApp v1.0.15 — Ad optimisation + Share-to-Unlock Pro
+            ## CricApp v1.0.17 — Live Shoutbox (Quick Chat) over Firebase RTDB
 
-            ### Ad request-waste reduction (income-safe)
-            - Rewarded ad error retries now capped per session (aggressive
-              1.5-4s infinite retry → max 3 attempts) so failed loads no
-              longer burn request quota. Success/CLOSED refill unchanged.
-            - App Open ad error retries capped at 2 with 30s/60s back-off.
-            - Interstitial ad error retries capped at 3 with 10s back-off.
-            - Banner #1 and Banner #2 behaviour UNCHANGED (per user brief).
-
-            ### Unlock Pro — 2 ads → 1 ad
-            - `ProContext.ADS_REQUIRED` 2 → 1. Pro modal progress UI now
-              shows `1 of 1`, `x/1 Ad Watched`. Faster flow, same AdMob
-              impression per unlock.
-
-            ### NEW — Share to Unlock Pro (viral growth, 1/day quota)
-            - Single Share button inside Unlock Pro modal (index.tsx +
-              match/[id].tsx).
-            - Uses native React Native `Share.share()` → Android
-              ACTION_SEND intent → user picks any installed app
-              (WhatsApp, Telegram, Instagram, Facebook, Gmail, SMS, X, …).
-            - Shares Play Store link:
-              https://play.google.com/store/apps/details?id=com.cricapp.live
-            - Pro granted ONLY on `Share.sharedAction` (native success).
-              Dismissed share → no Pro (abuse prevention).
-            - **Daily quota — 1 share-unlock per device per day** via
-              AsyncStorage key `crickapp_share_unlock_date` (local-date
-              YYYY-MM-DD). Second attempt same day shows
-              "Daily Share Limit Reached" alert and asks user to Watch Ad
-              instead, protecting AdMob revenue.
-
-            ### Preserved from v1.0.14
-            - Banner #1 header + single last-2-overs separator
-            - Banner #2 MEDIUM_RECTANGLE 300×250 unchanged
-            - Collapsible cricket ground, toss notifications, commentary
-              medium-version picking, scoreboard/settings polish
-            - All ad unit IDs unchanged
-
-            ### Ad Unit IDs (unchanged)
-            - App Open: `ca-app-pub-9675798593675825/4826782503`
-            - Interstitial: `ca-app-pub-9675798593675825/8438724452`
-            - Banner #1: `ca-app-pub-9675798593675825/8616886104`
-            - Banner #2: `ca-app-pub-9675798593675825/2958604357`
-            - Rewarded: `ca-app-pub-9675798593675825/6702704058`
+            ### NEW — Live Shoutbox Quick-Chat on every match
+            - Floating glass-style chat popup on each match scoreboard
+              (`app/match/[id].tsx`). Backed by **Firebase Realtime Database
+              only** (`/chat/{matchId}/messages`). Per-match isolated rooms.
+            - First-launch popup asks for **Name (max 12 chars, no specials)**
+              + **Country flag** (🇮🇳 🇵🇰 🇧🇩 🇱🇰 🇦🇺 🇳🇿 🇿🇦 🇮🇪 🇼🇸 🇦🇫 🇿🇼 🌍).
+              Stored locally via AsyncStorage (`crickapp_chat_profile`). NO
+              Firebase user profiles.
+            - Horizontal scrollable cricket pill phrases:
+              **Six 🔥 · Four 🚀 · Out ☝️ · Duck 🦆 · Hat-trick 🎯 · What a
+              Shot 🏏 · Boring 🥱**. One tap → tiny payload pushed to RTDB.
+            - Renders latest **4 messages** (`.limitToLast(10)` → 4 newest
+              shown), older ones auto-fade. Glassy translucent so scoreboard,
+              commentary and Banner #2 stay visible behind it.
+            - Tap any other user's message → reaction popup with
+              28 throwable emojis + **3 Lottie-only specials**
+              (🌹 Flower bloom, 🍅 Tomato splat, 🥚 Egg smash). Lottie JSONs
+              shipped locally (`assets/lottie/*.json`), ~3-5 KB each — keeps
+              APK well under the 25 MB target. NO PNG/GIF/MP4 used.
+            - All listeners use `limitToLast(10)` to keep Firebase Spark-plan
+              bandwidth usage minimal. Tiny payload schema:
+              `{ name, country, msg, time }` for chats and
+              `{ from, to, action, time }` for reactions.
+            - Minimisable: single round **chat button** restores/hides the
+              popup so user can read full scoreboard / commentary anytime.
 
             ### Version
-            - `app.json` / `build.gradle` → **1.0.15**, versionCode **15**
+            - `app.json` / `build.gradle` → **1.0.17**, versionCode **17**
+
+            ### Preserved from v1.0.15 / v1.0.16
+            - AdMob unit IDs unchanged · Pro Modal / Share-to-Unlock intact
+            - Commentary, scorecard, squads, floating widget logic unchanged
             - `react-native-google-mobile-ads` 14.11.0 (unchanged — stable)
           files: |
             frontend/android/app/build/outputs/apk/release/*.apk
