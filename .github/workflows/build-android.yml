@@ -213,10 +213,22 @@ jobs:
         if: always()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.17
-          name: CricApp v1.0.17
+          tag_name: v1.0.18
+          name: CricApp v1.0.18
           body: |
-            ## CricApp v1.0.17 — Live Reactions + Interactive Chat Room (RTDB)
+            ## CricApp v1.0.18 — Chat UX Polish
+
+            - All chat messages now LEFT-aligned with `[flag] [name]` header + message body (no own/other split).
+            - Self user-chip always visible at top of chat (instantly, before RTDB roundtrip).
+            - Bubble width 85% → 95% for better readability.
+            - Header font 11px → 12px, max-width raised for longer names.
+
+            ### Preserved from v1.0.17
+            - Chat persistence via AsyncStorage (cache `crickapp_chat_msgs_v2_<matchId>`, max 15 messages, FIFO).
+            - Horizontal active-users `FlatList` (limitToLast 20) with chip-accurate Lottie/emoji bursts.
+            - 1-minute heartbeat sync, 2-minute rate limit.
+            - Team shortName + flag on `will win` / `will loss` pills.
+            - Removed: "Chat Room" header, "X online", "You're the first one online", "Tap a phrase below to chat".
 
             Two independent in-match social features, both backed STRICTLY by
             Firebase Realtime Database on the Spark (free) plan.

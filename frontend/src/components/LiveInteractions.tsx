@@ -476,10 +476,21 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
       {activePanel === 'chat' && (
         <View style={styles.chatDock} data-testid="chat-panel">
           {/* ─── Horizontal Active Users FlatList (limitToLast 20) ─── */}
+          {/* Always inject SELF locally so user sees their own chip instantly
+              even before RTDB roundtrip / when truly alone in the room. */}
           <View style={styles.activeBar}>
             <FlatList
               ref={activeListRef}
-              data={activeUsers}
+              data={(() => {
+                const hasSelf = activeUsers.some((u) => u.id === userIdRef.current);
+                if (!hasSelf && profile && userIdRef.current) {
+                  return [
+                    { id: userIdRef.current, name: profile.name, country: profile.country, lastActionTime: Date.now() } as ActiveUser,
+                    ...activeUsers,
+                  ];
+                }
+                return activeUsers;
+              })()}
               horizontal
               showsHorizontalScrollIndicator={false}
               keyExtractor={(u) => u.id}
@@ -530,13 +541,12 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
             showsVerticalScrollIndicator={false}
           >
             {messages.map((m, idx) => {
-              const own = !!(profile && m.name === profile.name && m.country === profile.country);
               const isPending = m.id.startsWith('local_');
               return (
-                <View key={m.id + idx} style={[styles.bubble, own ? styles.bubbleOwn : styles.bubbleOther]}
+                <View key={m.id + idx} style={[styles.bubble, styles.bubbleLeft]}
                       data-testid={`chat-msg-${idx}`}>
-                  {!own && <Text style={styles.bubbleHeader}>{m.country} {m.name}</Text>}
-                  <Text style={[styles.bubbleMsg, own && { color: '#FFFFFF' }]}>
+                  <Text style={styles.bubbleHeader}>{m.country} {m.name}</Text>
+                  <Text style={styles.bubbleMsg}>
                     {m.msg}{isPending ? ' ⏳' : ''}
                   </Text>
                 </View>
@@ -777,10 +787,11 @@ const styles = StyleSheet.create({
   msgScroll: { flex: 1, backgroundColor: 'rgba(0,0,0,0.18)', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 4 },
   msgScrollContent: { paddingVertical: 6 },
   emptyTxt: { color: 'rgba(255,255,255,0.65)', fontSize: 12, fontStyle: 'italic', textAlign: 'center', padding: 14 },
-  bubble: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, marginBottom: 6, maxWidth: '85%' },
+  bubble: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, marginBottom: 6, maxWidth: '95%' },
+  bubbleLeft: { backgroundColor: '#FFFFFF', alignSelf: 'flex-start', borderBottomLeftRadius: 2 },
   bubbleOther: { backgroundColor: '#FFF', alignSelf: 'flex-start', borderBottomLeftRadius: 2 },
   bubbleOwn: { backgroundColor: '#1976D2', alignSelf: 'flex-end', borderBottomRightRadius: 2 },
-  bubbleHeader: { color: '#1B5E20', fontWeight: '900', fontSize: 11, marginBottom: 2 },
+  bubbleHeader: { color: '#1B5E20', fontWeight: '900', fontSize: 12, marginBottom: 2 },
   bubbleMsg: { fontSize: 13, color: '#212121', fontWeight: '600' },
 
   chatPillsWrap: { maxHeight: 50, marginTop: 6 },
