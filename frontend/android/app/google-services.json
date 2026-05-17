@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "31510956391",
+    "project_id": "cricapp-2092",
+    "storage_bucket": "cricapp-2092.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:31510956391:android:f716580ab8638ce52b87c2",
+        "android_client_info": {
+          "package_name": "com.cricapp.live"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBCYnmcQBAF6b-cJEiy_npjbHp38jUUX7s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,501 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  Alert, ScrollView, KeyboardAvoidingView, Platform, Linking, Switch
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNotifications } from '../src/context/NotificationContext';
+import { clearAllCache } from '../src/services/api';
+import { cleanupOldCommentary } from '../src/services/CommentaryStorage';
+import WallpaperPicker from '../src/components/WallpaperPicker';
+
+const API_KEY_STORAGE = 'cricapp_user_api_key';
+const RAPIDAPI_URL = 'https://rapidapi.com/cricketapilive/api/cricbuzz-cricket';
+
+export default function Settings() {
+  const router = useRouter();
+  const [apiKey, setApiKey] = useState('');
+  const [savedKey, setSavedKey] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const { notificationsEnabled, autoTrackEnabled, enableNotifications, disableNotifications, toggleAutoTrack } = useNotifications();
+
+  // Load saved API key on mount
+  useEffect(() => {
+    loadSavedKey();
+  }, []);
+
+  const loadSavedKey = async () => {
+    try {
+      const key = await AsyncStorage.getItem(API_KEY_STORAGE);
+      if (key) {
+        setSavedKey(key);
+        setApiKey(key);
+      }
+    } catch (error) {
+      console.error('Error loading API key:', error);
+    }
+  };
+
+  const saveApiKey = async () => {
+    if (!apiKey.trim()) {
+      Alert.alert('Error', 'Please enter an API key');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await AsyncStorage.setItem(API_KEY_STORAGE, apiKey.trim());
+      setSavedKey(apiKey.trim());
+      Alert.alert('Success', 'API Key saved successfully! The app will now use your API key.');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save API key');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const removeApiKey = async () => {
+    Alert.alert(
+      'Remove API Key',
+      'Are you sure you want to remove your API key? The app will use default keys.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await AsyncStorage.removeItem(API_KEY_STORAGE);
+              setApiKey('');
+              setSavedKey('');
+              Alert.alert('Removed', 'API Key removed. App will use default keys.');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to remove API key');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleGetApiKey = () => {
+    Alert.alert(
+      'External Link',
+      'You are being redirected to an external link to get your API Key. Do you want to continue?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes',
+          onPress: () => {
+            Linking.openURL(RAPIDAPI_URL).catch(() => {
+              Alert.alert('Error', 'Unable to open the link. Please try again.');
+            });
+          },
+        },
+      ]
+    );
+  };
+
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Settings</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <ScrollView style={styles.content}>
+          {/* Section 1: Get API Key Button */}
+          <View style={styles.section}>
+            <TouchableOpacity 
+              style={styles.getApiKeyBtn}
+              onPress={handleGetApiKey}
+              data-testid="get-api-key-btn"
+            >
+              <Ionicons name="key-outline" size={22} color="#FFF" />
+              <Text style={styles.getApiKeyText}>Get API Key</Text>
+              <Ionicons name="open-outline" size={18} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
+
+          {/* Section 2: API Key Input - DO NOT TOUCH */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your API Key</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your API Key"
+              placeholderTextColor="#999"
+              value={apiKey}
+              onChangeText={setApiKey}
+              autoCapitalize="none"
+              autoCorrect={false}
+              data-testid="api-key-input"
+            />
+
+            {savedKey ? (
+              <View style={styles.statusRow}>
+                <Ionicons name="checkmark-circle" size={18} color="#4CAF50" />
+                <Text style={styles.statusText}>API Key saved</Text>
+              </View>
+            ) : null}
+
+            <TouchableOpacity 
+              style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+              onPress={saveApiKey}
+              disabled={isSaving}
+              data-testid="save-api-key-btn"
+            >
+              <Ionicons name="save" size={20} color="#FFF" />
+              <Text style={styles.saveBtnText}>
+                {isSaving ? 'Saving...' : 'Save API Key'}
+              </Text>
+            </TouchableOpacity>
+
+            {savedKey ? (
+              <TouchableOpacity style={styles.removeBtn} onPress={removeApiKey}>
+                <Ionicons name="trash" size={20} color="#F44336" />
+                <Text style={styles.removeBtnText}>Remove API Key</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {/* API Help Text - moved here to be part of API section */}
+            <View style={[styles.helpTextContainer, { marginTop: 12 }]}>
+              <Ionicons name="help-circle-outline" size={20} color="#888" />
+              <Text style={styles.helpText}>
+                Optional: Users can add their own API key for enhanced access.
+              </Text>
+            </View>
+          </View>
+
+          {/* Section 3: Notification Settings */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notification Settings</Text>
+            
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Ionicons name="notifications" size={22} color="#4CAF50" />
+                <View style={styles.settingText}>
+                  <Text style={styles.settingTitle}>Match Notifications</Text>
+                  <Text style={styles.settingDesc}>Get alerts for wickets, fours, sixes</Text>
+                </View>
+              </View>
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={(value) => value ? enableNotifications() : disableNotifications()}
+                trackColor={{ false: '#333', true: '#4CAF50' }}
+                thumbColor={notificationsEnabled ? '#FFF' : '#999'}
+              />
+            </View>
+            
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Ionicons name="trophy" size={22} color="#FFD700" />
+                <View style={styles.settingText}>
+                  <Text style={styles.settingTitle}>Auto-Track Major Matches</Text>
+                  <Text style={styles.settingDesc}>Automatically track major league and international matches</Text>
+                </View>
+              </View>
+              <Switch
+                value={autoTrackEnabled}
+                onValueChange={toggleAutoTrack}
+                trackColor={{ false: '#333', true: '#FFD700' }}
+                thumbColor={autoTrackEnabled ? '#FFF' : '#999'}
+                disabled={!notificationsEnabled}
+              />
+            </View>
+            
+            <View style={styles.notifInfoBox}>
+              <Ionicons name="information-circle" size={20} color="#2196F3" />
+              <Text style={styles.notifInfoText}>
+                When enabled, you'll automatically receive notifications for major matches including:{'\n'}
+                • Match start reminder (10 min before){'\n'}
+                • Wicket alerts{'\n'}
+                • Boundary alerts (4s & 6s){'\n'}
+                • Milestone alerts (50s, 100s)
+              </Text>
+            </View>
+          </View>
+
+          {/* Section 4: Appearance (Customise Wallpaper)
+              v1.0.11 — Moved ABOVE Storage & Performance per user brief.
+              Rationale: wallpaper customisation is a discovery / delight
+              setting the user wants front-and-centre; Clear Cache is an
+              emergency troubleshooting control that belongs lower down. */}
+          <View style={styles.section}>
+            <WallpaperPicker />
+          </View>
+
+          {/* Section 5: Storage & Performance */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Storage & Performance</Text>
+            
+            <TouchableOpacity 
+              style={styles.clearCacheBtn}
+              onPress={() => {
+                Alert.alert(
+                  'Clear Cache',
+                  'This will clear all cached data including stored commentary. App will fetch fresh data on next load.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'Clear', 
+                      style: 'destructive',
+                      onPress: async () => {
+                        await clearAllCache();
+                        await cleanupOldCommentary(); // Clear commentary DB
+                        Alert.alert('Done', 'Cache and stored commentary cleared successfully!');
+                      }
+                    },
+                  ]
+                );
+              }}
+            >
+              <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+              <View style={styles.settingText}>
+                <Text style={styles.clearCacheTitle}>Clear Cache & Commentary</Text>
+                <Text style={styles.clearCacheDesc}>Free up storage (auto-clears old data every 3 days)</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Section 6: About */}
+          <View style={styles.section}>
+            <TouchableOpacity 
+              style={styles.aboutBtn}
+              onPress={() => router.push('/about')}
+              data-testid="about-btn"
+            >
+              <Ionicons name="information-circle-outline" size={22} color="#4CAF50" />
+              <View style={styles.settingText}>
+                <Text style={styles.aboutTitle}>About CricApp</Text>
+                <Text style={styles.aboutDesc}>App info, Version, Privacy & Terms</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#666" />
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  backBtn: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  content: {
+    flex: 1,
+    padding: 16,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFF',
+    marginBottom: 12,
+  },
+  getApiKeyBtn: {
+    backgroundColor: '#2196F3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    gap: 8,
+    alignSelf: 'center',
+    minWidth: '45%',
+    maxWidth: '55%',
+  },
+  getApiKeyText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  input: {
+    backgroundColor: '#1E1E1E',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 14,
+    color: '#FFF',
+    borderWidth: 1,
+    borderColor: '#333',
+    marginBottom: 12,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  statusText: {
+    color: '#4CAF50',
+    fontSize: 14,
+  },
+  saveBtn: {
+    backgroundColor: '#4CAF50',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 8,
+    marginBottom: 10,
+    alignSelf: 'center',
+    minWidth: '45%',
+    maxWidth: '55%',
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveBtnText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  removeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#F44336',
+  },
+  removeBtnText: {
+    color: '#F44336',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1E1E1E',
+    padding: 16,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  settingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  settingText: {
+    flex: 1,
+  },
+  settingTitle: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  settingDesc: {
+    color: '#888',
+    fontSize: 12,
+  },
+  notifInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(33, 150, 243, 0.1)',
+    padding: 14,
+    borderRadius: 10,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(33, 150, 243, 0.3)',
+  },
+  notifInfoText: {
+    flex: 1,
+    color: '#AAA',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  helpTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#1E1E1E',
+    padding: 16,
+    borderRadius: 10,
+    gap: 10,
+  },
+  helpText: {
+    flex: 1,
+    color: '#AAA',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  clearCacheBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E1E1E',
+    padding: 16,
+    borderRadius: 10,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 107, 0.3)',
+  },
+  clearCacheTitle: {
+    color: '#FF6B6B',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  clearCacheDesc: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  aboutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E1E1E',
+    padding: 16,
+    borderRadius: 10,
+    gap: 12,
+  },
+  aboutTitle: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  aboutDesc: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 2,
+  },
+});

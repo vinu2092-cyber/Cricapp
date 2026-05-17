@@ -1,42 +1,99 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
-    "version": "1.0.0",
+    "name": "CricApp",
+    "slug": "cric-app",
+    "version": "1.0.17",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "icon": "./assets/icon.png",
+    "scheme": "cricapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
+    "newArchEnabled": false,
+    "owner": "gemmiapps",
+    "extra": {
+      "privacyPolicyUrl": "https://docs.google.com/document/d/19XEkcDpBb-W2x6wZo0a23ygVw7BB1uuAZOacq_3U_u8/edit?usp=drivesdk",
+      "router": {},
+      "backendUrl": "https://live-cricket-35.preview.emergentagent.com",
+      "admob": {
+        "appId": "ca-app-pub-9675798593675825~2399929714",
+        "appOpenAdId": "ca-app-pub-9675798593675825/4826782503",
+        "bannerAdId": "ca-app-pub-9675798593675825/2958604357",
+        "interstitialAdId": "ca-app-pub-9675798593675825/8438724452",
+        "rewardedAdId": "ca-app-pub-9675798593675825/6702704058"
+      },
+      "eas": {
+        "projectId": "47d65cb3-f161-4591-bbd9-9d062e96ca5d"
+      }
+    },
+    "react-native-google-mobile-ads": {
+      "android_app_id": "ca-app-pub-9675798593675825~2399929714",
+      "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
+    },
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#E4DCC4"
     },
     "android": {
+      "versionCode": 17,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#f5f5dc"
       },
-      "edgeToEdgeEnabled": true
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "splash": {
+        "image": "./assets/icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#E4DCC4"
+      },
+      "package": "com.cricapp.live",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "com.google.android.gms.permission.AD_ID"
+      ]
     },
     "plugins": [
       "expo-router",
+      "expo-splash-screen",
+      "./plugins/withFloatingWidget",
       [
-        "expo-splash-screen",
+        "expo-build-properties",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#000"
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "minSdkVersion": 24,
+            "extraProguardRules": "-keep class com.google.android.gms.internal.consent_sdk.** { *; }"
+          }
         }
-      ]
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-9675798593675825~2399929714",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#4CAF50",
+          "defaultChannel": "match-alerts"
+        }
+      ],
+      "expo-asset",
+      "expo-font",
+      "expo-web-browser",
+      "@react-native-firebase/app",
+      "./plugins/withManifestFix"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.cricapp.live"
     }
   }
 }
