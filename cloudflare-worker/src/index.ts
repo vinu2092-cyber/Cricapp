@@ -191,12 +191,35 @@ export default {
       }, 200, origin, 'public, max-age=300');
     }
 
-    // ===== Proxy routes: /api/v1/cricbuzz/<rapid-path> =====
+    // ===== Proxy routes =====
+    //  (A) Explicit new path: /api/v1/cricbuzz/<rapid-path>  (used by v1.0.19+)
+    //  (B) Legacy path: anything else \u2014 forwarded straight through to RapidAPI.
+    //      This lets OLD apps (\u22641.0.18) auto-migrate to Cloudflare just by
+    //      swapping `api_host` in Firestore to this worker's domain. No app
+    //      rebuild required. Worker uses its OWN keys, ignores client keys.
     const PROXY_PREFIX = '/api/v1/cricbuzz';
-    if (!url.pathname.startsWith(PROXY_PREFIX)) {
+    let rapidPath: string;
+    if (url.pathname.startsWith(PROXY_PREFIX)) {
+      rapidPath = url.pathname.slice(PROXY_PREFIX.length) || '/';
+    } else if (
+      url.pathname.startsWith('/matches/') ||
+      url.pathname.startsWith('/mcenter/') ||
+      url.pathname.startsWith('/series/') ||
+      url.pathname.startsWith('/teams/') ||
+      url.pathname.startsWith('/players/') ||
+      url.pathname.startsWith('/stats/') ||
+      url.pathname.startsWith('/photos/') ||
+      url.pathname.startsWith('/news/') ||
+      url.pathname.startsWith('/schedule/') ||
+      url.pathname.startsWith('/venues/')
+    ) {
+      // Legacy direct RapidAPI-style path — worker acts as drop-in replacement
+      // so OLD app versions (<=1.0.18) can auto-migrate to Cloudflare via a
+      // single Firestore `api_host` swap. No app rebuild required.
+      rapidPath = url.pathname;
+    } else {
       return jsonResponse({ error: 'not_found', path: url.pathname }, 404, origin);
     }
-    const rapidPath = url.pathname.slice(PROXY_PREFIX.length) || '/';
     const ttl = getTTL(env, url.pathname);
 
     // Strip ?host before forwarding to RapidAPI

@@ -1,29 +1,35 @@
 /**
- * LiveInteractions — v1.0.17 (rev-8)
+ * LiveInteractions — v1.0.19
  *
- * Critical fixes per user directive 2026-05-17:
+ * Major chatroom redesign per user directive (2026-05-23):
  *
- *  1. CHAT NOT SHOWING — fixed at two layers:
- *     • Service: Firebase is now under a NAMED app (`cricapp-rtdb`) so it
- *       never collides with FirebaseKeyService's default app.
- *     • UI: every send does an OPTIMISTIC LOCAL ECHO — the bubble is
- *       inserted into the chat list synchronously. When the RTDB
- *       `onChildAdded` echo arrives, the local placeholder is deduped so
- *       there's no duplicate. Result: instant on-screen feedback even if
- *       the round-trip is slow.
+ *  A. Setup form: country picker REPLACED with **supporting-team picker**
+ *     (per-match). Avatar capsule renders team short-code on top and user
+ *     name on the bottom. Setup pops up every match because team mapping
+ *     changes per match.
  *
- *  2. RATE LIMIT 3 min → 2 min (`120_000` ms).
+ *  B. Online users split-screen: **Team 1 supporters on the LEFT column,
+ *     Team 2 supporters on the RIGHT column** — each scrollable.
  *
- *  3. ACTIVE USERS BAR — now a real horizontal `FlatList`
- *     (`showsHorizontalScrollIndicator={false}`) at the very top of the
- *     chat room, fed by `subscribeActiveUsers` with `.limitToLast(20)`.
- *     Tap any chip → throw popup with 8 items. The position of each chip
- *     is captured via `measureInWindow` so the Lottie / Animated burst
- *     lands on that exact avatar. After a hit, RTDB pushes the target to
- *     index 0 and the FlatList auto-scrolls back to the start so the
- *     freshly-hit user is always visible.
+ *  C. Recipient float-to-top: any user who *receives* an emoji floats to
+ *     the top of their team column via RTDB `lastEmojiAt` write.
+ *     Multiple receivers can be at the top simultaneously (4–5 visible).
+ *
+ *  D. **Live emoji flight**: when a throw event arrives, the chosen emoji
+ *     visibly flies from the sender's capsule position → receiver's
+ *     capsule position (700–900 ms arc), then bursts on the receiver.
+ *
+ *  E. Center area between the two columns shows a **live event feed**
+ *     mixing chat messages and throw events
+ *     ("Aman 🩴→ Babar", "Rohit: 'Hat-trick!'") in chronological order.
+ *
+ * Backward compat preserved:
+ *  – Existing throw burst (Lottie + EmojiBurst) untouched
+ *  – Stream flying reactions (bottom-up) untouched
+ *  – Rate limiting, AsyncStorage caching, FAB column unchanged
+ *  – Old RTDB documents without `team` field render as "neutral" capsules
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -56,28 +62,48 @@ import {
 } from '../services/ChatRTDB';
 
 let LottieView: any = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  LottieView = require('lottie-react-native').default;
-} catch {
-  LottieView = null;
+// Lottie only loads on native — web build uses dotlottie-react which is unsupported
+// The try-catch alone isn't enough for Metro which evaluates all requires statically
+// So we guard with Platform.OS check before the require
+if (Platform.OS !== 'web') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    LottieView = require('lottie-react-native').default;
+  } catch {
+    LottieView = null;
+  }
 }
 
-const LOTTIE_TOMATO = require('../../assets/lottie/tomato.json');
-const LOTTIE_EGG = require('../../assets/lottie/egg.json');
-const LOTTIE_CHAPPAL = require('../../assets/lottie/chappal.json');
+// Only attempt to load Lottie JSON on native platforms
+const LOTTIE_TOMATO = Platform.OS !== 'web' ? require('../../assets/lottie/tomato.json') : null;
+const LOTTIE_EGG = Platform.OS !== 'web' ? require('../../assets/lottie/egg.json') : null;
+const LOTTIE_CHAPPAL = Platform.OS !== 'web' ? require('../../assets/lottie/chappal.json') : null;
 
-const PROFILE_KEY = 'crickapp_chat_profile';
+// ============ STORAGE KEYS ============
+// v2 key namespace stores team-aware profile per match (since supporting
+// team is match-specific). The legacy v1 PROFILE_KEY is read for first-time
+// migration so returning users don't have to retype their name.
+const LEGACY_PROFILE_KEY = 'crickapp_chat_profile';
+const NAME_MEMORY_KEY = 'crickapp_chat_name_v2'; // remember chosen name across matches
+const PROFILE_KEY_FOR = (matchId: string) => `crickapp_chat_profile_v2_${matchId || 'global'}`;
 const USER_ID_KEY = 'crickapp_chat_user_id';
 const RATE_KEY = 'crickapp_chat_last_action';
-const MSG_CACHE_KEY = 'crickapp_chat_msgs_v2_'; // + matchId → survives back-nav
-const MAX_MSGS = 15; // ← v1.0.17 rev-9: keep last 15 chat bubbles
-const RATE_LIMIT_MS = 120_000; // ← v1.0.17 rev-8: 2 minutes
-const HEARTBEAT_MS = 60_000;    // ← v1.0.17 rev-9: 1-minute Firebase ↔ app presence sync
+const MSG_CACHE_KEY = 'crickapp_chat_msgs_v2_';
+const FEED_CACHE_KEY = 'crickapp_chat_feed_v3_';
+const MAX_MSGS = 15;
+const MAX_FEED = 25;
+const RATE_LIMIT_MS = 120_000;
+const HEARTBEAT_MS = 60_000;
+const EMOJI_FLIGHT_MS = 800;
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const COUNTRIES = ['🇮🇳', '🇵🇰', '🇧🇩', '🇱🇰', '🇦🇺', '🏴󠁧󠁢󠁥󠁮󠁧󠁿', '🇳🇿', '🇿🇦', '🇮🇪', '🇼🇸', '🇦🇫', '🇿🇼', '🌍'];
+// Team palette — kept theatre-bright so they read fast at a glance
+const TEAM1_COLOR = '#1976D2'; // royal blue
+const TEAM1_DARK = '#0D47A1';
+const TEAM2_COLOR = '#E64A19'; // deep orange
+const TEAM2_DARK = '#BF360C';
+const NEUTRAL_COLOR = '#616161';
 
 // Live Reactions pills
 const REACTION_PILLS: { txt: string; flying: string }[] = [
@@ -129,6 +155,16 @@ function teamNameToFlag(name?: string): string {
   return '🏳️';
 }
 
+function shortenTeamName(full?: string, short?: string): string {
+  if (short && short.trim()) return short.trim().toUpperCase().slice(0, 4);
+  if (full && full.trim()) {
+    const words = full.trim().split(/\s+/);
+    if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+    return words.map(w => w[0]).join('').slice(0, 4).toUpperCase();
+  }
+  return '?';
+}
+
 function genUserId(): string {
   return 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -141,39 +177,67 @@ function showToast(msg: string) {
   }
 }
 
-interface Props { matchId: string; team1?: string; team2?: string; team1Short?: string; team2Short?: string }
-interface Profile { name: string; country: string }
+// ============ TYPES ============
+interface Props {
+  matchId: string;
+  team1?: string;
+  team2?: string;
+  team1Short?: string;
+  team2Short?: string;
+}
 
+interface Profile { name: string; team: '1' | '2'; country: string }
+
+type FeedEvent =
+  | { kind: 'msg'; id: string; time: number; name: string; country: string; team?: '1' | '2'; msg: string }
+  | { kind: 'throw'; id: string; time: number; from: string; to: string; fromTeam?: '1' | '2'; toTeam?: '1' | '2'; action: string };
+
+type PendingAction =
+  | null
+  | 'chat'
+  | { kind: 'sendMsg'; msg: string }
+  | { kind: 'throw'; target: ActiveUser; action: string };
+
+interface ChipBox { x: number; y: number; w: number; h: number }
+interface FlightItem { id: string; from: ChipBox; to: ChipBox; emoji: string }
+
+// ============ MAIN COMPONENT ============
 const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, team2Short }) => {
   const [activePanel, setActivePanel] = useState<'reactions' | 'chat' | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [userId, setUserId] = useState<string>('');
+  const [_userId, setUserId] = useState<string>('');
   const userIdRef = useRef<string>('');
   const [showSetup, setShowSetup] = useState(false);
-  const [pendingAfter, setPendingAfter] = useState<null | 'chat' | { kind: 'sendMsg'; msg: string } | { kind: 'throw'; target: ActiveUser; action: string }>(null);
+  const [pendingAfter, setPendingAfter] = useState<PendingAction>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
   const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
   const [throwTarget, setThrowTarget] = useState<ActiveUser | null>(null);
 
   const [flying, setFlying] = useState<{ id: string; e: string; dur: number; lane: number }[]>([]);
   const [activeThrows, setActiveThrows] = useState<{ id: string; t: ThrowEvent }[]>([]);
+  const [flights, setFlights] = useState<FlightItem[]>([]);
 
-  const prevTopRef = useRef<string>('');
-  const userPositionsRef = useRef<Record<string, { x: number; y: number; w: number; h: number }>>({});
+  const userPositionsRef = useRef<Record<string, ChipBox>>({});
   const chipRefsMap = useRef<Record<string, View | null>>({});
-  const msgScrollRef = useRef<ScrollView | null>(null);
-  const activeListRef = useRef<FlatList<ActiveUser> | null>(null);
+  const team1ListRef = useRef<FlatList<ActiveUser> | null>(null);
+  const team2ListRef = useRef<FlatList<ActiveUser> | null>(null);
+  const feedScrollRef = useRef<ScrollView | null>(null);
   const lastActionRef = useRef<number>(0);
+  const dedupeFeedIds = useRef<Set<string>>(new Set());
 
-  // ============ Load profile + userId + last-action ============
+  // ============ Initial load: userId, profile (per-match), legacy migration ============
   useEffect(() => {
+    if (!matchId) return;
     (async () => {
       try {
-        const [rawP, rawId, rawLast] = await Promise.all([
-          AsyncStorage.getItem(PROFILE_KEY),
+        const [rawProfPerMatch, rawId, rawLast, rawNameMem, rawLegacyProf] = await Promise.all([
+          AsyncStorage.getItem(PROFILE_KEY_FOR(matchId)),
           AsyncStorage.getItem(USER_ID_KEY),
           AsyncStorage.getItem(RATE_KEY),
+          AsyncStorage.getItem(NAME_MEMORY_KEY),
+          AsyncStorage.getItem(LEGACY_PROFILE_KEY),
         ]);
         let uid = rawId;
         if (!uid) {
@@ -182,17 +246,31 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
         }
         userIdRef.current = uid;
         setUserId(uid);
-        if (rawP) {
-          const p = JSON.parse(rawP);
-          if (p && p.name) setProfile(p);
+
+        // Per-match profile (preferred)
+        if (rawProfPerMatch) {
+          const p = JSON.parse(rawProfPerMatch);
+          if (p && p.name && (p.team === '1' || p.team === '2')) {
+            setProfile({ name: p.name, team: p.team, country: p.country || '🏳️' });
+          }
+        }
+        // Name memory (if no per-match profile, keep their name pre-filled)
+        if (!rawProfPerMatch && rawNameMem) {
+          // Do not set profile yet — team must be picked for THIS match
+        } else if (!rawProfPerMatch && rawLegacyProf) {
+          // Legacy v1 profile (name+country) — keep the name memorised
+          try {
+            const lp = JSON.parse(rawLegacyProf);
+            if (lp?.name) AsyncStorage.setItem(NAME_MEMORY_KEY, lp.name).catch(() => {});
+          } catch {}
         }
         if (rawLast) lastActionRef.current = parseInt(rawLast) || 0;
       } catch {}
     })();
-  }, []);
+  }, [matchId]);
 
   // ============ Predictive cricket pills (dynamic team flags + short names) ============
-  const chatPills = React.useMemo<string[]>(() => {
+  const chatPills = useMemo<string[]>(() => {
     const f1 = teamNameToFlag(team1 || team1Short);
     const f2 = teamNameToFlag(team2 || team2Short);
     const s1 = (team1Short || '').trim();
@@ -211,7 +289,7 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
     ];
   }, [team1, team2, team1Short, team2Short]);
 
-  // ============ Flying-emoji listener (always) ============
+  // ============ Flying-emoji listener (stream reactions, always-on) ============
   useEffect(() => {
     if (!matchId) return;
     const joined = Date.now();
@@ -222,80 +300,126 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
     return () => { try { unsub(); } catch {} };
   }, [matchId]);
 
-  // ============ Throws listener (always) ============
+  // ============ Throws listener (always-on) — schedules flight + burst ============
   useEffect(() => {
     if (!matchId) return;
     const joined = Date.now();
     const unsub = subscribeThrows(matchId, (t) => {
       if (t.time && t.time < joined - 8000) return;
-      const id = `throw_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      // capture latest position of target chip before the burst plays
-      const ref = chipRefsMap.current[t.toId];
-      if (ref && (ref as any).measureInWindow) {
-        (ref as any).measureInWindow((x: number, y: number, w: number, h: number) => {
-          userPositionsRef.current[t.toId] = { x, y, w, h };
-          setActiveThrows((cur) => [...cur, { id, t }]);
-        });
+
+      // Dedupe: same id can fire twice in some bad-network cases
+      const eventId = `throw_${t.id}`;
+      if (dedupeFeedIds.current.has(eventId)) return;
+      dedupeFeedIds.current.add(eventId);
+
+      // Push to combined live feed
+      setFeedEvents((cur) => {
+        const next: FeedEvent[] = [...cur, {
+          kind: 'throw' as const, id: eventId, time: t.time || Date.now(),
+          from: t.from, to: t.to, fromTeam: t.fromTeam, toTeam: t.toTeam, action: t.action,
+        }].slice(-MAX_FEED);
+        return next;
+      });
+      setTimeout(() => { try { feedScrollRef.current?.scrollToEnd({ animated: true }); } catch {} }, 50);
+
+      // ===== EMOJI FLIGHT (sender → receiver) =====
+      const senderBox = userPositionsRef.current[t.fromId];
+      const receiverBox = userPositionsRef.current[t.toId];
+      const flightId = `flight_${t.id}_${Math.random().toString(36).slice(2, 6)}`;
+      if (senderBox && receiverBox) {
+        setFlights((cur) => [...cur, { id: flightId, from: senderBox, to: receiverBox, emoji: t.action }]);
+        // After flight, schedule the burst at receiver
+        setTimeout(() => {
+          setFlights((cur) => cur.filter((f) => f.id !== flightId));
+          scheduleBurst(t);
+        }, EMOJI_FLIGHT_MS);
+      } else if (receiverBox) {
+        // Sender not in view (e.g. user scrolled away) — flight from edge
+        const fromTeam = inferSenderTeam(t);
+        const startX = fromTeam === '2' ? SCREEN_W + 40 : -40;
+        const startY = receiverBox.y;
+        setFlights((cur) => [...cur, {
+          id: flightId,
+          from: { x: startX, y: startY, w: 40, h: 40 },
+          to: receiverBox,
+          emoji: t.action,
+        }]);
+        setTimeout(() => {
+          setFlights((cur) => cur.filter((f) => f.id !== flightId));
+          scheduleBurst(t);
+        }, EMOJI_FLIGHT_MS);
       } else {
-        setActiveThrows((cur) => [...cur, { id, t }]);
+        // No receiver position either — just burst at fallback center
+        scheduleBurst(t);
       }
-      setTimeout(() => setActiveThrows((cur) => cur.filter((x) => x.id !== id)), 1800);
     });
     return () => { try { unsub(); } catch {} };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
-  // ============ Active users (when chat is open) ============
+  function inferSenderTeam(t: ThrowEvent): '1' | '2' | undefined {
+    if (t.fromTeam) return t.fromTeam;
+    // Try to infer from active users list
+    const sender = activeUsers.find((u) => u.id === t.fromId);
+    return sender?.team;
+  }
+
+  function scheduleBurst(t: ThrowEvent) {
+    const id = `burst_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    setActiveThrows((cur) => [...cur, { id, t }]);
+    setTimeout(() => setActiveThrows((cur) => cur.filter((x) => x.id !== id)), 1800);
+  }
+
+  // ============ Active users + presence ============
   useEffect(() => {
     if (activePanel !== 'chat' || !matchId) return;
     if (profile && userIdRef.current) {
-      touchUser(matchId, userIdRef.current, profile.name, profile.country);
+      touchUser(matchId, userIdRef.current, profile.name, profile.country, profile.team);
     }
     const unsub = subscribeActiveUsers(matchId, (users) => setActiveUsers(users));
     const heartbeat = setInterval(() => {
       if (profile && userIdRef.current) {
-        touchUser(matchId, userIdRef.current, profile.name, profile.country);
+        touchUser(matchId, userIdRef.current, profile.name, profile.country, profile.team);
       }
     }, HEARTBEAT_MS);
     return () => { try { unsub(); } catch {} ; clearInterval(heartbeat); };
   }, [activePanel, matchId, profile]);
 
-  // ============ Scroll FlatList back to index 0 when top user changes (hit) ============
-  useEffect(() => {
-    const topId = activeUsers[0]?.id || '';
-    if (topId && topId !== prevTopRef.current) {
-      prevTopRef.current = topId;
-      try { activeListRef.current?.scrollToOffset({ offset: 0, animated: true }); } catch {}
-    }
-  }, [activeUsers]);
-
-  // ============ Chat messages subscribe — with persistence + dedupe vs optimistic echo ============
-  // Load cached messages on mount so chat survives navigation (back → re-enter screen).
+  // ============ Chat messages — load cached, subscribe, persist, push to combined feed ============
   useEffect(() => {
     if (!matchId) return;
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(MSG_CACHE_KEY + matchId);
+        const [raw, rawFeed] = await Promise.all([
+          AsyncStorage.getItem(MSG_CACHE_KEY + matchId),
+          AsyncStorage.getItem(FEED_CACHE_KEY + matchId),
+        ]);
         if (raw) {
           const arr = JSON.parse(raw);
           if (Array.isArray(arr) && arr.length) setMessages(arr.slice(-MAX_MSGS));
+        }
+        if (rawFeed) {
+          const arr = JSON.parse(rawFeed);
+          if (Array.isArray(arr) && arr.length) setFeedEvents(arr.slice(-MAX_FEED));
         }
       } catch {}
     })();
   }, [matchId]);
 
-  // Persist messages whenever they change.
   useEffect(() => {
     if (!matchId || messages.length === 0) return;
     AsyncStorage.setItem(MSG_CACHE_KEY + matchId, JSON.stringify(messages.slice(-MAX_MSGS))).catch(() => {});
   }, [messages, matchId]);
 
   useEffect(() => {
+    if (!matchId || feedEvents.length === 0) return;
+    AsyncStorage.setItem(FEED_CACHE_KEY + matchId, JSON.stringify(feedEvents.slice(-MAX_FEED))).catch(() => {});
+  }, [feedEvents, matchId]);
+
+  useEffect(() => {
     if (activePanel !== 'chat' || !matchId) return;
-    // NOTE: do NOT reset state — keeps the bubbles visible across panel toggles
-    //       and across full screen navigations (cache already restored above).
     const unsub = subscribeMessages(matchId, (m) => {
       setMessages((prev) => {
-        // De-duplicate against any optimistic local echo (same name+country+msg)
         const isMine = profile && m.name === profile.name && m.country === profile.country;
         let filtered = prev;
         if (isMine) {
@@ -303,15 +427,41 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
             !(p.id.startsWith('local_') && p.name === m.name && p.country === m.country && p.msg === m.msg)
           );
         }
-        // Also dedupe by RTDB key (in case subscribe fires twice for same id)
         if (filtered.some((p) => p.id === m.id)) return filtered;
-        const next = [...filtered, m].slice(-MAX_MSGS);
-        return next;
+        return [...filtered, m].slice(-MAX_MSGS);
       });
-      setTimeout(() => { try { msgScrollRef.current?.scrollToEnd({ animated: true }); } catch {} }, 50);
+      // Push to combined feed (dedupe by id)
+      setFeedEvents((cur) => {
+        const fid = `msg_${m.id}`;
+        if (dedupeFeedIds.current.has(fid)) return cur;
+        dedupeFeedIds.current.add(fid);
+        return [...cur, {
+          kind: 'msg' as const, id: fid, time: m.time, name: m.name, country: m.country,
+          team: (m as any).team as '1' | '2' | undefined, msg: m.msg,
+        }].slice(-MAX_FEED);
+      });
+      setTimeout(() => { try { feedScrollRef.current?.scrollToEnd({ animated: true }); } catch {} }, 50);
     });
     return () => { try { unsub(); } catch {} };
   }, [activePanel, matchId, profile]);
+
+  // ============ Auto-scroll team lists to top when their top user changes ============
+  const team1Users = useMemo(() => activeUsers.filter((u) => u.team === '1'), [activeUsers]);
+  const team2Users = useMemo(() => activeUsers.filter((u) => u.team === '2'), [activeUsers]);
+  const prevTop1 = useRef<string>('');
+  const prevTop2 = useRef<string>('');
+  useEffect(() => {
+    const top1 = team1Users[0]?.id || '';
+    if (top1 && top1 !== prevTop1.current) {
+      prevTop1.current = top1;
+      try { team1ListRef.current?.scrollToOffset({ offset: 0, animated: true }); } catch {}
+    }
+    const top2 = team2Users[0]?.id || '';
+    if (top2 && top2 !== prevTop2.current) {
+      prevTop2.current = top2;
+      try { team2ListRef.current?.scrollToOffset({ offset: 0, animated: true }); } catch {}
+    }
+  }, [team1Users, team2Users]);
 
   // ============ Helpers ============
   function spawnFlying(label: string) {
@@ -348,12 +498,15 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
     AsyncStorage.setItem(RATE_KEY, String(now)).catch(() => {});
   }
 
-  function saveProfile(name: string, country: string) {
+  function saveProfile(name: string, team: '1' | '2') {
     const cleaned = name.replace(/[^a-zA-Z0-9_ ]/g, '').slice(0, 12).trim();
     if (!cleaned) return;
-    const p: Profile = { name: cleaned, country: country || '🌍' };
+    // country derived from team flag for backward compat & sender-name display
+    const teamFlag = teamNameToFlag(team === '1' ? (team1 || team1Short) : (team2 || team2Short));
+    const p: Profile = { name: cleaned, team, country: teamFlag };
     setProfile(p);
-    AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(p)).catch(() => {});
+    AsyncStorage.setItem(PROFILE_KEY_FOR(matchId), JSON.stringify(p)).catch(() => {});
+    AsyncStorage.setItem(NAME_MEMORY_KEY, cleaned).catch(() => {});
     setShowSetup(false);
 
     const uid = ensureUserId();
@@ -368,8 +521,8 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
       } else if (pendingAfter.kind === 'throw') {
         if (checkRate()) {
           sendThrow(matchId, {
-            from: `${p.country} ${p.name}`, fromId: uid,
-            to: `${pendingAfter.target.country} ${pendingAfter.target.name}`, toId: pendingAfter.target.id,
+            from: `${p.country} ${p.name}`, fromId: uid, fromTeam: p.team,
+            to: `${pendingAfter.target.country} ${pendingAfter.target.name}`, toId: pendingAfter.target.id, toTeam: pendingAfter.target.team,
             action: pendingAfter.action,
           });
           markRate();
@@ -379,15 +532,17 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
     setPendingAfter(null);
   }
 
-  /** Optimistic local echo + RTDB push — fixes the "message never appears" bug. */
   function pushLocalAndSend(p: Profile, uid: string, msg: string) {
     const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
     const localMsg: ChatMessage = {
       id: localId, name: p.name, country: p.country, msg, time: Date.now(),
     };
     setMessages((prev) => [...prev, localMsg].slice(-MAX_MSGS));
-    setTimeout(() => { try { msgScrollRef.current?.scrollToEnd({ animated: true }); } catch {} }, 30);
-    sendMessage(matchId, { name: p.name, country: p.country, msg, userId: uid });
+    setFeedEvents((cur) => [...cur, {
+      kind: 'msg' as const, id: `msg_${localId}`, time: localMsg.time, name: p.name, country: p.country, team: p.team, msg,
+    }].slice(-MAX_FEED));
+    setTimeout(() => { try { feedScrollRef.current?.scrollToEnd({ animated: true }); } catch {} }, 30);
+    sendMessage(matchId, { name: p.name, country: p.country, msg, userId: uid, team: p.team });
   }
 
   function openReactions() { setActivePanel((c) => (c === 'reactions' ? null : 'reactions')); }
@@ -418,14 +573,46 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
     }
     if (!checkRate()) { setThrowTarget(null); return; }
     const uid = ensureUserId();
+    // Optimistic flight: animate from self capsule → target capsule immediately
+    const senderBox = userPositionsRef.current[uid];
+    const receiverBox = userPositionsRef.current[target.id];
+    if (senderBox && receiverBox) {
+      const flightId = `flight_optim_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      setFlights((cur) => [...cur, { id: flightId, from: senderBox, to: receiverBox, emoji: action }]);
+      setTimeout(() => setFlights((cur) => cur.filter((f) => f.id !== flightId)), EMOJI_FLIGHT_MS);
+    }
     sendThrow(matchId, {
-      from: `${profile.country} ${profile.name}`, fromId: uid,
-      to: `${target.country} ${target.name}`, toId: target.id,
+      from: `${profile.country} ${profile.name}`, fromId: uid, fromTeam: profile.team,
+      to: `${target.country} ${target.name}`, toId: target.id, toTeam: target.team,
       action,
     });
     markRate();
     setThrowTarget(null);
   }
+
+  function captureChipPosition(userId: string) {
+    const refEl: any = chipRefsMap.current[userId];
+    if (refEl?.measureInWindow) {
+      refEl.measureInWindow((x: number, y: number, w: number, h: number) => {
+        userPositionsRef.current[userId] = { x, y, w, h };
+      });
+    }
+  }
+
+  // ============ Build display lists (include SELF for instant feedback) ============
+  const team1WithSelf = useMemo(() => {
+    if (profile?.team !== '1' || !userIdRef.current) return team1Users;
+    if (team1Users.some((u) => u.id === userIdRef.current)) return team1Users;
+    return [{ id: userIdRef.current, name: profile.name, country: profile.country, lastActionTime: Date.now(), team: '1' as const }, ...team1Users];
+  }, [team1Users, profile]);
+  const team2WithSelf = useMemo(() => {
+    if (profile?.team !== '2' || !userIdRef.current) return team2Users;
+    if (team2Users.some((u) => u.id === userIdRef.current)) return team2Users;
+    return [{ id: userIdRef.current, name: profile.name, country: profile.country, lastActionTime: Date.now(), team: '2' as const }, ...team2Users];
+  }, [team2Users, profile]);
+
+  const t1Short = shortenTeamName(team1, team1Short);
+  const t2Short = shortenTeamName(team2, team2Short);
 
   // ============ RENDER ============
   return (
@@ -472,89 +659,100 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
         </View>
       )}
 
-      {/* Chat Room */}
+      {/* Chat Room — split-team layout */}
       {activePanel === 'chat' && (
         <View style={styles.chatDock} data-testid="chat-panel">
-          {/* ─── Horizontal Active Users FlatList (limitToLast 20) ─── */}
-          {/* Always inject SELF locally so user sees their own chip instantly
-              even before RTDB roundtrip / when truly alone in the room. */}
-          <View style={styles.activeBar}>
-            <FlatList
-              ref={activeListRef}
-              data={(() => {
-                const hasSelf = activeUsers.some((u) => u.id === userIdRef.current);
-                if (!hasSelf && profile && userIdRef.current) {
-                  return [
-                    { id: userIdRef.current, name: profile.name, country: profile.country, lastActionTime: Date.now() } as ActiveUser,
-                    ...activeUsers,
-                  ];
-                }
-                return activeUsers;
-              })()}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(u) => u.id}
-              contentContainerStyle={styles.activeBarContent}
-              renderItem={({ item, index }) => {
-                const isSelf = item.id === userIdRef.current;
-                return (
-                  <TouchableOpacity
-                    ref={(r) => { chipRefsMap.current[item.id] = r; }}
-                    onPress={() => {
-                      if (isSelf) return;
-                      // capture absolute window position right before opening popup
-                      const refEl: any = chipRefsMap.current[item.id];
-                      if (refEl?.measureInWindow) {
-                        refEl.measureInWindow((x: number, y: number, w: number, h: number) => {
-                          userPositionsRef.current[item.id] = { x, y, w, h };
-                        });
-                      }
-                      setThrowTarget(item);
-                    }}
-                    onLayout={() => {
-                      const refEl: any = chipRefsMap.current[item.id];
-                      if (refEl?.measureInWindow) {
-                        refEl.measureInWindow((x: number, y: number, w: number, h: number) => {
-                          userPositionsRef.current[item.id] = { x, y, w, h };
-                        });
-                      }
-                    }}
-                    activeOpacity={isSelf ? 1 : 0.7}
-                    style={[styles.activeChip, isSelf && styles.activeChipSelf, index === 0 && styles.activeChipTop]}
-                    data-testid={`active-user-${item.id}`}
-                  >
-                    {index === 0 && !isSelf && <Text style={styles.activeRank}>🥇</Text>}
-                    <Text style={styles.activeFlag}>{item.country}</Text>
-                    <Text style={styles.activeName} numberOfLines={1}>{item.name}</Text>
-                  </TouchableOpacity>
-                );
-              }}
-            />
+          {/* ── Team headers ── */}
+          <View style={styles.teamHeadersRow}>
+            <View style={[styles.teamHeaderChip, { backgroundColor: TEAM1_COLOR }]}>
+              <Text style={styles.teamHeaderTxt}>{teamNameToFlag(team1 || team1Short)} {t1Short}</Text>
+              <Text style={styles.teamHeaderSub}>{team1WithSelf.length} online</Text>
+            </View>
+            <View style={styles.vsBadge}><Text style={styles.vsTxt}>VS</Text></View>
+            <View style={[styles.teamHeaderChip, { backgroundColor: TEAM2_COLOR }]}>
+              <Text style={styles.teamHeaderTxt}>{teamNameToFlag(team2 || team2Short)} {t2Short}</Text>
+              <Text style={styles.teamHeaderSub}>{team2WithSelf.length} online</Text>
+            </View>
           </View>
 
-          {/* Messages — newest at bottom */}
-          <ScrollView
-            ref={msgScrollRef}
-            style={styles.msgScroll}
-            contentContainerStyle={styles.msgScrollContent}
-            onContentSizeChange={() => { try { msgScrollRef.current?.scrollToEnd({ animated: false }); } catch {} }}
-            showsVerticalScrollIndicator={false}
-          >
-            {messages.map((m, idx) => {
-              const isPending = m.id.startsWith('local_');
-              return (
-                <View key={m.id + idx} style={[styles.bubble, styles.bubbleLeft]}
-                      data-testid={`chat-msg-${idx}`}>
-                  <Text style={styles.bubbleHeader}>{m.country} {m.name}</Text>
-                  <Text style={styles.bubbleMsg}>
-                    {m.msg}{isPending ? ' ⏳' : ''}
-                  </Text>
-                </View>
-              );
-            })}
-          </ScrollView>
+          {/* ── Two-column user lists ── */}
+          <View style={styles.usersSplit}>
+            <View style={styles.teamCol}>
+              <FlatList
+                ref={team1ListRef}
+                data={team1WithSelf}
+                keyExtractor={(u) => u.id}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.teamColContent}
+                renderItem={({ item, index }) => (
+                  <UserCapsule
+                    user={item}
+                    teamShort={t1Short}
+                    teamColor={TEAM1_COLOR}
+                    teamDark={TEAM1_DARK}
+                    isSelf={item.id === userIdRef.current}
+                    isTop={index === 0}
+                    onPress={() => {
+                      if (item.id === userIdRef.current) return;
+                      captureChipPosition(item.id);
+                      setThrowTarget(item);
+                    }}
+                    onMount={(view) => { chipRefsMap.current[item.id] = view; captureChipPosition(item.id); }}
+                  />
+                )}
+                ListEmptyComponent={<Text style={styles.colEmpty}>No supporters yet</Text>}
+              />
+            </View>
+            <View style={styles.splitDivider} />
+            <View style={styles.teamCol}>
+              <FlatList
+                ref={team2ListRef}
+                data={team2WithSelf}
+                keyExtractor={(u) => u.id}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.teamColContent}
+                renderItem={({ item, index }) => (
+                  <UserCapsule
+                    user={item}
+                    teamShort={t2Short}
+                    teamColor={TEAM2_COLOR}
+                    teamDark={TEAM2_DARK}
+                    isSelf={item.id === userIdRef.current}
+                    isTop={index === 0}
+                    onPress={() => {
+                      if (item.id === userIdRef.current) return;
+                      captureChipPosition(item.id);
+                      setThrowTarget(item);
+                    }}
+                    onMount={(view) => { chipRefsMap.current[item.id] = view; captureChipPosition(item.id); }}
+                  />
+                )}
+                ListEmptyComponent={<Text style={styles.colEmpty}>No supporters yet</Text>}
+              />
+            </View>
+          </View>
 
-          {/* Predictive cricket pill phrases */}
+          {/* ── Center live feed ── */}
+          <View style={styles.feedWrap}>
+            <Text style={styles.feedTitle}>💬 Live Feed</Text>
+            <ScrollView
+              ref={feedScrollRef}
+              style={styles.feedScroll}
+              contentContainerStyle={styles.feedScrollContent}
+              onContentSizeChange={() => { try { feedScrollRef.current?.scrollToEnd({ animated: false }); } catch {} }}
+              showsVerticalScrollIndicator={false}
+            >
+              {feedEvents.length === 0 ? (
+                <Text style={styles.feedEmpty}>Tap a user → throw emoji • Tap a pill → send message</Text>
+              ) : (
+                feedEvents.map((e) => (
+                  <FeedRow key={e.id} event={e} t1Color={TEAM1_COLOR} t2Color={TEAM2_COLOR} />
+                ))
+              )}
+            </ScrollView>
+          </View>
+
+          {/* ── Predictive pills ── */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -575,10 +773,17 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
 
       {/* Profile Setup */}
       <Modal visible={showSetup} transparent animationType="fade" onRequestClose={() => setShowSetup(false)}>
-        <SetupForm onCancel={() => { setShowSetup(false); setPendingAfter(null); }} onSave={saveProfile} />
+        <SetupForm
+          onCancel={() => { setShowSetup(false); setPendingAfter(null); }}
+          onSave={saveProfile}
+          team1Label={team1 || team1Short || 'Team 1'}
+          team2Label={team2 || team2Short || 'Team 2'}
+          team1Short={t1Short}
+          team2Short={t2Short}
+        />
       </Modal>
 
-      {/* Throw Picker — 8 items */}
+      {/* Throw Picker */}
       <Modal visible={!!throwTarget} transparent animationType="fade" onRequestClose={() => setThrowTarget(null)}>
         <TouchableOpacity activeOpacity={1} onPress={() => setThrowTarget(null)} style={styles.modalBg}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.throwBox}>
@@ -593,19 +798,26 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={styles.throwHint}>Jumps to #1 in the active list when hit 🎯</Text>
+            <Text style={styles.throwHint}>Jumps to #1 in their team column when hit 🎯</Text>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
-      {/* Flying overlay */}
+      {/* Flying stream reactions overlay */}
       <View style={styles.flyOverlay} pointerEvents="none">
         {flying.map((f) => (
           <FlyingLabel key={f.id} label={f.e} duration={f.dur} lane={f.lane} />
         ))}
       </View>
 
-      {/* Throw bursts */}
+      {/* Live emoji flights (sender → receiver) */}
+      <View style={styles.flightOverlay} pointerEvents="none">
+        {flights.map((fl) => (
+          <EmojiFlight key={fl.id} from={fl.from} to={fl.to} emoji={fl.emoji} />
+        ))}
+      </View>
+
+      {/* Throw bursts on receiver */}
       <View style={styles.throwOverlay} pointerEvents="none">
         {activeThrows.map(({ id, t }) => (
           <ThrowBurst
@@ -620,15 +832,148 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
   );
 };
 
-// ─── SETUP FORM ─────────────────────────────────────────────────
-const SetupForm: React.FC<{ onCancel: () => void; onSave: (name: string, country: string) => void }> = ({ onCancel, onSave }) => {
+// ─── USER CAPSULE ───────────────────────────────────────────────
+interface UserCapsuleProps {
+  user: ActiveUser;
+  teamShort: string;
+  teamColor: string;
+  teamDark: string;
+  isSelf: boolean;
+  isTop: boolean;
+  onPress: () => void;
+  onMount: (view: View | null) => void;
+}
+const UserCapsule: React.FC<UserCapsuleProps> = ({ user, teamShort, teamColor, teamDark, isSelf, isTop, onPress, onMount }) => {
+  // gentle pulse when promoted to top spot
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!isTop) return;
+    pulse.setValue(0);
+    Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 250, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 300, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [isTop, user.id]);
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        ref={onMount as any}
+        onPress={onPress}
+        activeOpacity={isSelf ? 1 : 0.7}
+        onLayout={() => onMount(null /* re-measure trigger */)}
+        style={[
+          styles.capsule,
+          { borderColor: isTop ? '#FFD54F' : teamDark, borderWidth: isTop ? 2 : 1, backgroundColor: teamDark + 'AA' },
+          isSelf && styles.capsuleSelf,
+        ]}
+      >
+        {isTop && <View style={styles.topBadge}><Text style={styles.topBadgeTxt}>🔥</Text></View>}
+        <View style={[styles.capsuleAvatar, { backgroundColor: teamColor }]}>
+          <Text style={styles.capsuleTeamTxt} numberOfLines={1}>{teamShort}</Text>
+        </View>
+        <Text style={styles.capsuleName} numberOfLines={1}>{user.name}</Text>
+        {isSelf && <Text style={styles.capsuleSelfBadge}>YOU</Text>}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+// ─── FEED ROW (chat msg or throw event) ──────────────────────────
+const FeedRow: React.FC<{ event: FeedEvent; t1Color: string; t2Color: string }> = ({ event, t1Color, t2Color }) => {
+  if (event.kind === 'throw') {
+    const fromColor = event.fromTeam === '1' ? t1Color : event.fromTeam === '2' ? t2Color : NEUTRAL_COLOR;
+    const toColor = event.toTeam === '1' ? t1Color : event.toTeam === '2' ? t2Color : NEUTRAL_COLOR;
+    return (
+      <View style={styles.feedRow}>
+        <Text style={styles.feedEmojiBig}>{event.action}</Text>
+        <Text style={[styles.feedActor, { color: fromColor }]} numberOfLines={1}>{event.from}</Text>
+        <Text style={styles.feedArrow}>→</Text>
+        <Text style={[styles.feedActor, { color: toColor }]} numberOfLines={1}>{event.to}</Text>
+      </View>
+    );
+  }
+  const color = event.team === '1' ? t1Color : event.team === '2' ? t2Color : '#1B5E20';
+  return (
+    <View style={styles.feedRowMsg}>
+      <Text style={[styles.feedMsgHeader, { color }]} numberOfLines={1}>{event.country} {event.name}</Text>
+      <Text style={styles.feedMsgTxt} numberOfLines={2}>{event.msg}</Text>
+    </View>
+  );
+};
+
+// ─── EMOJI FLIGHT (sender → receiver visible arc) ────────────────
+const EmojiFlight: React.FC<{ from: ChipBox; to: ChipBox; emoji: string }> = ({ from, to, emoji }) => {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: EMOJI_FLIGHT_MS,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  // Start centre of sender's capsule
+  const startX = from.x + from.w / 2;
+  const startY = from.y + from.h / 2;
+  const endX = to.x + to.w / 2;
+  const endY = to.y + to.h / 2;
+  const arcHeight = -(60 + Math.abs(endX - startX) * 0.25);
+
+  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [startX, endX] });
+  // Parabolic arc: peak at progress=0.5
+  const translateY = progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [startY, (startY + endY) / 2 + arcHeight, endY],
+  });
+  const scale = progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.4, 1.6] });
+  const rotate = progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const opacity = progress.interpolate({ inputRange: [0, 0.85, 1], outputRange: [1, 1, 0.4] });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: -16, top: -16,
+        width: 32, height: 32,
+        alignItems: 'center', justifyContent: 'center',
+        transform: [{ translateX }, { translateY }, { scale }, { rotate }],
+        opacity,
+      }}
+    >
+      <Text style={{ fontSize: 26 }}>{emoji}</Text>
+    </Animated.View>
+  );
+};
+
+// ─── SETUP FORM (team selection per match) ───────────────────────
+interface SetupFormProps {
+  onCancel: () => void;
+  onSave: (name: string, team: '1' | '2') => void;
+  team1Label: string;
+  team2Label: string;
+  team1Short: string;
+  team2Short: string;
+}
+const SetupForm: React.FC<SetupFormProps> = ({ onCancel, onSave, team1Label, team2Label, team1Short, team2Short }) => {
   const [name, setName] = useState('');
-  const [country, setCountry] = useState('🇮🇳');
+  const [team, setTeam] = useState<'1' | '2' | null>(null);
+
+  // Prefill name from memory
+  useEffect(() => {
+    AsyncStorage.getItem(NAME_MEMORY_KEY).then((n) => { if (n) setName(n); }).catch(() => {});
+  }, []);
+
+  const canSave = !!name.trim() && (team === '1' || team === '2');
+
   return (
     <View style={styles.modalBg}>
       <View style={styles.setupBox}>
-        <Text style={styles.setupTitle}>Join Chat Room</Text>
-        <Text style={styles.setupHint}>Pick a name (max 12, letters/numbers only)</Text>
+        <Text style={styles.setupTitle}>Join the chat</Text>
+        <Text style={styles.setupHint}>Pick your name (max 12, letters/numbers only)</Text>
         <TextInput
           value={name}
           onChangeText={(t) => setName(t.replace(/[^a-zA-Z0-9_ ]/g, '').slice(0, 12))}
@@ -637,20 +982,49 @@ const SetupForm: React.FC<{ onCancel: () => void; onSave: (name: string, country
           maxLength={12}
           style={styles.nameInput}
         />
-        <Text style={[styles.setupHint, { marginTop: 12 }]}>Choose your flag</Text>
-        <View style={styles.flagsWrap}>
-          {COUNTRIES.map((c) => (
-            <TouchableOpacity key={c} onPress={() => setCountry(c)} style={[styles.flagBtn, country === c && styles.flagBtnActive]}>
-              <Text style={styles.flagTxt}>{c}</Text>
-            </TouchableOpacity>
-          ))}
+        <Text style={[styles.setupHint, { marginTop: 14 }]}>Which team are you supporting?</Text>
+        <View style={styles.teamPickWrap}>
+          <TouchableOpacity
+            onPress={() => setTeam('1')}
+            activeOpacity={0.8}
+            style={[
+              styles.teamPickBtn,
+              { backgroundColor: TEAM1_COLOR },
+              team === '1' && styles.teamPickActive,
+            ]}
+          >
+            <View style={styles.teamPickAvatar}>
+              <Text style={styles.teamPickAvatarTxt}>{team1Short}</Text>
+            </View>
+            <Text style={styles.teamPickName} numberOfLines={2}>{team1Label}</Text>
+            {team === '1' && <Ionicons name="checkmark-circle" size={20} color="#FFF" style={styles.teamPickCheck} />}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setTeam('2')}
+            activeOpacity={0.8}
+            style={[
+              styles.teamPickBtn,
+              { backgroundColor: TEAM2_COLOR },
+              team === '2' && styles.teamPickActive,
+            ]}
+          >
+            <View style={styles.teamPickAvatar}>
+              <Text style={styles.teamPickAvatarTxt}>{team2Short}</Text>
+            </View>
+            <Text style={styles.teamPickName} numberOfLines={2}>{team2Label}</Text>
+            {team === '2' && <Ionicons name="checkmark-circle" size={20} color="#FFF" style={styles.teamPickCheck} />}
+          </TouchableOpacity>
         </View>
+        <Text style={styles.setupNote}>You'll join the {team === '1' ? team1Label : team === '2' ? team2Label : '...'} fan column. Team choice can be re-picked next match.</Text>
         <View style={styles.setupActions}>
           <TouchableOpacity onPress={onCancel} style={[styles.setupBtn, styles.setupBtnGhost]}>
             <Text style={[styles.setupBtnTxt, { color: '#999' }]}>Later</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => onSave(name, country)} disabled={!name.trim()}
-            style={[styles.setupBtn, !name.trim() && { opacity: 0.5 }]}>
+          <TouchableOpacity
+            onPress={() => canSave && onSave(name, team!)}
+            disabled={!canSave}
+            style={[styles.setupBtn, !canSave && { opacity: 0.5 }]}
+          >
             <Text style={styles.setupBtnTxt}>Save & Join</Text>
           </TouchableOpacity>
         </View>
@@ -659,7 +1033,7 @@ const SetupForm: React.FC<{ onCancel: () => void; onSave: (name: string, country
   );
 };
 
-// ─── Flying text+emoji label ────────────────────────────────────
+// ─── Flying stream reaction (bottom→top global) ──────────────────
 const FlyingLabel: React.FC<{ label: string; duration: number; lane: number }> = ({ label, duration, lane }) => {
   const y = useRef(new Animated.Value(0)).current;
   const x = useRef(new Animated.Value(0)).current;
@@ -692,16 +1066,15 @@ const FlyingLabel: React.FC<{ label: string; duration: number; lane: number }> =
   );
 };
 
-// ─── ThrowBurst — bursts on absolute chip position ──────────────
+// ─── ThrowBurst — Lottie / EmojiBurst on the target capsule ─────
 const ThrowBurst: React.FC<{
   action: string;
-  position?: { x: number; y: number; w: number; h: number };
+  position?: ChipBox;
   fallbackLabel: string;
 }> = ({ action, position, fallbackLabel }) => {
   const lottieItem = THROW_ITEMS.find((t) => t.key === action && !!t.lottie);
   const hasPos = !!position;
-  const splashSize = hasPos ? 140 : Math.min(SCREEN_W * 0.7, 280);
-  // Absolute window coordinates from measureInWindow → top-left of splash
+  const splashSize = hasPos ? 130 : Math.min(SCREEN_W * 0.65, 260);
   const left = hasPos ? Math.max(4, position!.x + position!.w / 2 - splashSize / 2) : (SCREEN_W - splashSize) / 2;
   const top  = hasPos ? Math.max(40, position!.y + position!.h / 2 - splashSize / 2) : SCREEN_H * 0.3;
 
@@ -772,29 +1145,60 @@ const styles = StyleSheet.create({
   panelTitle: { color: '#FFF', fontWeight: '900', fontSize: 13 },
   panelHint: { color: 'rgba(255,255,255,0.65)', fontSize: 10, fontStyle: 'italic' },
 
-  chatDock: { position: 'absolute', left: 8, right: 8, bottom: 80, height: 460, backgroundColor: 'rgba(8, 18, 12, 0.92)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 10, zIndex: 9998, elevation: 20 },
+  chatDock: { position: 'absolute', left: 8, right: 8, bottom: 80, height: 520, backgroundColor: 'rgba(8, 18, 12, 0.94)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 10, zIndex: 9998, elevation: 20 },
 
-  activeBar: { marginTop: 4, marginBottom: 6, height: 52 },
-  activeBarContent: { alignItems: 'center', paddingHorizontal: 4, gap: 6 },
-  activeChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 22, gap: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', marginRight: 6 },
-  activeChipSelf: { backgroundColor: 'rgba(76,175,80,0.55)', borderColor: '#A5D6A7' },
-  activeChipTop: { borderColor: '#FFD54F', borderWidth: 2 },
-  activeRank: { fontSize: 14, marginRight: 2 },
-  activeFlag: { fontSize: 18 },
-  activeName: { color: '#FFF', fontWeight: '700', fontSize: 12, maxWidth: 90 },
-  activeEmpty: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontStyle: 'italic', paddingHorizontal: 12, paddingVertical: 14 },
+  // ── Team headers ──
+  teamHeadersRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  teamHeaderChip: { flex: 1, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center' },
+  teamHeaderTxt: { color: '#FFF', fontWeight: '900', fontSize: 13 },
+  teamHeaderSub: { color: 'rgba(255,255,255,0.85)', fontSize: 10, marginTop: 1 },
+  vsBadge: { paddingHorizontal: 8 },
+  vsTxt: { color: '#FFD54F', fontWeight: '900', fontSize: 12 },
 
-  msgScroll: { flex: 1, backgroundColor: 'rgba(0,0,0,0.18)', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 4 },
-  msgScrollContent: { paddingVertical: 6 },
-  emptyTxt: { color: 'rgba(255,255,255,0.65)', fontSize: 12, fontStyle: 'italic', textAlign: 'center', padding: 14 },
-  bubble: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, marginBottom: 6, maxWidth: '95%' },
-  bubbleLeft: { backgroundColor: '#FFFFFF', alignSelf: 'flex-start', borderBottomLeftRadius: 2 },
-  bubbleOther: { backgroundColor: '#FFF', alignSelf: 'flex-start', borderBottomLeftRadius: 2 },
-  bubbleOwn: { backgroundColor: '#1976D2', alignSelf: 'flex-end', borderBottomRightRadius: 2 },
-  bubbleHeader: { color: '#1B5E20', fontWeight: '900', fontSize: 12, marginBottom: 2 },
-  bubbleMsg: { fontSize: 13, color: '#212121', fontWeight: '600' },
+  // ── Split user columns ──
+  usersSplit: { flexDirection: 'row', height: 192, marginBottom: 6 },
+  teamCol: { flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, paddingHorizontal: 4 },
+  teamColContent: { paddingVertical: 6, gap: 6 },
+  splitDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginHorizontal: 5 },
+  colEmpty: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic', textAlign: 'center', paddingVertical: 24 },
 
-  chatPillsWrap: { maxHeight: 50, marginTop: 6 },
+  // ── User Capsule ──
+  capsule: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    marginHorizontal: 4,
+  },
+  capsuleSelf: { borderColor: '#4CAF50', borderWidth: 2 },
+  capsuleAvatar: {
+    width: 42, height: 42, borderRadius: 21,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.45)',
+  },
+  capsuleTeamTxt: { color: '#FFF', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 },
+  capsuleName: { color: '#FFF', fontWeight: '700', fontSize: 11, maxWidth: 70, textAlign: 'center' },
+  capsuleSelfBadge: { color: '#A5D6A7', fontSize: 8, fontWeight: '900', marginTop: 1 },
+  topBadge: { position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: 9, backgroundColor: '#FFD54F', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  topBadgeTxt: { fontSize: 10 },
+
+  // ── Center feed ──
+  feedWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 4, marginBottom: 6 },
+  feedTitle: { color: '#FFD54F', fontWeight: '900', fontSize: 11, marginBottom: 2, paddingHorizontal: 2 },
+  feedScroll: { flex: 1 },
+  feedScrollContent: { paddingVertical: 2 },
+  feedEmpty: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic', textAlign: 'center', padding: 12 },
+  feedRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3, paddingHorizontal: 4, gap: 6 },
+  feedRowMsg: { paddingVertical: 4, paddingHorizontal: 6, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 8, marginBottom: 3 },
+  feedEmojiBig: { fontSize: 18 },
+  feedActor: { fontWeight: '800', fontSize: 11, flexShrink: 1, maxWidth: 110 },
+  feedArrow: { color: '#FFD54F', fontWeight: '900', fontSize: 13 },
+  feedMsgHeader: { fontWeight: '900', fontSize: 11, marginBottom: 1 },
+  feedMsgTxt: { color: '#FFF', fontSize: 12, fontWeight: '500' },
+
+  // ── Pills row ──
+  chatPillsWrap: { maxHeight: 44 },
   pillsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, gap: 8, paddingRight: 12 },
   pill: { backgroundColor: 'rgba(76,175,80,0.95)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, marginRight: 6, elevation: 4 },
   pillFlag: { backgroundColor: 'rgba(255,193,7,0.9)' },
@@ -802,20 +1206,41 @@ const styles = StyleSheet.create({
   chatPill: { backgroundColor: 'rgba(33, 150, 243, 0.95)' },
   pillTxt: { color: '#FFF', fontWeight: '800', fontSize: 12 },
 
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  // ── Setup modal ──
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', alignItems: 'center', justifyContent: 'center', padding: 16 },
   setupBox: { backgroundColor: '#FFF', borderRadius: 16, padding: 18, width: '100%', maxWidth: 380 },
-  setupTitle: { fontSize: 18, fontWeight: '900', color: '#1B5E20', marginBottom: 6 },
+  setupTitle: { fontSize: 18, fontWeight: '900', color: '#1B5E20', marginBottom: 8 },
   setupHint: { color: '#555', fontSize: 12, marginBottom: 6 },
+  setupNote: { color: '#888', fontSize: 11, fontStyle: 'italic', marginTop: 8 },
   nameInput: { borderWidth: 1, borderColor: '#CFD8DC', borderRadius: 10, paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 12 : 8, fontSize: 15, color: '#212121' },
-  flagsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
-  flagBtn: { padding: 8, borderRadius: 8, backgroundColor: '#F4F4F4', borderWidth: 1, borderColor: 'transparent' },
-  flagBtnActive: { borderColor: '#1B5E20', backgroundColor: '#E8F5E9' },
-  flagTxt: { fontSize: 20 },
+  teamPickWrap: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  teamPickBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    minHeight: 110,
+  },
+  teamPickActive: { borderColor: '#FFD54F' },
+  teamPickAvatar: {
+    width: 54, height: 54, borderRadius: 27,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.6)',
+    marginBottom: 6,
+  },
+  teamPickAvatarTxt: { color: '#FFF', fontWeight: '900', fontSize: 16, letterSpacing: 0.5 },
+  teamPickName: { color: '#FFF', fontWeight: '800', fontSize: 12, textAlign: 'center' },
+  teamPickCheck: { position: 'absolute', top: 6, right: 6 },
   setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 16 },
   setupBtn: { backgroundColor: '#1B5E20', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
   setupBtnGhost: { backgroundColor: 'transparent' },
   setupBtnTxt: { color: '#FFF', fontWeight: '800' },
 
+  // ── Throw modal ──
   throwBox: { backgroundColor: '#FFF', borderRadius: 16, padding: 18, width: '92%', maxWidth: 380 },
   throwTitle: { fontSize: 15, fontWeight: '900', color: '#212121', marginBottom: 12, textAlign: 'center' },
   throwGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', gap: 8, marginBottom: 12 },
@@ -824,10 +1249,13 @@ const styles = StyleSheet.create({
   throwLabel: { fontSize: 10, fontWeight: '700', color: '#E65100', marginTop: 2 },
   throwHint: { color: '#999', fontSize: 11, textAlign: 'center', fontStyle: 'italic' },
 
+  // ── Overlays ──
   flyOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 50, elevation: 2 },
   flyItem: { position: 'absolute', bottom: 100 },
   flyBubble: { backgroundColor: 'rgba(255,255,255,0.92)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', elevation: 3 },
   flyText: { fontSize: 18, fontWeight: '900', color: '#212121' },
+
+  flightOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 70, elevation: 4 },
 
   throwOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 60, elevation: 3 },
   burstWrap: { position: 'absolute' },

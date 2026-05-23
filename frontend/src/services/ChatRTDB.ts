@@ -68,17 +68,23 @@ function getDB(): Database | null {
 }
 
 // ============ TYPES ============
-export interface ChatMessage { id: string; name: string; country: string; msg: string; time: number }
+export interface ChatMessage { id: string; name: string; country: string; team?: '1' | '2'; msg: string; time: number }
 export interface StreamReaction { id: string; e: string; t: number }
 export interface ThrowEvent {
   id: string; from: string; fromId: string; to: string; toId: string; action: string; time: number;
+  fromTeam?: '1' | '2'; toTeam?: '1' | '2';
 }
-export interface ActiveUser { id: string; name: string; country: string; lastActionTime: number }
+export interface ActiveUser {
+  id: string; name: string; country: string; lastActionTime: number;
+  team?: '1' | '2';
+  /** Set when user RECEIVES an emoji \u2014 used to boost recipient to the top of the live list. */
+  lastEmojiAt?: number;
+}
 
 // ============ CHAT MESSAGES ============
 export function sendMessage(
   matchId: string,
-  payload: { name: string; country: string; msg: string; userId: string },
+  payload: { name: string; country: string; msg: string; userId: string; team?: '1' | '2' },
 ): void {
   const db = getDB();
   if (!db || !matchId) { console.log('[ChatRTDB] sendMessage: no db / no matchId'); return; }
@@ -86,9 +92,10 @@ export function sendMessage(
     const r = ref(db, `chat/${matchId}/messages`);
     const newRef = push(r, {
       name: payload.name, country: payload.country, msg: payload.msg, time: serverTimestamp(),
+      ...(payload.team ? { team: payload.team } : {}),
     });
     console.log('[ChatRTDB] sendMessage push OK', newRef.key);
-    touchUser(matchId, payload.userId, payload.name, payload.country);
+    touchUser(matchId, payload.userId, payload.name, payload.country, payload.team);
   } catch (e) {
     console.log('[ChatRTDB] sendMessage error', e);
   }
@@ -141,14 +148,25 @@ export function subscribeStreamReactions(matchId: string, cb: (r: StreamReaction
 // ============ TARGETED THROWS ============
 export function sendThrow(
   matchId: string,
-  payload: { from: string; fromId: string; to: string; toId: string; action: string },
+  payload: { from: string; fromId: string; to: string; toId: string; action: string; fromTeam?: '1' | '2'; toTeam?: '1' | '2' },
 ): void {
   const db = getDB();
   if (!db || !matchId) return;
   try {
-    push(ref(db, `chat/${matchId}/throws`), { ...payload, time: serverTimestamp() });
+    push(ref(db, `chat/${matchId}/throws`), {
+      from: payload.from, fromId: payload.fromId,
+      to: payload.to, toId: payload.toId,
+      action: payload.action,
+      time: serverTimestamp(),
+      ...(payload.fromTeam ? { fromTeam: payload.fromTeam } : {}),
+      ...(payload.toTeam ? { toTeam: payload.toTeam } : {}),
+    });
     if (payload.toId) {
-      update(ref(db, `chat/${matchId}/users/${payload.toId}`), { lastActionTime: serverTimestamp() });
+      // Bump receiver's lastEmojiAt so UI can boost them to the top
+      update(ref(db, `chat/${matchId}/users/${payload.toId}`), {
+        lastActionTime: serverTimestamp(),
+        lastEmojiAt: serverTimestamp(),
+      });
     }
     console.log('[ChatRTDB] sendThrow OK', payload.action, '->', payload.to);
   } catch (e) { console.log('[ChatRTDB] sendThrow error', e); }
@@ -168,6 +186,8 @@ export function subscribeThrows(matchId: string, cb: (t: ThrowEvent) => void): (
         to: String(v.to || ''), toId: String(v.toId || ''),
         action: String(v.action || ''),
         time: typeof v.time === 'number' ? v.time : Date.now(),
+        fromTeam: v.fromTeam === '1' || v.fromTeam === '2' ? v.fromTeam : undefined,
+        toTeam: v.toTeam === '1' || v.toTeam === '2' ? v.toTeam : undefined,
       });
     };
     onChildAdded(q, handler);
@@ -176,34 +196,43 @@ export function subscribeThrows(matchId: string, cb: (t: ThrowEvent) => void): (
 }
 
 // ============ ACTIVE-USERS PRESENCE ============
-export function touchUser(matchId: string, userId: string, name: string, country: string): void {
+export function touchUser(matchId: string, userId: string, name: string, country: string, team?: '1' | '2'): void {
   const db = getDB();
   if (!db || !matchId || !userId) return;
   try {
-    set(ref(db, `chat/${matchId}/users/${userId}`), { name, country, lastActionTime: serverTimestamp() });
-    console.log('[ChatRTDB] touchUser OK', userId, name);
+    set(ref(db, `chat/${matchId}/users/${userId}`), {
+      name, country, lastActionTime: serverTimestamp(),
+      ...(team ? { team } : {}),
+    });
+    console.log('[ChatRTDB] touchUser OK', userId, name, team || '-');
   } catch (e) { console.log('[ChatRTDB] touchUser error', e); }
 }
 
 /**
- * Active-users list — sorted descending by lastActionTime so the most recent
- * actor is always at index 0 (the "hit jumps to #1" guarantee). Spec asks for
- * `.limitToLast(20)` to keep Spark-plan bandwidth tight.
+ * Active-users list \u2014 sorted descending by max(lastEmojiAt, lastActionTime),
+ * so the user who most recently RECEIVED an emoji (or sent any action) floats
+ * to index 0. limitToLast(40) so both team columns have headroom.
  */
 export function subscribeActiveUsers(matchId: string, cb: (users: ActiveUser[]) => void): () => void {
   const db = getDB();
   if (!db || !matchId) return () => {};
   try {
-    const q = query(ref(db, `chat/${matchId}/users`), orderByChild('lastActionTime'), limitToLast(20));
+    const q = query(ref(db, `chat/${matchId}/users`), orderByChild('lastActionTime'), limitToLast(40));
     const handler = (snap: DataSnapshot) => {
       const v = snap.val() || {};
       const arr: ActiveUser[] = Object.entries(v).map(([id, raw]: [string, any]) => ({
         id,
         name: String(raw?.name || 'Anon'),
-        country: String(raw?.country || '🌍'),
+        country: String(raw?.country || '\ud83c\udf0d'),
         lastActionTime: typeof raw?.lastActionTime === 'number' ? raw.lastActionTime : 0,
+        team: raw?.team === '1' || raw?.team === '2' ? raw.team : undefined,
+        lastEmojiAt: typeof raw?.lastEmojiAt === 'number' ? raw.lastEmojiAt : 0,
       }));
-      arr.sort((a, b) => b.lastActionTime - a.lastActionTime);
+      arr.sort((a, b) => {
+        const aw = Math.max(a.lastEmojiAt || 0, a.lastActionTime || 0);
+        const bw = Math.max(b.lastEmojiAt || 0, b.lastActionTime || 0);
+        return bw - aw;
+      });
       cb(arr);
     };
     onValue(q, handler);
