@@ -1,0 +1,16 @@
+{
+  "name": "cricapp-proxy",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker — edge cache + RapidAPI proxy for CricApp (zero-cost commercial-safe alternative to Vercel)",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.5.0",
+    "wrangler": "^3.90.0"
+  }
+}

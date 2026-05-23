@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { Match, Commentary } from '../types/match';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchViaCloudflare } from './CloudflareProxy';
 
 // ============ FIREBASE - SAFE LAZY LOAD ============
 let _getFirebaseKey: (() => { apiKey: string; apiHost: string; provider: string } | null) | null = null;
@@ -182,6 +183,26 @@ async function fetchData(
   queryParams?: Record<string, string>,
   teamId?: string
 ): Promise<{ data: any; providerName: string } | null> {
+
+  // ===== PRIORITY 0: Cloudflare Worker Edge Cache (v1.0.18+) =====
+  // The worker proxies to RapidAPI with built-in 3-tier caching (edge cache +
+  // in-memory + KV). 99% of requests served from edge \u2192 huge RapidAPI quota
+  // savings. If the worker URL isn't configured in Firestore, or the worker
+  // is unreachable/slow, this returns null and we fall through to direct
+  // RapidAPI calls below \u2014 the existing failover path is untouched, so old
+  // users and edge-case failures are fully covered.
+  try {
+    const cfConfig = getProviderConfig(DEFAULT_PROVIDER);
+    const cfPath = getEndpointForType(cfConfig, endpointType, matchId, teamId);
+    const cfData = await fetchViaCloudflare(cfPath, queryParams, 'host1');
+    if (cfData) {
+      console.log(`[API] Cloudflare SUCCESS: ${endpointType} ${cfPath}`);
+      return { data: cfData, providerName: DEFAULT_PROVIDER };
+    }
+  } catch (e: any) {
+    // Never let Cloudflare errors break the fallback chain
+    console.log(`[API] Cloudflare path failed (will fall back): ${e?.message || 'unknown'}`);
+  }
 
   // ===== Wait for Firebase to load keys =====
   if (_waitForFirebaseKey) {

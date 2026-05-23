@@ -17,6 +17,8 @@ import ErrorScreen from '../src/components/ErrorScreen';
 import SplashScreen from '../src/components/SplashScreen';
 import { cleanupOldCommentary as cleanupOldCommentaryDB } from '../src/services/CommentaryDB';
 import { cleanupOldCommentary as cleanupOldCommentaryStorage } from '../src/services/CommentaryStorage';
+import ForceUpdateScreen from '../src/components/ForceUpdateScreen';
+import { checkAppVersion, PLAY_STORE_URL, VersionCheckResult } from '../src/services/VersionCheck';
 
 // ──────────────────────────────────────────────────────────────────────
 // v1.0.12 rev-3 — Release-build perf wins (from PERFORMANCE_AUDIT.md):
@@ -230,6 +232,26 @@ function AppWithSplash() {
 }
 
 export default function RootLayout() {
+  // ===== v1.0.18 \u2014 Forced-update gating =====
+  // Reads latest_version / min_supported_version from Firestore once on mount.
+  // If installed version < min_supported_version, we render the blocking
+  // ForceUpdateScreen OVER the entire app tree. Safe by default: any network
+  // failure leaves forceUpdate=false, so the app behaves exactly as before.
+  const [versionCheck, setVersionCheck] = useState<VersionCheckResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await checkAppVersion(false);
+        if (!cancelled) setVersionCheck(result);
+      } catch (e) {
+        if (__DEV__) console.warn('[VersionCheck] failed:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <AppErrorBoundary>
       <ProProvider>
@@ -239,6 +261,13 @@ export default function RootLayout() {
               <FireTailAlertProvider>
                 <StatusBar style="light" translucent />
                 <AppWithSplash />
+                {versionCheck?.forceUpdate ? (
+                  <ForceUpdateScreen
+                    playStoreUrl={versionCheck.playStoreUrl || PLAY_STORE_URL}
+                    installedVersion={versionCheck.installedVersion}
+                    latestVersion={versionCheck.latestVersion}
+                  />
+                ) : null}
               </FireTailAlertProvider>
             </InboxProvider>
           </NotificationProvider>
