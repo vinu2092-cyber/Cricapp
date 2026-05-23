@@ -920,24 +920,45 @@ const FeedRow: React.FC<{ event: FeedEvent; t1Color: string; t2Color: string }> 
   );
 };
 
-// ─── EMOJI FLIGHT (sender → receiver visible arc) ────────────────
+// ─── EMOJI FLIGHT (sender → receiver visible arc) — flies ON TOP of everything ────────────────
 const EmojiFlight: React.FC<{ from: ChipBox; to: ChipBox; emoji: string }> = ({ from, to, emoji }) => {
   const progress = useRef(new Animated.Value(0)).current;
+  const burstScale = useRef(new Animated.Value(0)).current;
+  const burstOpacity = useRef(new Animated.Value(0)).current;
+  
   useEffect(() => {
+    // Flight animation
     Animated.timing(progress, {
       toValue: 1,
       duration: EMOJI_FLIGHT_MS,
-      easing: Easing.inOut(Easing.cubic),
+      easing: Easing.inOut(Easing.quad),
       useNativeDriver: true,
-    }).start();
+    }).start(() => {
+      // Burst animation when landing
+      Animated.parallel([
+        Animated.spring(burstScale, {
+          toValue: 1,
+          friction: 4,
+          tension: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(burstOpacity, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
   }, []);
 
-  // Start centre of sender's capsule
+  // Start from center of sender's profile
   const startX = from.x + from.w / 2;
   const startY = from.y + from.h / 2;
   const endX = to.x + to.w / 2;
   const endY = to.y + to.h / 2;
-  const arcHeight = -(60 + Math.abs(endX - startX) * 0.25);
+  
+  // Higher arc for more dramatic flight
+  const arcHeight = -(100 + Math.abs(endX - startX) * 0.3);
 
   const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [startX, endX] });
   // Parabolic arc: peak at progress=0.5
@@ -945,24 +966,54 @@ const EmojiFlight: React.FC<{ from: ChipBox; to: ChipBox; emoji: string }> = ({ 
     inputRange: [0, 0.5, 1],
     outputRange: [startY, (startY + endY) / 2 + arcHeight, endY],
   });
-  const scale = progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.4, 1.6] });
-  const rotate = progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const opacity = progress.interpolate({ inputRange: [0, 0.85, 1], outputRange: [1, 1, 0.4] });
+  
+  // Emoji grows as it flies, spins
+  const flyScale = progress.interpolate({ inputRange: [0, 0.3, 0.7, 1], outputRange: [0.8, 1.8, 1.6, 1.2] });
+  const rotate = progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '720deg'] });
+  const flyOpacity = progress.interpolate({ inputRange: [0, 0.1, 0.9, 1], outputRange: [0, 1, 1, 0.8] });
+
+  // Burst circle scale
+  const burstCircleScale = burstScale.interpolate({ inputRange: [0, 1], outputRange: [0.5, 2.5] });
 
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        left: -16, top: -16,
-        width: 32, height: 32,
-        alignItems: 'center', justifyContent: 'center',
-        transform: [{ translateX }, { translateY }, { scale }, { rotate }],
-        opacity,
-      }}
-    >
-      <Text style={{ fontSize: 26 }}>{emoji}</Text>
-    </Animated.View>
+    <>
+      {/* Flying emoji */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: -24, top: -24,
+          width: 48, height: 48,
+          alignItems: 'center', justifyContent: 'center',
+          transform: [{ translateX }, { translateY }, { scale: flyScale }, { rotate }],
+          opacity: flyOpacity,
+        }}
+      >
+        <Text style={{ fontSize: 36, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4 }}>{emoji}</Text>
+      </Animated.View>
+      
+      {/* Burst effect at destination */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: endX - 40, top: endY - 40,
+          width: 80, height: 80,
+          alignItems: 'center', justifyContent: 'center',
+          transform: [{ scale: burstCircleScale }],
+          opacity: burstOpacity,
+        }}
+      >
+        <View style={{ 
+          width: 60, height: 60, borderRadius: 30, 
+          backgroundColor: 'rgba(255, 193, 7, 0.4)', 
+          borderWidth: 3, borderColor: 'rgba(255, 152, 0, 0.6)',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Text style={{ fontSize: 28 }}>{emoji}</Text>
+        </View>
+      </Animated.View>
+    </>
   );
 };
 
@@ -1273,9 +1324,11 @@ const styles = StyleSheet.create({
   flyBubble: { backgroundColor: 'rgba(255,255,255,0.92)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', elevation: 3 },
   flyText: { fontSize: 18, fontWeight: '900', color: '#212121' },
 
-  flightOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 70, elevation: 4 },
+  // Flight overlay MUST be above chatDock (zIndex: 9998) so emoji flies ON TOP of user profiles
+  flightOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 99999, elevation: 999 },
 
-  throwOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 60, elevation: 3 },
+  // Throw burst also on top
+  throwOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 99998, elevation: 998 },
   burstWrap: { position: 'absolute' },
   burstLabel: { position: 'absolute', alignSelf: 'center', left: 0, right: 0, alignItems: 'center' },
   burstLabelTxt: { backgroundColor: 'rgba(0,0,0,0.78)', color: '#FFF', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 18, fontSize: 12, fontWeight: '800' },
