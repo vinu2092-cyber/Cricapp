@@ -1,18 +1,14 @@
 # CricApp Cloudflare Worker — Edge Cache + RapidAPI Proxy
+# 
+# FEATURES:
+# - 25-second cache for ALL endpoints
+# - Reads API keys from Firebase dynamically (update keys without redeploy!)
+# - 50,000 users → Cloudflare → Only 2-3 API calls/minute to RapidAPI
 #
-# Deploy steps (one-time):
-#   1. npm install -g wrangler
-#   2. wrangler login        # browser OAuth
-#   3. From this folder:
-#        wrangler secret put CRICBUZZ_KEYS_HOST1
-#        wrangler secret put CRICBUZZ_KEYS_HOST2
-#      (paste comma-separated RapidAPI keys when prompted)
-#   4. wrangler deploy
-#
-# Update steps (key rotation / version bump):
-#   - Re-run `wrangler secret put ...` to rotate keys
-#   - Edit vars below to change cache TTLs or latest version
-#   - `wrangler deploy`
+# Deploy:
+#   npm install -g wrangler
+#   wrangler login
+#   wrangler deploy
 
 name = "cricapp-proxy"
 main = "src/index.ts"
@@ -20,31 +16,26 @@ compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
 account_id = "29163b66329a4990cfe33e9a4d887f74"
 
-# Workers free plan: 100,000 requests/day, unlimited bandwidth
-# Edge cache hits do NOT count against this limit (served from CDN)
-
 [vars]
-# 25-30 second cache for ALL endpoints - saves RapidAPI calls
-# 50,000 users will hit Cloudflare, only 2-3 API calls per minute to RapidAPI
-CACHE_TTL_LIVE = "25"          # seconds — live match list 
-CACHE_TTL_RECENT = "25"        # 25s — recent matches
-CACHE_TTL_UPCOMING = "25"      # 25s — upcoming matches
-CACHE_TTL_DETAIL = "25"        # 25s — match detail (live score)
-CACHE_TTL_COMM = "25"          # 25s — commentary (ball-by-ball)
-CACHE_TTL_SCARD = "25"         # 25s — scorecard
-CACHE_TTL_TEAM = "25"          # 25s — team squads
+# Single 25-second cache TTL for all endpoints
+CACHE_TTL = "25"
 
-# App version control (Firestore is the primary source, this is a fallback)
+# Firebase RTDB config - Worker reads API keys from here
+# UPDATE THIS: Replace with your actual Firebase project URL and path
+FIREBASE_DB_URL = "https://YOUR_PROJECT_ID.firebaseio.com"
+FIREBASE_KEYS_PATH = "/app_config/api_keys"
+
+# App version control
 LATEST_VERSION = "1.0.19"
 MIN_SUPPORTED_VERSION = "1.0.19"
 PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.cricapp.live"
 
-# Allowed origin (set to '*' for now; tighten later if needed)
+# CORS
 ALLOWED_ORIGIN = "*"
 
 # RapidAPI hosts
 HOST_1 = "cricbuzz-cricket.p.rapidapi.com"
 HOST_2 = "cricbuzz-cricket2.p.rapidapi.com"
 
-# Rate limit (per IP, per minute) — prevents abuse
+# Rate limit (per IP, per minute)
 RATE_LIMIT_PER_MIN = "120"

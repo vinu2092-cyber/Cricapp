@@ -1,41 +1,31 @@
 /**
  * CricApp Cloudflare Worker — Edge Cache + RapidAPI Proxy
  *
- * Goal: Reduce 10,000 user calls → ~100 RapidAPI calls per day via edge caching.
+ * Goal: Reduce 50,000 user calls → ~2-3 RapidAPI calls per minute via edge caching.
+ *
+ * KEY FEATURE: Reads API keys from Firebase dynamically!
+ *   - You update keys in Firebase → Worker uses new keys automatically
+ *   - No need to redeploy worker when keys change
+ *   - Keys cached for 5 minutes to reduce Firebase reads
  *
  * Architecture (3-tier cache):
  *   1. Cloudflare Cache API (edge, 330+ POPs, FREE, ~99% of traffic served here)
  *   2. globalThis in-memory (warm V8 isolate, 5-15 min reuse)
  *   3. Origin fetch from RapidAPI with key rotation + failover
  *
- * Endpoints (all under /api/v1/cricbuzz/* — path mirrors RapidAPI path):
- *   GET /api/v1/cricbuzz/matches/v1/live
- *   GET /api/v1/cricbuzz/matches/v1/recent
- *   GET /api/v1/cricbuzz/matches/v1/upcoming
- *   GET /api/v1/cricbuzz/mcenter/v1/:id
- *   GET /api/v1/cricbuzz/mcenter/v1/:id/comm
- *   GET /api/v1/cricbuzz/mcenter/v1/:id/scard
- *   GET /api/v1/cricbuzz/mcenter/v1/:id/team/:teamId
- *
- *   GET /api/v1/version       — { latest_version, min_supported_version, play_store_url }
- *   GET /api/v1/health        — { ok: true, ts }
- *
- * Optional ?host=host2 query switches to Host 2 (cricbuzz-cricket2). Default = Host 1.
+ * Endpoints:
+ *   GET /api/v1/cricbuzz/*     — Proxy to RapidAPI with 25s cache
+ *   GET /api/v1/version        — { latest_version, min_supported_version }
+ *   GET /api/v1/health         — { ok: true, ts }
  */
 
 export interface Env {
-  // Secrets (set via `wrangler secret put`)
-  CRICBUZZ_KEYS_HOST1: string;  // comma-separated RapidAPI keys for Host 1
-  CRICBUZZ_KEYS_HOST2: string;  // comma-separated RapidAPI keys for Host 2
-
+  // Firebase config (from wrangler.toml vars)
+  FIREBASE_DB_URL: string;       // e.g. "https://your-project.firebaseio.com"
+  FIREBASE_KEYS_PATH: string;    // e.g. "/app_config/api_keys" 
+  
   // Vars (from wrangler.toml)
-  CACHE_TTL_LIVE: string;
-  CACHE_TTL_RECENT: string;
-  CACHE_TTL_UPCOMING: string;
-  CACHE_TTL_DETAIL: string;
-  CACHE_TTL_COMM: string;
-  CACHE_TTL_SCARD: string;
-  CACHE_TTL_TEAM: string;
+  CACHE_TTL: string;             // 25 seconds for all endpoints
   LATEST_VERSION: string;
   MIN_SUPPORTED_VERSION: string;
   PLAY_STORE_URL: string;
@@ -43,6 +33,79 @@ export interface Env {
   HOST_1: string;
   HOST_2: string;
   RATE_LIMIT_PER_MIN: string;
+}
+
+// ============ Dynamic Keys from Firebase (cached 5 min) ============
+interface KeysCache {
+  host1Keys: string[];
+  host2Keys: string[];
+  fetchedAt: number;
+}
+const KEYS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let keysCache: KeysCache | null = (globalThis as any).__keysCache || null;
+(globalThis as any).__keysCache = keysCache;
+
+async function getKeysFromFirebase(env: Env): Promise<KeysCache> {
+  // Return cached if fresh
+  if (keysCache && Date.now() - keysCache.fetchedAt < KEYS_CACHE_TTL) {
+    return keysCache;
+  }
+
+  try {
+    // Fetch from Firebase RTDB (public read assumed, or add auth token if needed)
+    const url = `${env.FIREBASE_DB_URL}${env.FIREBASE_KEYS_PATH}.json`;
+    const res = await fetch(url, { 
+      cf: { cacheTtl: 0, cacheEverything: false } as any 
+    });
+    
+    if (!res.ok) {
+      console.error('Firebase fetch failed:', res.status);
+      // Return old cache if available, else empty
+      return keysCache || { host1Keys: [], host2Keys: [], fetchedAt: Date.now() };
+    }
+
+    const data = await res.json();
+    
+    // Parse keys from Firebase structure
+    // Expected structure: { api_key: "key1", api_key_p2: "key2", host2_key: "key3", ... }
+    // Or array: { keys_host1: ["k1","k2"], keys_host2: ["k3","k4"] }
+    const host1Keys: string[] = [];
+    const host2Keys: string[] = [];
+
+    if (data) {
+      // Support multiple formats:
+      // Format 1: { api_key, api_key_p2, api_key_p3, ... }
+      // Format 2: { keys_host1: [...], keys_host2: [...] }
+      // Format 3: { host1: { key1: "...", key2: "..." }, host2: { ... } }
+      
+      if (Array.isArray(data.keys_host1)) {
+        host1Keys.push(...data.keys_host1.filter(Boolean));
+      }
+      if (Array.isArray(data.keys_host2)) {
+        host2Keys.push(...data.keys_host2.filter(Boolean));
+      }
+      
+      // Also check for individual key fields
+      for (const [k, v] of Object.entries(data)) {
+        if (typeof v === 'string' && v.trim()) {
+          if (k.includes('host2') || k.includes('HOST2') || k.includes('_h2')) {
+            host2Keys.push(v.trim());
+          } else if (k.includes('api_key') || k.includes('API_KEY') || k.includes('key') || k.includes('host1')) {
+            host1Keys.push(v.trim());
+          }
+        }
+      }
+    }
+
+    keysCache = { host1Keys, host2Keys, fetchedAt: Date.now() };
+    (globalThis as any).__keysCache = keysCache;
+    
+    console.log(`Loaded ${host1Keys.length} host1 keys, ${host2Keys.length} host2 keys from Firebase`);
+    return keysCache;
+  } catch (e) {
+    console.error('Firebase keys fetch error:', e);
+    return keysCache || { host1Keys: [], host2Keys: [], fetchedAt: Date.now() };
+  }
 }
 
 // ============ In-memory rate limiter (per IP, per minute) ============
@@ -91,16 +154,9 @@ function jsonResponse(body: any, status: number, origin: string, cacheControl?: 
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-// ============ Endpoint TTL mapping ============
-function getTTL(env: Env, pathname: string): number {
-  if (pathname.endsWith('/matches/v1/live')) return parseInt(env.CACHE_TTL_LIVE, 10);
-  if (pathname.endsWith('/matches/v1/recent')) return parseInt(env.CACHE_TTL_RECENT, 10);
-  if (pathname.endsWith('/matches/v1/upcoming')) return parseInt(env.CACHE_TTL_UPCOMING, 10);
-  if (pathname.includes('/comm')) return parseInt(env.CACHE_TTL_COMM, 10);
-  if (pathname.includes('/scard')) return parseInt(env.CACHE_TTL_SCARD, 10);
-  if (pathname.includes('/team/')) return parseInt(env.CACHE_TTL_TEAM, 10);
-  if (pathname.includes('/mcenter/v1/')) return parseInt(env.CACHE_TTL_DETAIL, 10);
-  return 30;
+// ============ Single 25-second TTL for all endpoints ============
+function getTTL(env: Env): number {
+  return parseInt(env.CACHE_TTL, 10) || 25;
 }
 
 // ============ Origin fetch with key rotation ============
@@ -192,11 +248,6 @@ export default {
     }
 
     // ===== Proxy routes =====
-    //  (A) Explicit new path: /api/v1/cricbuzz/<rapid-path>  (used by v1.0.19+)
-    //  (B) Legacy path: anything else \u2014 forwarded straight through to RapidAPI.
-    //      This lets OLD apps (\u22641.0.18) auto-migrate to Cloudflare just by
-    //      swapping `api_host` in Firestore to this worker's domain. No app
-    //      rebuild required. Worker uses its OWN keys, ignores client keys.
     const PROXY_PREFIX = '/api/v1/cricbuzz';
     let rapidPath: string;
     if (url.pathname.startsWith(PROXY_PREFIX)) {
@@ -213,14 +264,13 @@ export default {
       url.pathname.startsWith('/schedule/') ||
       url.pathname.startsWith('/venues/')
     ) {
-      // Legacy direct RapidAPI-style path — worker acts as drop-in replacement
-      // so OLD app versions (<=1.0.18) can auto-migrate to Cloudflare via a
-      // single Firestore `api_host` swap. No app rebuild required.
+      // Legacy path support for old app versions
       rapidPath = url.pathname;
     } else {
       return jsonResponse({ error: 'not_found', path: url.pathname }, 404, origin);
     }
-    const ttl = getTTL(env, url.pathname);
+    
+    const ttl = getTTL(env);  // 25 seconds
 
     // Strip ?host before forwarding to RapidAPI
     const sp = new URLSearchParams(url.search);
@@ -229,14 +279,14 @@ export default {
     const forwardSearch = sp.toString();
 
     const host = hostChoice === 'host2' ? env.HOST_2 : env.HOST_1;
-    const keys = hostChoice === 'host2'
-      ? (env.CRICBUZZ_KEYS_HOST2 || '').split(',').map(s => s.trim()).filter(Boolean)
-      : (env.CRICBUZZ_KEYS_HOST1 || '').split(',').map(s => s.trim()).filter(Boolean);
+    
+    // ===== GET KEYS FROM FIREBASE (cached 5 min) =====
+    const firebaseKeys = await getKeysFromFirebase(env);
+    const keys = hostChoice === 'host2' ? firebaseKeys.host2Keys : firebaseKeys.host1Keys;
 
     const cacheKey = `${host}${rapidPath}?${forwardSearch}`;
 
-    // ===== Rate limit per IP (after cache so cache hits are unlimited) =====
-    // Note: we check rate limit AFTER cache hit (cheap edge serve doesn't consume budget)
+    // ===== Rate limit per IP =====
     const ip = request.headers.get('cf-connecting-ip') || 'unknown';
     const rateLimit = parseInt(env.RATE_LIMIT_PER_MIN, 10) || 120;
 
@@ -255,13 +305,13 @@ export default {
       return jsonResponse({ data: warm, source: 'warm_memory', host }, 200, origin, `public, max-age=${Math.max(5, ttl - 10)}`);
     }
 
-    // ===== Rate limit check before hitting origin (only counts cache MISS traffic) =====
+    // ===== Rate limit check before hitting origin =====
     if (!rateLimitCheck(ip, rateLimit)) {
       return jsonResponse({ error: 'rate_limited', retry_after_seconds: 60 }, 429, origin, 'no-store');
     }
     maybeCleanupBuckets();
 
-    // ===== Layer 3: Origin fetch =====
+    // ===== Layer 3: Origin fetch with Firebase keys =====
     const result = await fetchFromOrigin(rapidPath, forwardSearch, host, keys);
     if (!result.ok) {
       return jsonResponse({ error: 'origin_failed', status: result.status, detail: result.body }, result.status, origin, 'no-store');
