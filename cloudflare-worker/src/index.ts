@@ -1,114 +1,111 @@
 /**
  * CricApp Cloudflare Worker — Edge Cache + RapidAPI Proxy
+ * PRODUCTION READY v1.0.19
  *
- * Goal: Reduce 50,000 user calls → ~2-3 RapidAPI calls per minute via edge caching.
- *
- * KEY FEATURE: Reads API keys from Firebase dynamically!
- *   - You update keys in Firebase → Worker uses new keys automatically
- *   - No need to redeploy worker when keys change
- *   - Keys cached for 5 minutes to reduce Firebase reads
- *
- * Architecture (3-tier cache):
- *   1. Cloudflare Cache API (edge, 330+ POPs, FREE, ~99% of traffic served here)
- *   2. globalThis in-memory (warm V8 isolate, 5-15 min reuse)
- *   3. Origin fetch from RapidAPI with key rotation + failover
- *
- * Endpoints:
- *   GET /api/v1/cricbuzz/*     — Proxy to RapidAPI with 25s cache
- *   GET /api/v1/version        — { latest_version, min_supported_version }
- *   GET /api/v1/health         — { ok: true, ts }
+ * Features:
+ * - 25-second cache for ALL endpoints (2-3 API calls/min instead of 50,000)
+ * - Reads API keys from YOUR Firestore (app_config/settings)
+ * - Keys cached 5 min — update in Firebase, worker auto-picks new keys
+ * - No wrangler secret needed — everything from Firestore
  */
 
 export interface Env {
-  // Firebase config (from wrangler.toml vars)
-  FIREBASE_DB_URL: string;       // e.g. "https://your-project.firebaseio.com"
-  FIREBASE_KEYS_PATH: string;    // e.g. "/app_config/api_keys" 
-  
-  // Vars (from wrangler.toml)
-  CACHE_TTL: string;             // 25 seconds for all endpoints
+  FIRESTORE_PROJECT: string;
+  CACHE_TTL: string;
   LATEST_VERSION: string;
   MIN_SUPPORTED_VERSION: string;
   PLAY_STORE_URL: string;
   ALLOWED_ORIGIN: string;
-  HOST_1: string;
-  HOST_2: string;
   RATE_LIMIT_PER_MIN: string;
 }
 
-// ============ Dynamic Keys from Firebase (cached 5 min) ============
+// ============ Firestore Keys Cache (5 min) ============
 interface KeysCache {
-  host1Keys: string[];
-  host2Keys: string[];
+  apiHost: string;
+  apiHostP2: string;
+  apiKeys: string[];      // comma-separated keys for host1
+  apiKeysP2: string[];    // comma-separated keys for host2
+  currentProvider: string;
   fetchedAt: number;
 }
 const KEYS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 let keysCache: KeysCache | null = (globalThis as any).__keysCache || null;
 (globalThis as any).__keysCache = keysCache;
 
-async function getKeysFromFirebase(env: Env): Promise<KeysCache> {
-  // Return cached if fresh
+function parseKeys(raw: string): string[] {
+  if (!raw) return [];
+  return raw.split(',').map(k => k.replace(/\s+/g, '')).filter(k => k.length > 10);
+}
+
+async function getKeysFromFirestore(env: Env): Promise<KeysCache> {
   if (keysCache && Date.now() - keysCache.fetchedAt < KEYS_CACHE_TTL) {
     return keysCache;
   }
 
   try {
-    // Fetch from Firebase RTDB (public read assumed, or add auth token if needed)
-    const url = `${env.FIREBASE_DB_URL}${env.FIREBASE_KEYS_PATH}.json`;
-    const res = await fetch(url, { 
-      cf: { cacheTtl: 0, cacheEverything: false } as any 
+    // Firestore REST API - reads app_config/settings document
+    const url = `https://firestore.googleapis.com/v1/projects/${env.FIRESTORE_PROJECT}/databases/(default)/documents/app_config/settings`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      cf: { cacheTtl: 0, cacheEverything: false } as any,
     });
-    
+
     if (!res.ok) {
-      console.error('Firebase fetch failed:', res.status);
-      // Return old cache if available, else empty
-      return keysCache || { host1Keys: [], host2Keys: [], fetchedAt: Date.now() };
+      console.error('Firestore fetch failed:', res.status);
+      return keysCache || emptyCache();
     }
 
-    const data = await res.json();
-    
-    // Parse keys from Firebase structure
-    // Expected structure: { api_key: "key1", api_key_p2: "key2", host2_key: "key3", ... }
-    // Or array: { keys_host1: ["k1","k2"], keys_host2: ["k3","k4"] }
-    const host1Keys: string[] = [];
-    const host2Keys: string[] = [];
+    const json = await res.json() as any;
+    const fields = json?.fields;
 
-    if (data) {
-      // Support multiple formats:
-      // Format 1: { api_key, api_key_p2, api_key_p3, ... }
-      // Format 2: { keys_host1: [...], keys_host2: [...] }
-      // Format 3: { host1: { key1: "...", key2: "..." }, host2: { ... } }
-      
-      if (Array.isArray(data.keys_host1)) {
-        host1Keys.push(...data.keys_host1.filter(Boolean));
-      }
-      if (Array.isArray(data.keys_host2)) {
-        host2Keys.push(...data.keys_host2.filter(Boolean));
-      }
-      
-      // Also check for individual key fields
-      for (const [k, v] of Object.entries(data)) {
-        if (typeof v === 'string' && v.trim()) {
-          if (k.includes('host2') || k.includes('HOST2') || k.includes('_h2')) {
-            host2Keys.push(v.trim());
-          } else if (k.includes('api_key') || k.includes('API_KEY') || k.includes('key') || k.includes('host1')) {
-            host1Keys.push(v.trim());
-          }
-        }
-      }
+    if (!fields) {
+      console.error('No fields in Firestore response');
+      return keysCache || emptyCache();
     }
 
-    keysCache = { host1Keys, host2Keys, fetchedAt: Date.now() };
+    // Parse YOUR Firestore structure:
+    // api_host: "cricbuzz-cricket.p.rapidapi.com"
+    // api_host_p2: "cricbuzz-cricket2.p.rapidapi.com"
+    // api_key: "key1,key2,key3,..." (comma-separated)
+    // api_key_p2: "key4,key5,..."
+    // current_provider: "cricbuzz-cricket"
+    const apiHost = (fields?.api_host?.stringValue || 'cricbuzz-cricket.p.rapidapi.com').replace(/\s+/g, '');
+    const apiHostP2 = (fields?.api_host_p2?.stringValue || 'cricbuzz-cricket2.p.rapidapi.com').replace(/\s+/g, '');
+    const apiKeysRaw = fields?.api_key?.stringValue || '';
+    const apiKeysP2Raw = fields?.api_key_p2?.stringValue || '';
+    const currentProvider = (fields?.current_provider?.stringValue || 'cricbuzz-cricket').replace(/\s+/g, '');
+
+    keysCache = {
+      apiHost,
+      apiHostP2,
+      apiKeys: parseKeys(apiKeysRaw),
+      apiKeysP2: parseKeys(apiKeysP2Raw),
+      currentProvider,
+      fetchedAt: Date.now(),
+    };
     (globalThis as any).__keysCache = keysCache;
-    
-    console.log(`Loaded ${host1Keys.length} host1 keys, ${host2Keys.length} host2 keys from Firebase`);
+
+    console.log(`Firestore: ${keysCache.apiKeys.length} host1 keys, ${keysCache.apiKeysP2.length} host2 keys`);
     return keysCache;
-  } catch (e) {
-    console.error('Firebase keys fetch error:', e);
-    return keysCache || { host1Keys: [], host2Keys: [], fetchedAt: Date.now() };
+  } catch (e: any) {
+    console.error('Firestore error:', e?.message);
+    return keysCache || emptyCache();
   }
 }
 
-// ============ In-memory rate limiter (per IP, per minute) ============
+function emptyCache(): KeysCache {
+  return {
+    apiHost: 'cricbuzz-cricket.p.rapidapi.com',
+    apiHostP2: 'cricbuzz-cricket2.p.rapidapi.com',
+    apiKeys: [],
+    apiKeysP2: [],
+    currentProvider: 'cricbuzz-cricket',
+    fetchedAt: Date.now(),
+  };
+}
+
+// ============ In-memory rate limiter ============
 const rateBuckets: Map<string, { count: number; resetAt: number }> = (globalThis as any).__rateBuckets || new Map();
 (globalThis as any).__rateBuckets = rateBuckets;
 
@@ -120,18 +117,33 @@ function rateLimitCheck(ip: string, limit: number): boolean {
     return true;
   }
   bucket.count++;
-  if (bucket.count > limit) return false;
-  return true;
+  return bucket.count <= limit;
 }
 
-// Cleanup old buckets occasionally
-let lastCleanup = 0;
 function maybeCleanupBuckets() {
   const now = Date.now();
-  if (now - lastCleanup < 60_000) return;
-  lastCleanup = now;
   for (const [k, v] of rateBuckets.entries()) {
     if (v.resetAt < now) rateBuckets.delete(k);
+  }
+}
+
+// ============ In-memory data cache ============
+interface MemCacheEntry { data: any; expiresAt: number; }
+const memCache: Map<string, MemCacheEntry> = (globalThis as any).__memCache || new Map();
+(globalThis as any).__memCache = memCache;
+
+function memGet(key: string): any | null {
+  const e = memCache.get(key);
+  if (!e) return null;
+  if (e.expiresAt < Date.now()) { memCache.delete(key); return null; }
+  return e.data;
+}
+
+function memSet(key: string, data: any, ttlSec: number) {
+  memCache.set(key, { data, expiresAt: Date.now() + ttlSec * 1000 });
+  if (memCache.size > 500) {
+    const firstKey = memCache.keys().next().value;
+    if (firstKey) memCache.delete(firstKey);
   }
 }
 
@@ -154,11 +166,6 @@ function jsonResponse(body: any, status: number, origin: string, cacheControl?: 
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-// ============ Single 25-second TTL for all endpoints ============
-function getTTL(env: Env): number {
-  return parseInt(env.CACHE_TTL, 10) || 25;
-}
-
 // ============ Origin fetch with key rotation ============
 async function fetchFromOrigin(
   rapidPath: string,
@@ -168,7 +175,6 @@ async function fetchFromOrigin(
 ): Promise<{ ok: boolean; status: number; body: any }> {
   if (!keys.length) return { ok: false, status: 503, body: { error: 'no_keys_configured' } };
 
-  // Try each key sequentially until one succeeds (429 / 403 → next key)
   for (const key of keys) {
     const url = `https://${host}${rapidPath}${searchParams ? '?' + searchParams : ''}`;
     try {
@@ -182,42 +188,21 @@ async function fetchFromOrigin(
         cf: { cacheTtl: 0, cacheEverything: false } as any,
       });
       if (r.status === 429 || r.status === 403) {
-        // rate-limited / not subscribed — try next key
+        console.log(`Key ${key.substring(0, 12)}... got ${r.status} - trying next`);
         continue;
       }
       if (r.ok) {
         const body = await r.json().catch(() => ({}));
         return { ok: true, status: 200, body };
       }
-      // Other non-OK — return as-is
       const body = await r.json().catch(() => ({ error: 'origin_error', status: r.status }));
       return { ok: false, status: r.status, body };
     } catch (e: any) {
-      // Network error — try next key
+      console.log(`Key ${key.substring(0, 12)}... network error - trying next`);
       continue;
     }
   }
   return { ok: false, status: 502, body: { error: 'all_keys_exhausted' } };
-}
-
-// ============ Layer 2: globalThis warm cache ============
-interface MemCacheEntry { data: any; expiresAt: number; }
-const memCache: Map<string, MemCacheEntry> = (globalThis as any).__memCache || new Map();
-(globalThis as any).__memCache = memCache;
-
-function memGet(key: string): any | null {
-  const e = memCache.get(key);
-  if (!e) return null;
-  if (e.expiresAt < Date.now()) { memCache.delete(key); return null; }
-  return e.data;
-}
-function memSet(key: string, data: any, ttlSec: number) {
-  memCache.set(key, { data, expiresAt: Date.now() + ttlSec * 1000 });
-  // Keep memory bounded
-  if (memCache.size > 500) {
-    const firstKey = memCache.keys().next().value;
-    if (firstKey) memCache.delete(firstKey);
-  }
 }
 
 // ============ MAIN HANDLER ============
@@ -225,6 +210,7 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const origin = env.ALLOWED_ORIGIN || '*';
     const url = new URL(request.url);
+    const ttl = parseInt(env.CACHE_TTL, 10) || 25;
 
     // CORS preflight
     if (request.method === 'OPTIONS') {
@@ -234,10 +220,12 @@ export default {
       return jsonResponse({ error: 'method_not_allowed' }, 405, origin);
     }
 
-    // ===== Built-in routes =====
+    // Health check
     if (url.pathname === '/' || url.pathname === '/api/v1/health') {
       return jsonResponse({ ok: true, service: 'cricapp-proxy', ts: Date.now() }, 200, origin, 'no-store');
     }
+
+    // Version check
     if (url.pathname === '/api/v1/version') {
       return jsonResponse({
         latest_version: env.LATEST_VERSION,
@@ -259,70 +247,78 @@ export default {
       url.pathname.startsWith('/teams/') ||
       url.pathname.startsWith('/players/') ||
       url.pathname.startsWith('/stats/') ||
-      url.pathname.startsWith('/photos/') ||
-      url.pathname.startsWith('/news/') ||
-      url.pathname.startsWith('/schedule/') ||
-      url.pathname.startsWith('/venues/')
+      url.pathname.startsWith('/schedule/')
     ) {
       // Legacy path support for old app versions
       rapidPath = url.pathname;
     } else {
       return jsonResponse({ error: 'not_found', path: url.pathname }, 404, origin);
     }
-    
-    const ttl = getTTL(env);  // 25 seconds
 
-    // Strip ?host before forwarding to RapidAPI
+    // Parse query params
     const sp = new URLSearchParams(url.search);
     const hostChoice = sp.get('host');
     sp.delete('host');
     const forwardSearch = sp.toString();
 
-    const host = hostChoice === 'host2' ? env.HOST_2 : env.HOST_1;
-    
-    // ===== GET KEYS FROM FIREBASE (cached 5 min) =====
-    const firebaseKeys = await getKeysFromFirebase(env);
-    const keys = hostChoice === 'host2' ? firebaseKeys.host2Keys : firebaseKeys.host1Keys;
+    // Get keys from Firestore
+    const config = await getKeysFromFirestore(env);
+    const host = hostChoice === 'host2' ? config.apiHostP2 : config.apiHost;
+    const keys = hostChoice === 'host2' ? config.apiKeysP2 : config.apiKeys;
 
     const cacheKey = `${host}${rapidPath}?${forwardSearch}`;
 
-    // ===== Rate limit per IP =====
+    // Rate limit
     const ip = request.headers.get('cf-connecting-ip') || 'unknown';
     const rateLimit = parseInt(env.RATE_LIMIT_PER_MIN, 10) || 120;
 
-    // ===== Layer 1: Cloudflare Cache API =====
+    // ===== Layer 1: Cloudflare Cache API (25 sec) =====
     const cache = (caches as any).default;
     const cacheReq = new Request(`https://cache.local/${cacheKey}`, { method: 'GET' });
-    let cached = await cache.match(cacheReq);
+    const cached = await cache.match(cacheReq);
     if (cached) {
       const body = await cached.json();
       return jsonResponse({ data: body, source: 'edge_cache', host }, 200, origin, `public, max-age=${ttl}`);
     }
 
-    // ===== Layer 2: globalThis warm cache =====
+    // ===== Layer 2: In-memory cache =====
     const warm = memGet(cacheKey);
     if (warm) {
       return jsonResponse({ data: warm, source: 'warm_memory', host }, 200, origin, `public, max-age=${Math.max(5, ttl - 10)}`);
     }
 
-    // ===== Rate limit check before hitting origin =====
+    // Rate limit check (only for cache misses)
     if (!rateLimitCheck(ip, rateLimit)) {
       return jsonResponse({ error: 'rate_limited', retry_after_seconds: 60 }, 429, origin, 'no-store');
     }
     maybeCleanupBuckets();
 
-    // ===== Layer 3: Origin fetch with Firebase keys =====
+    // ===== Layer 3: Fetch from RapidAPI =====
     const result = await fetchFromOrigin(rapidPath, forwardSearch, host, keys);
     if (!result.ok) {
+      // Try other host if first fails
+      const altHost = host === config.apiHost ? config.apiHostP2 : config.apiHost;
+      const altKeys = host === config.apiHost ? config.apiKeysP2 : config.apiKeys;
+      if (altKeys.length > 0) {
+        const altResult = await fetchFromOrigin(rapidPath, forwardSearch, altHost, altKeys);
+        if (altResult.ok) {
+          memSet(cacheKey, altResult.body, ttl);
+          const cacheResponse = new Response(JSON.stringify(altResult.body), {
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },
+          });
+          try { await cache.put(cacheReq, cacheResponse.clone()); } catch (_) {}
+          return jsonResponse({ data: altResult.body, source: 'origin', host: altHost }, 200, origin, `public, max-age=${ttl}`);
+        }
+      }
       return jsonResponse({ error: 'origin_failed', status: result.status, detail: result.body }, result.status, origin, 'no-store');
     }
 
-    // Save to both caches
+    // Cache the response
     memSet(cacheKey, result.body, ttl);
     const cacheResponse = new Response(JSON.stringify(result.body), {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },
     });
-    try { await cache.put(cacheReq, cacheResponse.clone()); } catch (_) { /* cache.put best-effort */ }
+    try { await cache.put(cacheReq, cacheResponse.clone()); } catch (_) {}
 
     return jsonResponse({ data: result.body, source: 'origin', host }, 200, origin, `public, max-age=${ttl}`);
   },

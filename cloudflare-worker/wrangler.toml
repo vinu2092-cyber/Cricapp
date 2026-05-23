@@ -1,14 +1,5 @@
 # CricApp Cloudflare Worker — Edge Cache + RapidAPI Proxy
-# 
-# FEATURES:
-# - 25-second cache for ALL endpoints
-# - Reads API keys from Firebase dynamically (update keys without redeploy!)
-# - 50,000 users → Cloudflare → Only 2-3 API calls/minute to RapidAPI
-#
-# Deploy:
-#   npm install -g wrangler
-#   wrangler login
-#   wrangler deploy
+# PRODUCTION READY - Just press "Save to GitHub"
 
 name = "cricapp-proxy"
 main = "src/index.ts"
@@ -17,13 +8,11 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "29163b66329a4990cfe33e9a4d887f74"
 
 [vars]
-# Single 25-second cache TTL for all endpoints
+# 25-second cache for ALL endpoints
 CACHE_TTL = "25"
 
-# Firebase RTDB config - Worker reads API keys from here
-# UPDATE THIS: Replace with your actual Firebase project URL and path
-FIREBASE_DB_URL = "https://YOUR_PROJECT_ID.firebaseio.com"
-FIREBASE_KEYS_PATH = "/app_config/api_keys"
+# Firestore config - reads from app_config/settings
+FIRESTORE_PROJECT = "cricapp-2092"
 
 # App version control
 LATEST_VERSION = "1.0.19"
@@ -32,10 +21,6 @@ PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.cricapp.live
 
 # CORS
 ALLOWED_ORIGIN = "*"
-
-# RapidAPI hosts
-HOST_1 = "cricbuzz-cricket.p.rapidapi.com"
-HOST_2 = "cricbuzz-cricket2.p.rapidapi.com"
 
 # Rate limit (per IP, per minute)
 RATE_LIMIT_PER_MIN = "120"
