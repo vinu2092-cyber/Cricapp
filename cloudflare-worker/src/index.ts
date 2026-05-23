@@ -1,16 +1,16 @@
 /**
  * CricApp Cloudflare Worker — Edge Cache + RapidAPI Proxy
- * PRODUCTION READY v1.0.19
+ * PRODUCTION READY v1.0.18
  *
  * Features:
- * - 25-second cache for ALL endpoints (2-3 API calls/min instead of 50,000)
- * - Reads API keys from YOUR Firestore (app_config/settings)
+ * - 25-second cache (2-3 API calls/min instead of 50,000)
+ * - Secure Firebase RTDB fetch with secret query parameter
  * - Keys cached 5 min — update in Firebase, worker auto-picks new keys
- * - No wrangler secret needed — everything from Firestore
  */
 
 export interface Env {
-  FIRESTORE_PROJECT: string;
+  FIREBASE_RTDB_URL: string;
+  FIREBASE_SECRET: string;
   CACHE_TTL: string;
   LATEST_VERSION: string;
   MIN_SUPPORTED_VERSION: string;
@@ -19,16 +19,16 @@ export interface Env {
   RATE_LIMIT_PER_MIN: string;
 }
 
-// ============ Firestore Keys Cache (5 min) ============
+// ============ Firebase RTDB Keys Cache (5 min) ============
 interface KeysCache {
   apiHost: string;
   apiHostP2: string;
-  apiKeys: string[];      // comma-separated keys for host1
-  apiKeysP2: string[];    // comma-separated keys for host2
+  apiKeys: string[];
+  apiKeysP2: string[];
   currentProvider: string;
   fetchedAt: number;
 }
-const KEYS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const KEYS_CACHE_TTL = 5 * 60 * 1000;
 let keysCache: KeysCache | null = (globalThis as any).__keysCache || null;
 (globalThis as any).__keysCache = keysCache;
 
@@ -37,14 +37,15 @@ function parseKeys(raw: string): string[] {
   return raw.split(',').map(k => k.replace(/\s+/g, '')).filter(k => k.length > 10);
 }
 
-async function getKeysFromFirestore(env: Env): Promise<KeysCache> {
+async function getKeysFromFirebase(env: Env): Promise<KeysCache> {
   if (keysCache && Date.now() - keysCache.fetchedAt < KEYS_CACHE_TTL) {
     return keysCache;
   }
 
   try {
-    // Firestore REST API - reads app_config/settings document
-    const url = `https://firestore.googleapis.com/v1/projects/${env.FIRESTORE_PROJECT}/databases/(default)/documents/app_config/settings`;
+    // Secure Firebase RTDB fetch with secret query parameter
+    const url = `${env.FIREBASE_RTDB_URL}/app_config.json?orderBy="secret"&equalTo="${env.FIREBASE_SECRET}"`;
+    
     const res = await fetch(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
@@ -52,29 +53,39 @@ async function getKeysFromFirestore(env: Env): Promise<KeysCache> {
     });
 
     if (!res.ok) {
-      console.error('Firestore fetch failed:', res.status);
+      console.error('Firebase RTDB fetch failed:', res.status);
       return keysCache || emptyCache();
     }
 
     const json = await res.json() as any;
-    const fields = json?.fields;
+    
+    // RTDB returns { "nodeKey": { ...data } } format when using orderBy/equalTo
+    // Extract the first matching node
+    let data: any = null;
+    if (json && typeof json === 'object') {
+      const keys = Object.keys(json);
+      if (keys.length > 0) {
+        data = json[keys[0]];
+      }
+    }
 
-    if (!fields) {
-      console.error('No fields in Firestore response');
+    if (!data) {
+      console.error('No matching data in Firebase RTDB');
       return keysCache || emptyCache();
     }
 
-    // Parse YOUR Firestore structure:
+    // Parse YOUR Firebase RTDB structure:
     // api_host: "cricbuzz-cricket.p.rapidapi.com"
     // api_host_p2: "cricbuzz-cricket2.p.rapidapi.com"
-    // api_key: "key1,key2,key3,..." (comma-separated)
+    // api_key: "key1,key2,key3,..."
     // api_key_p2: "key4,key5,..."
     // current_provider: "cricbuzz-cricket"
-    const apiHost = (fields?.api_host?.stringValue || 'cricbuzz-cricket.p.rapidapi.com').replace(/\s+/g, '');
-    const apiHostP2 = (fields?.api_host_p2?.stringValue || 'cricbuzz-cricket2.p.rapidapi.com').replace(/\s+/g, '');
-    const apiKeysRaw = fields?.api_key?.stringValue || '';
-    const apiKeysP2Raw = fields?.api_key_p2?.stringValue || '';
-    const currentProvider = (fields?.current_provider?.stringValue || 'cricbuzz-cricket').replace(/\s+/g, '');
+    // secret: "MeraCricAppSecret_786"
+    const apiHost = (data.api_host || 'cricbuzz-cricket.p.rapidapi.com').replace(/\s+/g, '');
+    const apiHostP2 = (data.api_host_p2 || 'cricbuzz-cricket2.p.rapidapi.com').replace(/\s+/g, '');
+    const apiKeysRaw = data.api_key || '';
+    const apiKeysP2Raw = data.api_key_p2 || '';
+    const currentProvider = (data.current_provider || 'cricbuzz-cricket').replace(/\s+/g, '');
 
     keysCache = {
       apiHost,
@@ -86,10 +97,10 @@ async function getKeysFromFirestore(env: Env): Promise<KeysCache> {
     };
     (globalThis as any).__keysCache = keysCache;
 
-    console.log(`Firestore: ${keysCache.apiKeys.length} host1 keys, ${keysCache.apiKeysP2.length} host2 keys`);
+    console.log(`Firebase: ${keysCache.apiKeys.length} host1 keys, ${keysCache.apiKeysP2.length} host2 keys`);
     return keysCache;
   } catch (e: any) {
-    console.error('Firestore error:', e?.message);
+    console.error('Firebase error:', e?.message);
     return keysCache || emptyCache();
   }
 }
@@ -105,7 +116,7 @@ function emptyCache(): KeysCache {
   };
 }
 
-// ============ In-memory rate limiter ============
+// ============ Rate Limiter ============
 const rateBuckets: Map<string, { count: number; resetAt: number }> = (globalThis as any).__rateBuckets || new Map();
 (globalThis as any).__rateBuckets = rateBuckets;
 
@@ -127,7 +138,7 @@ function maybeCleanupBuckets() {
   }
 }
 
-// ============ In-memory data cache ============
+// ============ Memory Cache ============
 interface MemCacheEntry { data: any; expiresAt: number; }
 const memCache: Map<string, MemCacheEntry> = (globalThis as any).__memCache || new Map();
 (globalThis as any).__memCache = memCache;
@@ -166,7 +177,7 @@ function jsonResponse(body: any, status: number, origin: string, cacheControl?: 
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-// ============ Origin fetch with key rotation ============
+// ============ RapidAPI Fetch ============
 async function fetchFromOrigin(
   rapidPath: string,
   searchParams: string,
@@ -188,7 +199,7 @@ async function fetchFromOrigin(
         cf: { cacheTtl: 0, cacheEverything: false } as any,
       });
       if (r.status === 429 || r.status === 403) {
-        console.log(`Key ${key.substring(0, 12)}... got ${r.status} - trying next`);
+        console.log(`Key ${key.substring(0, 12)}... got ${r.status} - next`);
         continue;
       }
       if (r.ok) {
@@ -198,7 +209,6 @@ async function fetchFromOrigin(
       const body = await r.json().catch(() => ({ error: 'origin_error', status: r.status }));
       return { ok: false, status: r.status, body };
     } catch (e: any) {
-      console.log(`Key ${key.substring(0, 12)}... network error - trying next`);
       continue;
     }
   }
@@ -212,7 +222,6 @@ export default {
     const url = new URL(request.url);
     const ttl = parseInt(env.CACHE_TTL, 10) || 25;
 
-    // CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
@@ -220,12 +229,12 @@ export default {
       return jsonResponse({ error: 'method_not_allowed' }, 405, origin);
     }
 
-    // Health check
+    // Health
     if (url.pathname === '/' || url.pathname === '/api/v1/health') {
       return jsonResponse({ ok: true, service: 'cricapp-proxy', ts: Date.now() }, 200, origin, 'no-store');
     }
 
-    // Version check
+    // Version
     if (url.pathname === '/api/v1/version') {
       return jsonResponse({
         latest_version: env.LATEST_VERSION,
@@ -235,7 +244,7 @@ export default {
       }, 200, origin, 'public, max-age=300');
     }
 
-    // ===== Proxy routes =====
+    // Proxy routes
     const PROXY_PREFIX = '/api/v1/cricbuzz';
     let rapidPath: string;
     if (url.pathname.startsWith(PROXY_PREFIX)) {
@@ -249,30 +258,27 @@ export default {
       url.pathname.startsWith('/stats/') ||
       url.pathname.startsWith('/schedule/')
     ) {
-      // Legacy path support for old app versions
       rapidPath = url.pathname;
     } else {
       return jsonResponse({ error: 'not_found', path: url.pathname }, 404, origin);
     }
 
-    // Parse query params
     const sp = new URLSearchParams(url.search);
     const hostChoice = sp.get('host');
     sp.delete('host');
     const forwardSearch = sp.toString();
 
-    // Get keys from Firestore
-    const config = await getKeysFromFirestore(env);
+    // Get keys from secure Firebase RTDB
+    const config = await getKeysFromFirebase(env);
     const host = hostChoice === 'host2' ? config.apiHostP2 : config.apiHost;
     const keys = hostChoice === 'host2' ? config.apiKeysP2 : config.apiKeys;
 
     const cacheKey = `${host}${rapidPath}?${forwardSearch}`;
 
-    // Rate limit
     const ip = request.headers.get('cf-connecting-ip') || 'unknown';
     const rateLimit = parseInt(env.RATE_LIMIT_PER_MIN, 10) || 120;
 
-    // ===== Layer 1: Cloudflare Cache API (25 sec) =====
+    // Layer 1: Edge Cache
     const cache = (caches as any).default;
     const cacheReq = new Request(`https://cache.local/${cacheKey}`, { method: 'GET' });
     const cached = await cache.match(cacheReq);
@@ -281,22 +287,22 @@ export default {
       return jsonResponse({ data: body, source: 'edge_cache', host }, 200, origin, `public, max-age=${ttl}`);
     }
 
-    // ===== Layer 2: In-memory cache =====
+    // Layer 2: Memory Cache
     const warm = memGet(cacheKey);
     if (warm) {
       return jsonResponse({ data: warm, source: 'warm_memory', host }, 200, origin, `public, max-age=${Math.max(5, ttl - 10)}`);
     }
 
-    // Rate limit check (only for cache misses)
+    // Rate limit
     if (!rateLimitCheck(ip, rateLimit)) {
       return jsonResponse({ error: 'rate_limited', retry_after_seconds: 60 }, 429, origin, 'no-store');
     }
     maybeCleanupBuckets();
 
-    // ===== Layer 3: Fetch from RapidAPI =====
+    // Layer 3: Origin
     const result = await fetchFromOrigin(rapidPath, forwardSearch, host, keys);
     if (!result.ok) {
-      // Try other host if first fails
+      // Try alternate host
       const altHost = host === config.apiHost ? config.apiHostP2 : config.apiHost;
       const altKeys = host === config.apiHost ? config.apiKeysP2 : config.apiKeys;
       if (altKeys.length > 0) {
@@ -313,7 +319,6 @@ export default {
       return jsonResponse({ error: 'origin_failed', status: result.status, detail: result.body }, result.status, origin, 'no-store');
     }
 
-    // Cache the response
     memSet(cacheKey, result.body, ttl);
     const cacheResponse = new Response(JSON.stringify(result.body), {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },

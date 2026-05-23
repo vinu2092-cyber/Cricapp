@@ -1,5 +1,5 @@
 # CricApp Cloudflare Worker — Edge Cache + RapidAPI Proxy
-# PRODUCTION READY - Just press "Save to GitHub"
+# PRODUCTION READY v1.0.18
 
 name = "cricapp-proxy"
 main = "src/index.ts"
@@ -11,12 +11,13 @@ account_id = "29163b66329a4990cfe33e9a4d887f74"
 # 25-second cache for ALL endpoints
 CACHE_TTL = "25"
 
-# Firestore config - reads from app_config/settings
-FIRESTORE_PROJECT = "cricapp-2092"
+# Firebase RTDB URL (secure with secret query)
+FIREBASE_RTDB_URL = "https://cricapp-2092-default-rtdb.firebaseio.com"
+FIREBASE_SECRET = "MeraCricAppSecret_786"
 
 # App version control
-LATEST_VERSION = "1.0.19"
-MIN_SUPPORTED_VERSION = "1.0.19"
+LATEST_VERSION = "1.0.18"
+MIN_SUPPORTED_VERSION = "1.0.18"
 PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.cricapp.live"
 
 # CORS
