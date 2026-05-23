@@ -91,7 +91,7 @@ const RATE_KEY = 'crickapp_chat_last_action';
 const MSG_CACHE_KEY = 'crickapp_chat_msgs_v2_';
 const FEED_CACHE_KEY = 'crickapp_chat_feed_v3_';
 const MAX_MSGS = 15;
-const MAX_FEED = 25;
+const MAX_FEED = 20;  // User wants max 20 messages in live feed
 const RATE_LIMIT_MS = 120_000;
 const HEARTBEAT_MS = 60_000;
 const EMOJI_FLIGHT_MS = 800;
@@ -119,16 +119,16 @@ const REACTION_PILLS: { txt: string; flying: string }[] = [
 ];
 const REACTION_FLAGS = ['🇮🇳', '🇵🇰', '🇧🇩', '🇱🇰', '🇦🇺', '🏴󠁧󠁢󠁥󠁮󠁧󠁿', '🇿🇦', '🇳🇿'];
 
-// Throw popup — 8 items
-const THROW_ITEMS: { key: string; label: string; lottie?: any }[] = [
-  { key: '🩴', label: 'Chappal', lottie: LOTTIE_CHAPPAL },
-  { key: '💋', label: 'Kiss' },
-  { key: '💩', label: 'Potty' },
-  { key: '🍅', label: 'Tomato', lottie: LOTTIE_TOMATO },
-  { key: '🥚', label: 'Egg', lottie: LOTTIE_EGG },
-  { key: '❤️', label: 'Heart' },
-  { key: '👋', label: 'Slap' },
-  { key: '🙋‍♂️', label: 'Hii' },
+// Throw popup — 8 items with throw/give labels
+const THROW_ITEMS: { key: string; label: string; verb: 'throw' | 'give'; lottie?: any }[] = [
+  { key: '🍅', label: 'Tomato', verb: 'throw', lottie: LOTTIE_TOMATO },
+  { key: '🥚', label: 'Egg', verb: 'throw', lottie: LOTTIE_EGG },
+  { key: '🩴', label: 'Chappal', verb: 'throw', lottie: LOTTIE_CHAPPAL },
+  { key: '💩', label: 'Potty', verb: 'throw' },
+  { key: '🌹', label: 'Rose', verb: 'give' },
+  { key: '❤️', label: 'Heart', verb: 'give' },
+  { key: '💋', label: 'Kiss', verb: 'give' },
+  { key: '👋', label: 'Hi', verb: 'give' },
 ];
 
 function teamNameToFlag(name?: string): string {
@@ -659,25 +659,28 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
         </View>
       )}
 
-      {/* Chat Room — split-team layout */}
+      {/* Chat Room — Three Column Layout: LEFT (Team1) | CENTER (Feed) | RIGHT (Team2) */}
       {activePanel === 'chat' && (
         <View style={styles.chatDock} data-testid="chat-panel">
-          {/* ── Team headers ── */}
+          {/* ── Team headers row ── */}
           <View style={styles.teamHeadersRow}>
             <View style={[styles.teamHeaderChip, { backgroundColor: TEAM1_COLOR }]}>
               <Text style={styles.teamHeaderTxt}>{teamNameToFlag(team1 || team1Short)} {t1Short}</Text>
               <Text style={styles.teamHeaderSub}>{team1WithSelf.length} online</Text>
             </View>
-            <View style={styles.vsBadge}><Text style={styles.vsTxt}>VS</Text></View>
+            <View style={styles.feedHeaderCenter}>
+              <Text style={styles.feedTitleHeader}>Live Feed</Text>
+            </View>
             <View style={[styles.teamHeaderChip, { backgroundColor: TEAM2_COLOR }]}>
               <Text style={styles.teamHeaderTxt}>{teamNameToFlag(team2 || team2Short)} {t2Short}</Text>
               <Text style={styles.teamHeaderSub}>{team2WithSelf.length} online</Text>
             </View>
           </View>
 
-          {/* ── Two-column user lists ── */}
-          <View style={styles.usersSplit}>
-            <View style={styles.teamCol}>
+          {/* ── Three-column layout: Team1 | Feed | Team2 ── */}
+          <View style={styles.threeColLayout}>
+            {/* LEFT: Team 1 Users */}
+            <View style={[styles.teamColSide, { backgroundColor: TEAM1_DARK + '40' }]}>
               <FlatList
                 ref={team1ListRef}
                 data={team1WithSelf}
@@ -700,11 +703,31 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
                     onMount={(view) => { chipRefsMap.current[item.id] = view; captureChipPosition(item.id); }}
                   />
                 )}
-                ListEmptyComponent={<Text style={styles.colEmpty}>No supporters yet</Text>}
+                ListEmptyComponent={<Text style={styles.colEmpty}>No supporters</Text>}
               />
             </View>
-            <View style={styles.splitDivider} />
-            <View style={styles.teamCol}>
+
+            {/* CENTER: Live Feed (new messages on TOP) */}
+            <View style={styles.feedColCenter}>
+              <ScrollView
+                ref={feedScrollRef}
+                style={styles.feedScroll}
+                contentContainerStyle={styles.feedScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {feedEvents.length === 0 ? (
+                  <Text style={styles.feedEmpty}>Tap user → throw/give emoji</Text>
+                ) : (
+                  // Reverse order: newest on top
+                  [...feedEvents].reverse().map((e) => (
+                    <FeedRow key={e.id} event={e} t1Color={TEAM1_COLOR} t2Color={TEAM2_COLOR} />
+                  ))
+                )}
+              </ScrollView>
+            </View>
+
+            {/* RIGHT: Team 2 Users */}
+            <View style={[styles.teamColSide, { backgroundColor: TEAM2_DARK + '40' }]}>
               <FlatList
                 ref={team2ListRef}
                 data={team2WithSelf}
@@ -727,29 +750,9 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
                     onMount={(view) => { chipRefsMap.current[item.id] = view; captureChipPosition(item.id); }}
                   />
                 )}
-                ListEmptyComponent={<Text style={styles.colEmpty}>No supporters yet</Text>}
+                ListEmptyComponent={<Text style={styles.colEmpty}>No supporters</Text>}
               />
             </View>
-          </View>
-
-          {/* ── Center live feed ── */}
-          <View style={styles.feedWrap}>
-            <Text style={styles.feedTitle}>💬 Live Feed</Text>
-            <ScrollView
-              ref={feedScrollRef}
-              style={styles.feedScroll}
-              contentContainerStyle={styles.feedScrollContent}
-              onContentSizeChange={() => { try { feedScrollRef.current?.scrollToEnd({ animated: false }); } catch {} }}
-              showsVerticalScrollIndicator={false}
-            >
-              {feedEvents.length === 0 ? (
-                <Text style={styles.feedEmpty}>Tap a user → throw emoji • Tap a pill → send message</Text>
-              ) : (
-                feedEvents.map((e) => (
-                  <FeedRow key={e.id} event={e} t1Color={TEAM1_COLOR} t2Color={TEAM2_COLOR} />
-                ))
-              )}
-            </ScrollView>
           </View>
 
           {/* ── Predictive pills ── */}
@@ -787,7 +790,7 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
       <Modal visible={!!throwTarget} transparent animationType="fade" onRequestClose={() => setThrowTarget(null)}>
         <TouchableOpacity activeOpacity={1} onPress={() => setThrowTarget(null)} style={styles.modalBg}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.throwBox}>
-            <Text style={styles.throwTitle}>Throw at {throwTarget?.country} {throwTarget?.name}</Text>
+            <Text style={styles.throwTitle}>Send to {throwTarget?.name}</Text>
             <View style={styles.throwGrid}>
               {THROW_ITEMS.map((t) => (
                 <TouchableOpacity key={t.key} onPress={() => throwTarget && handleThrowAt(throwTarget, t.key)}
@@ -795,10 +798,12 @@ const LiveInteractions: React.FC<Props> = ({ matchId, team1, team2, team1Short, 
                   data-testid={`throw-${t.label.toLowerCase()}`}>
                   <Text style={styles.throwEmoji}>{t.key}</Text>
                   <Text style={styles.throwLabel}>{t.label}</Text>
+                  <Text style={[styles.throwVerb, { color: t.verb === 'give' ? '#E91E63' : '#FF5722' }]}>
+                    {t.verb}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={styles.throwHint}>Jumps to #1 in their team column when hit 🎯</Text>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -881,23 +886,35 @@ const UserCapsule: React.FC<UserCapsuleProps> = ({ user, teamShort, teamColor, t
 };
 
 // ─── FEED ROW (chat msg or throw event) ──────────────────────────
+// Helper to get verb for emoji
+function getEmojiVerb(emoji: string): string {
+  const item = THROW_ITEMS.find((t) => t.key === emoji);
+  return item?.verb === 'give' ? 'give' : 'throw';
+}
+
 const FeedRow: React.FC<{ event: FeedEvent; t1Color: string; t2Color: string }> = ({ event, t1Color, t2Color }) => {
   if (event.kind === 'throw') {
     const fromColor = event.fromTeam === '1' ? t1Color : event.fromTeam === '2' ? t2Color : NEUTRAL_COLOR;
     const toColor = event.toTeam === '1' ? t1Color : event.toTeam === '2' ? t2Color : NEUTRAL_COLOR;
+    const verb = getEmojiVerb(event.action);
+    // Extract just the name (remove flag)
+    const fromName = event.from.split(' ').slice(1).join(' ') || event.from;
+    const toName = event.to.split(' ').slice(1).join(' ') || event.to;
     return (
       <View style={styles.feedRow}>
+        <Text style={[styles.feedActorName, { color: fromColor }]} numberOfLines={1}>{fromName}</Text>
+        <Text style={styles.feedVerb}>{verb}</Text>
         <Text style={styles.feedEmojiBig}>{event.action}</Text>
-        <Text style={[styles.feedActor, { color: fromColor }]} numberOfLines={1}>{event.from}</Text>
-        <Text style={styles.feedArrow}>→</Text>
-        <Text style={[styles.feedActor, { color: toColor }]} numberOfLines={1}>{event.to}</Text>
+        <Text style={styles.feedToText}>to</Text>
+        <Text style={[styles.feedActorName, { color: toColor }]} numberOfLines={1}>{toName}</Text>
       </View>
     );
   }
-  const color = event.team === '1' ? t1Color : event.team === '2' ? t2Color : '#1B5E20';
+  const color = event.team === '1' ? t1Color : event.team === '2' ? t2Color : '#4CAF50';
+  const userName = event.name;
   return (
     <View style={styles.feedRowMsg}>
-      <Text style={[styles.feedMsgHeader, { color }]} numberOfLines={1}>{event.country} {event.name}</Text>
+      <Text style={[styles.feedMsgHeader, { color }]} numberOfLines={1}>{userName}:</Text>
       <Text style={styles.feedMsgTxt} numberOfLines={2}>{event.msg}</Text>
     </View>
   );
@@ -1145,66 +1162,67 @@ const styles = StyleSheet.create({
   panelTitle: { color: '#FFF', fontWeight: '900', fontSize: 13 },
   panelHint: { color: 'rgba(255,255,255,0.65)', fontSize: 10, fontStyle: 'italic' },
 
-  chatDock: { position: 'absolute', left: 8, right: 8, bottom: 80, height: 520, backgroundColor: 'rgba(8, 18, 12, 0.94)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 10, zIndex: 9998, elevation: 20 },
+  chatDock: { position: 'absolute', left: 8, right: 8, bottom: 80, height: 460, backgroundColor: 'rgba(8, 18, 12, 0.96)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 8, zIndex: 9998, elevation: 20 },
 
-  // ── Team headers ──
+  // ── Team headers row ──
   teamHeadersRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  teamHeaderChip: { flex: 1, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center' },
-  teamHeaderTxt: { color: '#FFF', fontWeight: '900', fontSize: 13 },
-  teamHeaderSub: { color: 'rgba(255,255,255,0.85)', fontSize: 10, marginTop: 1 },
-  vsBadge: { paddingHorizontal: 8 },
-  vsTxt: { color: '#FFD54F', fontWeight: '900', fontSize: 12 },
+  teamHeaderChip: { width: 80, paddingVertical: 5, paddingHorizontal: 6, borderRadius: 10, alignItems: 'center' },
+  teamHeaderTxt: { color: '#FFF', fontWeight: '900', fontSize: 11 },
+  teamHeaderSub: { color: 'rgba(255,255,255,0.85)', fontSize: 9, marginTop: 1 },
+  feedHeaderCenter: { flex: 1, alignItems: 'center' },
+  feedTitleHeader: { color: '#4CAF50', fontWeight: '900', fontSize: 14 },
 
-  // ── Split user columns ──
-  usersSplit: { flexDirection: 'row', height: 192, marginBottom: 6 },
-  teamCol: { flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, paddingHorizontal: 4 },
-  teamColContent: { paddingVertical: 6, gap: 6 },
-  splitDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginHorizontal: 5 },
-  colEmpty: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic', textAlign: 'center', paddingVertical: 24 },
+  // ── Three-column layout ──
+  threeColLayout: { flex: 1, flexDirection: 'row', marginBottom: 6 },
+  teamColSide: { width: 85, borderRadius: 10, paddingHorizontal: 2 },
+  teamColContent: { paddingVertical: 4, gap: 4 },
+  colEmpty: { color: 'rgba(255,255,255,0.55)', fontSize: 9, fontStyle: 'italic', textAlign: 'center', paddingVertical: 20 },
 
   // ── User Capsule ──
   capsule: {
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 6,
-    borderRadius: 14,
-    marginHorizontal: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    marginHorizontal: 2,
   },
   capsuleSelf: { borderColor: '#4CAF50', borderWidth: 2 },
   capsuleAvatar: {
-    width: 42, height: 42, borderRadius: 21,
+    width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 3,
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.45)',
   },
-  capsuleTeamTxt: { color: '#FFF', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 },
-  capsuleName: { color: '#FFF', fontWeight: '700', fontSize: 11, maxWidth: 70, textAlign: 'center' },
-  capsuleSelfBadge: { color: '#A5D6A7', fontSize: 8, fontWeight: '900', marginTop: 1 },
-  topBadge: { position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: 9, backgroundColor: '#FFD54F', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  topBadgeTxt: { fontSize: 10 },
+  capsuleTeamTxt: { color: '#FFF', fontWeight: '900', fontSize: 10, letterSpacing: 0.5 },
+  capsuleName: { color: '#FFF', fontWeight: '700', fontSize: 10, maxWidth: 70, textAlign: 'center' },
+  capsuleSelfBadge: { color: '#A5D6A7', fontSize: 7, fontWeight: '900', marginTop: 1 },
+  topBadge: { position: 'absolute', top: -5, right: -5, width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFD54F', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  topBadgeTxt: { fontSize: 9 },
 
-  // ── Center feed ──
-  feedWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 4, marginBottom: 6 },
-  feedTitle: { color: '#FFD54F', fontWeight: '900', fontSize: 11, marginBottom: 2, paddingHorizontal: 2 },
+  // ── Center feed column ──
+  feedColCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 10, marginHorizontal: 6, paddingHorizontal: 6, paddingVertical: 4 },
   feedScroll: { flex: 1 },
   feedScrollContent: { paddingVertical: 2 },
-  feedEmpty: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic', textAlign: 'center', padding: 12 },
-  feedRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3, paddingHorizontal: 4, gap: 6 },
-  feedRowMsg: { paddingVertical: 4, paddingHorizontal: 6, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 8, marginBottom: 3 },
-  feedEmojiBig: { fontSize: 18 },
-  feedActor: { fontWeight: '800', fontSize: 11, flexShrink: 1, maxWidth: 110 },
-  feedArrow: { color: '#FFD54F', fontWeight: '900', fontSize: 13 },
-  feedMsgHeader: { fontWeight: '900', fontSize: 11, marginBottom: 1 },
-  feedMsgTxt: { color: '#FFF', fontSize: 12, fontWeight: '500' },
+  feedEmpty: { color: 'rgba(255,255,255,0.55)', fontSize: 10, fontStyle: 'italic', textAlign: 'center', padding: 12 },
+  
+  // ── Feed row styles ──
+  feedRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingVertical: 3, paddingHorizontal: 2, gap: 3, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  feedRowMsg: { paddingVertical: 4, paddingHorizontal: 4, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 8, marginBottom: 3 },
+  feedEmojiBig: { fontSize: 14 },
+  feedActorName: { fontWeight: '800', fontSize: 10, maxWidth: 60 },
+  feedVerb: { color: '#FFD54F', fontWeight: '700', fontSize: 9 },
+  feedToText: { color: 'rgba(255,255,255,0.6)', fontSize: 9 },
+  feedMsgHeader: { fontWeight: '900', fontSize: 10, marginBottom: 1 },
+  feedMsgTxt: { color: '#FFF', fontSize: 11, fontWeight: '500' },
 
   // ── Pills row ──
-  chatPillsWrap: { maxHeight: 44 },
-  pillsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, gap: 8, paddingRight: 12 },
-  pill: { backgroundColor: 'rgba(76,175,80,0.95)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, marginRight: 6, elevation: 4 },
+  chatPillsWrap: { maxHeight: 42 },
+  pillsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3, gap: 6, paddingRight: 12 },
+  pill: { backgroundColor: 'rgba(76,175,80,0.95)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, marginRight: 4, elevation: 4 },
   pillFlag: { backgroundColor: 'rgba(255,193,7,0.9)' },
   pillFlagTxt: { fontSize: 18 },
   chatPill: { backgroundColor: 'rgba(33, 150, 243, 0.95)' },
-  pillTxt: { color: '#FFF', fontWeight: '800', fontSize: 12 },
+  pillTxt: { color: '#FFF', fontWeight: '800', fontSize: 11 },
 
   // ── Setup modal ──
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', alignItems: 'center', justifyContent: 'center', padding: 16 },
@@ -1241,13 +1259,13 @@ const styles = StyleSheet.create({
   setupBtnTxt: { color: '#FFF', fontWeight: '800' },
 
   // ── Throw modal ──
-  throwBox: { backgroundColor: '#FFF', borderRadius: 16, padding: 18, width: '92%', maxWidth: 380 },
+  throwBox: { backgroundColor: '#FFF', borderRadius: 16, padding: 16, width: '92%', maxWidth: 360 },
   throwTitle: { fontSize: 15, fontWeight: '900', color: '#212121', marginBottom: 12, textAlign: 'center' },
-  throwGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', gap: 8, marginBottom: 12 },
-  throwItem: { alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10, backgroundColor: '#FFF8E1', borderRadius: 12, borderWidth: 1, borderColor: '#FFCC80', width: '22%', minWidth: 70 },
-  throwEmoji: { fontSize: 28 },
-  throwLabel: { fontSize: 10, fontWeight: '700', color: '#E65100', marginTop: 2 },
-  throwHint: { color: '#999', fontSize: 11, textAlign: 'center', fontStyle: 'italic' },
+  throwGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', gap: 8, marginBottom: 8 },
+  throwItem: { alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8, backgroundColor: '#FFF8E1', borderRadius: 12, borderWidth: 1, borderColor: '#FFCC80', width: '22%', minWidth: 68 },
+  throwEmoji: { fontSize: 26 },
+  throwLabel: { fontSize: 9, fontWeight: '700', color: '#E65100', marginTop: 2 },
+  throwVerb: { fontSize: 8, fontWeight: '900', marginTop: 1 },
 
   // ── Overlays ──
   flyOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 50, elevation: 2 },
