@@ -1,15 +1,15 @@
 /**
  * CricApp Cloudflare Worker — Edge Cache + RapidAPI Proxy
- * PRODUCTION READY v1.0.18
+ * PRODUCTION READY v1.0.19
  *
  * Features:
  * - 25-second cache (2-3 API calls/min instead of 50,000)
- * - Secure Firebase RTDB fetch with secret query parameter
- * - Keys cached 5 min — update in Firebase, worker auto-picks new keys
+ * - Secure Cloud Firestore fetch with secret verification
+ * - Keys cached 5 min — update in Firestore, worker auto-picks new keys
  */
 
 export interface Env {
-  FIREBASE_RTDB_URL: string;
+  FIRESTORE_URL: string;
   FIREBASE_SECRET: string;
   CACHE_TTL: string;
   LATEST_VERSION: string;
@@ -19,7 +19,7 @@ export interface Env {
   RATE_LIMIT_PER_MIN: string;
 }
 
-// ============ Firebase RTDB Keys Cache (5 min) ============
+// ============ Firestore Keys Cache (5 min) ============
 interface KeysCache {
   apiHost: string;
   apiHostP2: string;
@@ -37,55 +37,46 @@ function parseKeys(raw: string): string[] {
   return raw.split(',').map(k => k.replace(/\s+/g, '')).filter(k => k.length > 10);
 }
 
-async function getKeysFromFirebase(env: Env): Promise<KeysCache> {
+async function getKeysFromFirestore(env: Env): Promise<KeysCache> {
   if (keysCache && Date.now() - keysCache.fetchedAt < KEYS_CACHE_TTL) {
     return keysCache;
   }
 
   try {
-    // Secure Firebase RTDB fetch with secret query parameter
-    const url = `${env.FIREBASE_RTDB_URL}/app_config.json?orderBy="secret"&equalTo="${env.FIREBASE_SECRET}"`;
-    
-    const res = await fetch(url, {
+    // Cloud Firestore REST API fetch
+    const res = await fetch(env.FIRESTORE_URL, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       cf: { cacheTtl: 0, cacheEverything: false } as any,
     });
 
     if (!res.ok) {
-      console.error('Firebase RTDB fetch failed:', res.status);
+      console.error('Firestore fetch failed:', res.status);
       return keysCache || emptyCache();
     }
 
     const json = await res.json() as any;
-    
-    // RTDB returns { "nodeKey": { ...data } } format when using orderBy/equalTo
-    // Extract the first matching node
-    let data: any = null;
-    if (json && typeof json === 'object') {
-      const keys = Object.keys(json);
-      if (keys.length > 0) {
-        data = json[keys[0]];
-      }
-    }
+    const fields = json?.fields;
 
-    if (!data) {
-      console.error('No matching data in Firebase RTDB');
+    if (!fields) {
+      console.error('No fields in Firestore response');
       return keysCache || emptyCache();
     }
 
-    // Parse YOUR Firebase RTDB structure:
-    // api_host: "cricbuzz-cricket.p.rapidapi.com"
-    // api_host_p2: "cricbuzz-cricket2.p.rapidapi.com"
-    // api_key: "key1,key2,key3,..."
-    // api_key_p2: "key4,key5,..."
-    // current_provider: "cricbuzz-cricket"
-    // secret: "MeraCricAppSecret_786"
-    const apiHost = (data.api_host || 'cricbuzz-cricket.p.rapidapi.com').replace(/\s+/g, '');
-    const apiHostP2 = (data.api_host_p2 || 'cricbuzz-cricket2.p.rapidapi.com').replace(/\s+/g, '');
-    const apiKeysRaw = data.api_key || '';
-    const apiKeysP2Raw = data.api_key_p2 || '';
-    const currentProvider = (data.current_provider || 'cricbuzz-cricket').replace(/\s+/g, '');
+    // Verify secret field matches
+    const secretInDoc = fields?.secret?.stringValue || '';
+    if (secretInDoc !== env.FIREBASE_SECRET) {
+      console.error('Secret mismatch - access denied');
+      return keysCache || emptyCache();
+    }
+
+    // Parse Firestore document structure:
+    // fields.api_host.stringValue, fields.api_key.stringValue, etc.
+    const apiHost = (fields?.api_host?.stringValue || 'cricbuzz-cricket.p.rapidapi.com').replace(/\s+/g, '');
+    const apiHostP2 = (fields?.api_host_p2?.stringValue || 'cricbuzz-cricket2.p.rapidapi.com').replace(/\s+/g, '');
+    const apiKeysRaw = fields?.api_key?.stringValue || '';
+    const apiKeysP2Raw = fields?.api_key_p2?.stringValue || '';
+    const currentProvider = (fields?.current_provider?.stringValue || 'cricbuzz-cricket').replace(/\s+/g, '');
 
     keysCache = {
       apiHost,
@@ -97,10 +88,10 @@ async function getKeysFromFirebase(env: Env): Promise<KeysCache> {
     };
     (globalThis as any).__keysCache = keysCache;
 
-    console.log(`Firebase: ${keysCache.apiKeys.length} host1 keys, ${keysCache.apiKeysP2.length} host2 keys`);
+    console.log(`Firestore: ${keysCache.apiKeys.length} host1 keys, ${keysCache.apiKeysP2.length} host2 keys`);
     return keysCache;
   } catch (e: any) {
-    console.error('Firebase error:', e?.message);
+    console.error('Firestore error:', e?.message);
     return keysCache || emptyCache();
   }
 }
@@ -268,8 +259,8 @@ export default {
     sp.delete('host');
     const forwardSearch = sp.toString();
 
-    // Get keys from secure Firebase RTDB
-    const config = await getKeysFromFirebase(env);
+    // Get keys from Cloud Firestore
+    const config = await getKeysFromFirestore(env);
     const host = hostChoice === 'host2' ? config.apiHostP2 : config.apiHost;
     const keys = hostChoice === 'host2' ? config.apiKeysP2 : config.apiKeys;
 
